@@ -101,6 +101,9 @@ src/xrt/drivers/arduino/device/*.bin
 # Ignore clangd things
 .cache/
 
+# Ignore ccls things
+.ccls-cache
+
 # Ignore CI things
 container-build-report.xml
 
