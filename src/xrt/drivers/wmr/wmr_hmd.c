@@ -123,10 +123,9 @@ const struct wmr_headset_descriptor headset_map[] = {
     {WMR_HEADSET_LENOVO_EXPLORER, "Lenovo VR-2511N", 0x17ef, 0xb801, "Lenovo Explorer", NULL, NULL, NULL},
     {WMR_HEADSET_MEDION_ERAZER_X1000, "Medion Erazer X1000", 0x0408, 0xb5d5, "Medion Erazer", NULL, NULL, NULL},
     {WMR_HEADSET_DELL_VISOR, "DELL VR118", 0x413c, 0xb0d5, "Dell Visor", NULL, NULL, NULL},
-    {WMR_HEADSET_DELL_VISOR, "DELL VR118", 0x04e8, 0x6506, "Dell Visor", NULL, NULL, NULL},
-    {WMR_HEADSET_ACER_AH100, "Acer", 0, 0, "AH100", NULL, NULL, NULL},
-    {WMR_HEADSET_ACER_AH101, "Acer", 0, 0, "AH101", NULL, NULL, NULL},
-    {WMR_HEADSET_FUJITSU_FMVHDS1, "Fujitsu", 0, 0, "Fujitsu FMVHDS1", NULL, NULL, NULL},
+    {WMR_HEADSET_ACER_AH100, "Acer", 0x0502, 0xb0d5, "AH100", NULL, NULL, NULL},
+    {WMR_HEADSET_ACER_AH101, "Acer", 0x0502, 0xb0d6, "AH101", NULL, NULL, NULL},
+    {WMR_HEADSET_FUJITSU_FMVHDS1, "Fujitsu", 0x04c5, 0x15b9, "Fujitsu FMVHDS1", NULL, NULL, NULL},
 };
 const int headset_map_n = sizeof(headset_map) / sizeof(headset_map[0]);
 
