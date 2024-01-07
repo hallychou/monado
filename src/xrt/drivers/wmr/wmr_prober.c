@@ -94,7 +94,7 @@ check_and_get_interface(struct xrt_prober_device *device,
 			return true;
 		}
 	}
-	// Didnt find the descriptor of this device, returning generic
+	// Didn't find the descriptor of this device, returning generic
 	*out_hmd_type = WMR_HEADSET_GENERIC;
 	U_LOG_IFL_T(log_level, "Could not find descriptor for companion with vid %04X, pid %04X", device->vendor_id,
 	            device->product_id);
