@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2025-2026, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -528,6 +528,9 @@ static const char *instance_extensions_common[] = {
 };
 
 static const char *optional_instance_extensions[] = {
+#if defined(VK_KHR_portability_enumeration) && defined(XRT_OS_OSX)
+    VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+#endif
 #ifdef VK_KHR_get_surface_capabilities2
     VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
 #endif
