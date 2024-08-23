@@ -318,6 +318,22 @@ feeder_init(struct feeder *const feeder, const enum u_logging_level log_level)
 }
 
 static void
+feeder_device_assert_destroyed_cb(const uint64_t key, const void *const value, void *const userptr)
+{
+	(void)key;
+	(void)userptr;
+	struct feeder_device *const device = (struct feeder_device *)value;
+
+	/*
+	 * If this is hit then there is a high chance the caller neglected to call
+	 * `solarxr_device_clear_feeder_devices()` before `xrt_system_devices::destroy()` and
+	 * we're already in undefined behavior territory
+	 */
+	assert(device->destroyed);
+	(void)device;
+}
+
+static void
 feeder_device_free_cb(const uint64_t key, const void *const value, void *const userptr)
 {
 	(void)key;
@@ -329,6 +345,8 @@ void
 feeder_fini(struct feeder *const feeder)
 {
 	if (feeder->devices != NULL) {
+		u_hashmap_int_for_each(feeder->devices, feeder_device_assert_destroyed_cb, NULL);
+
 		feeder_clear_devices(feeder);
 		feeder_send_feedback(feeder);
 		u_hashmap_int_for_each(feeder->devices, feeder_device_free_cb, NULL);

@@ -10,6 +10,11 @@ target_link_libraries(
 	PUBLIC xrt-interfaces
 	)
 
+if(XRT_BUILD_DRIVER_SOLARXR)
+	target_include_directories(base PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../drivers)
+	target_link_libraries(base PRIVATE drv_solarxr)
+endif()
+
 target_sources(
 	base
 	PRIVATE

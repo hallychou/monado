@@ -20,6 +20,10 @@
 
 #include <assert.h>
 
+#ifdef XRT_BUILD_DRIVER_SOLARXR
+#include "solarxr/solarxr_interface.h"
+#endif
+
 static const char *driver_list[] = {
 #ifdef XRT_BUILD_DRIVER_CONTACTGLOVE
     "contactglove",
@@ -191,6 +195,20 @@ legacy_open_system_impl(struct xrt_builder *xb,
 
 	conforming_left_ht = u_system_devices_get_ht_device_conforming_left(xsysd);
 	conforming_right_ht = u_system_devices_get_ht_device_conforming_right(xsysd);
+
+#ifdef XRT_BUILD_DRIVER_SOLARXR
+	if (xsysd->static_roles.body == NULL) {
+		const uint32_t count =
+		    solarxr_device_create_xdevs(head->tracking_origin, &xsysd->static_xdevs[xsysd->static_xdev_count],
+		                                ARRAY_SIZE(xsysd->static_xdevs) - xsysd->static_xdev_count);
+		if (count != 0) {
+			xsysd->static_roles.body = xsysd->static_xdevs[xsysd->static_xdev_count];
+			solarxr_device_set_feeder_devices(xsysd->static_roles.body, xsysd->static_xdevs,
+			                                  xsysd->static_xdev_count);
+		}
+		xsysd->static_xdev_count += count;
+	}
+#endif
 
 	// Assign to role(s).
 	tbo->head = head;
