@@ -1,5 +1,5 @@
 # Copyright 2019-2024, Collabora, Ltd.
-# Copyright 2025, NVIDIA CORPORATION.
+# Copyright 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
 
 ###
@@ -16,7 +16,7 @@ target_link_libraries(
 
 if(XRT_HAVE_VULKAN)
 	target_sources(comp_client PRIVATE comp_vk_client.c comp_vk_client.h comp_vk_glue.c)
-	target_link_libraries(comp_client PRIVATE aux_vk)
+	target_link_libraries(comp_client PRIVATE aux_vk aux_allocation)
 endif()
 
 if(XRT_HAVE_OPENGL OR XRT_HAVE_OPENGLES)
