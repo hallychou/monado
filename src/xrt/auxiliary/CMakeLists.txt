@@ -72,6 +72,11 @@ if(XRT_MODULE_AUX_RENDER)
 	add_subdirectory(render)
 endif()
 
+# Metal library.
+if(APPLE)
+	add_subdirectory(metal)
+endif()
+
 # Allocation library, needs to be after the graphics libraries.
 if(XRT_HAVE_VULKAN)
 	add_subdirectory(allocation)
