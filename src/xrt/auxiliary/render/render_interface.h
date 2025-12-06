@@ -643,7 +643,6 @@ render_resources_get_duration(struct render_resources *r, uint64_t *out_gpu_dura
  */
 struct render_scratch_color_image
 {
-	VkDeviceMemory device_memory;
 	VkImage image;
 	VkImageView srgb_view;
 	VkImageView unorm_view;
