@@ -1,5 +1,5 @@
 # Copyright 2019-2024, Collabora, Ltd.
-# Copyright 2025, NVIDIA CORPORATION.
+# Copyright 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
 
 ##
@@ -40,4 +40,5 @@ target_link_libraries(
 		aux_vk
 		aux_render
 		aux_shaders
+		aux_allocation
 	)
