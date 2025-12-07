@@ -1342,6 +1342,11 @@ vk_init_from_given(struct vk_bundle *vk,
 #endif
 	}
 
+#if defined(XRT_OS_OSX)
+	// @todo Detect properly.
+	vk->has_EXT_metal_objects = true;
+#endif
+
 	return VK_SUCCESS;
 
 err_memset:
