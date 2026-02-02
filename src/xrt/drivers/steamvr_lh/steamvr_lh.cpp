@@ -15,6 +15,7 @@
 #include "interfaces/context.hpp"
 
 #include "os/os_time.h"
+#include "os/os_loader.h"
 
 #include "util/u_var.h"
 #include "util/u_device.h"
@@ -1157,16 +1158,16 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 		auto driver_dir = driver_name_to_directory[driver_name];
 		std::filesystem::path driver_path = driver_dir / "bin" / OVR_PLAT_SUBDIR / ("driver_" + driver_name + OVR_PLAT_EXT);
 		U_LOG_IFL_I(level, "Loading driver %s: %s", driver_name.c_str(), driver_path.c_str());
-				
-		// TODO: support windows?
-		void *driver_lib = dlopen(driver_path.c_str(), RTLD_LAZY);
+		
+		os_library_t driver_lib = os_library_open(driver_path.c_str());
 		if (!driver_lib) {
-			U_LOG_IFL_E(level, "Couldn't open driver lib: %s", dlerror());
+			U_LOG_IFL_E(level, "Couldn't open driver lib: %s", os_library_error());
+			continue;
 		}
 
-		void *sym = dlsym(driver_lib, "HmdDriverFactory");
+		void *sym = os_library_symbol(driver_lib, "HmdDriverFactory");
 		if (!sym) {
-			U_LOG_IFL_E(level, "Couldn't find HmdDriverFactory in driver lib: %s", dlerror());
+			U_LOG_IFL_E(level, "Couldn't find HmdDriverFactory in driver lib: %s", os_library_error());
 			continue;
 		}
 
