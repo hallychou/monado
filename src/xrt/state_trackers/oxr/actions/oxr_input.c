@@ -33,6 +33,7 @@
 #include "oxr_handle_base.h"
 #include "oxr_suggested_profile_array.h"
 #include "oxr_session_action_context.h"
+#include "oxr_nv_action_context.h"
 
 #include "../oxr_objects.h"
 #include "../oxr_logger.h"
