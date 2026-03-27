@@ -33,6 +33,7 @@
 #include "vive/vive_poses.h"
 
 #include "vp2/vp2_config.h"
+#include "cosmos/cosmos_config.h"
 
 #include "openvr_driver.h"
 
@@ -1055,6 +1056,12 @@ HmdDevice::get_view_poses(const xrt_vec3 *default_eye_relation,
 	if (override_ipd_mm != -1.0f) {
 		// Convert from mm -> m
 		eye_relation.x = override_ipd_mm / 1000.0f;
+<<<<<<< HEAD
+=======
+	} else if (this->variant == VIVE_VARIANT_PRO2 || this->variant == VIVE_VARIANT_COSMOS) {
+		// Default to 63mm on Vive Pro 2 & Cosmos, the IPD reading is completely borked and always sends 15mm
+		eye_relation.x = 0.063f;
+>>>>>>> 9f4419c9b (Add Vive Cosmos Elite support)
 	}
 
 	xrt_result_t xret = u_device_get_view_poses( //
@@ -1083,17 +1090,28 @@ HmdDevice::get_view_poses(const xrt_vec3 *default_eye_relation,
 xrt_result_t
 HmdDevice::compute_distortion(uint32_t view, float u, float v, xrt_uv_triplet *out_result)
 {
-	// Vive Pro 2 has it's own special distortion model
+	// Vive Pro 2 & Cosmos have their own special distortion models
+	htc_config *config = nullptr;
 	if (this->variant == VIVE_VARIANT_PRO2 && this->vp2.hid != nullptr) {
-		vp2_config *config = vp2_get_config(this->vp2.hid);
+		config = &vp2_get_config(this->vp2.hid)->base;
+	}
 
+	if (this->variant == VIVE_VARIANT_COSMOS && this->cosmos.hid != nullptr) {
+		config = &cosmos_get_config(this->cosmos.hid)->base;
+
+		// Cosmos has a vertically flipped distortion map.
+		v = 1.0f - v;
+	}
+
+	if (config != nullptr) {
 		struct xrt_vec2 uv = {u, v};
 
-		// If computing through VP2 method fails, fall back to the standard method.
-		if (htc_config_compute_distortion(&config->base, view, &uv, out_result)) {
+		// If computing through HTC method fails, fall back to the standard method.
+		if (htc_config_compute_distortion(config, view, &uv, out_result)) {
 			return XRT_SUCCESS;
 		}
 	}
+
 
 	// Vive Pro 2 has a vertically flipped distortion map.
 	if (this->variant == VIVE_VARIANT_PRO2) {
@@ -1331,6 +1349,53 @@ HmdDevice::set_nominal_frame_interval(uint64_t interval_ns)
 	}
 }
 
+void
+HmdDevice::setup_display_extents(int width, int height)
+{
+	for (int i = 0; i < 2; i++) {
+		this->hmd_parts->base.views[i].display.w_pixels = width / 2;
+		this->hmd_parts->base.views[i].display.h_pixels = height;
+
+		this->hmd_parts->base.views[i].viewport.w_pixels = width / 2;
+		this->hmd_parts->base.views[i].viewport.h_pixels = height;
+	}
+
+	this->hmd_parts->base.views[1].viewport.x_pixels = width / 2;
+
+	this->hmd_parts->base.screens[0].w_pixels = width;
+	this->hmd_parts->base.screens[0].h_pixels = height;
+}
+
+struct os_hid_device *
+HmdDevice::open_hid(struct xrt_prober *xp, uint16_t vid, uint16_t pid, const char *device_name)
+{
+	struct xrt_prober_device **devices = nullptr;
+	size_t device_count;
+	struct os_hid_device *hid_dev = nullptr;
+
+	if (xrt_prober_lock_list(xp, &devices, &device_count) != XRT_SUCCESS) {
+		DEV_ERR("Failed to lock prober device list");
+		return nullptr;
+	}
+
+	for (size_t i = 0; i < device_count; i++) {
+		struct xrt_prober_device *dev = devices[i];
+
+		if (dev->vendor_id == vid && dev->product_id == pid) {
+			DEV_INFO("Found %s HID device", device_name);
+
+			if (xrt_prober_open_hid_interface(xp, dev, 0, &hid_dev) != 0) {
+				DEV_ERR("Failed to open %s HID interface", device_name);
+				hid_dev = nullptr;
+			}
+			break;
+		}
+	}
+
+	xrt_prober_unlock_list(xp, &devices);
+	return hid_dev;
+}
+
 namespace {
 // From openvr driver documentation
 // (https://github.com/ValveSoftware/openvr/blob/master/docs/Driver_API_Documentation.md#Input-Profiles):
@@ -1442,40 +1507,17 @@ HmdDevice::set_hmd_class(const InputClass *hmd_class)
 bool
 HmdDevice::init_vive_pro_2(struct xrt_prober *xp)
 {
-	xrt_result_t xret;
-	int ret = 0;
-
-	struct xrt_prober_device **devices = nullptr;
-	size_t device_count;
-
-	xret = xrt_prober_lock_list(xp, &devices, &device_count);
-	if (xret != XRT_SUCCESS) {
-		DEV_ERR("Failed to lock prober device list");
+	struct os_hid_device *hid_dev = open_hid(xp, VP2_VID, VP2_PID, "Vive Pro 2");
+	if (!hid_dev) {
 		return false;
 	}
 
-	for (size_t i = 0; i < device_count; i++) {
-		struct xrt_prober_device *dev = devices[i];
-
-		if (dev->vendor_id == VP2_VID && dev->product_id == VP2_PID) {
-			DEV_INFO("Found Vive Pro 2 HID device");
-			struct os_hid_device *hid_dev = nullptr;
-			ret = xrt_prober_open_hid_interface(xp, dev, 0, &hid_dev);
-			if (ret != 0) {
-				DEV_ERR("Failed to open Vive Pro 2 HID interface");
-				break;
-			}
-
-			ret = vp2_hid_open(hid_dev, &this->vp2.hid);
-			if (ret != 0) {
-				DEV_ERR("Failed to open Vive Pro 2 HID device");
-				break;
-			}
-
-			break;
-		}
+	if (vp2_hid_open(hid_dev, &this->vp2.hid) != 0) {
+		DEV_ERR("Failed to open Vive Pro 2 HID device");
+		return false;
 	}
 
+<<<<<<< HEAD
 	xrt_prober_unlock_list(xp, &devices);
 
 	if (this->vp2.hid == nullptr) {
@@ -1485,31 +1527,40 @@ HmdDevice::init_vive_pro_2(struct xrt_prober *xp)
 		return false;
 	}
 
+=======
+>>>>>>> 9f4419c9b (Add Vive Cosmos Elite support)
 	int width, height;
 	vp2_resolution_get_extents(vp2_get_resolution(this->vp2.hid), &width, &height);
-
-	for (int i = 0; i < 2; i++) {
-		this->hmd_parts->base.views[i].display.w_pixels = width / 2;
-		this->hmd_parts->base.views[i].display.h_pixels = height;
-
-		this->hmd_parts->base.views[i].viewport.w_pixels = width / 2;
-		this->hmd_parts->base.views[i].viewport.h_pixels = height;
-	}
-
-	this->hmd_parts->base.views[1].viewport.x_pixels = width / 2;
-
-	this->hmd_parts->base.screens[0].w_pixels = width;
-	this->hmd_parts->base.screens[0].h_pixels = height;
+	setup_display_extents(width, height);
 
 	vp2_config *config = vp2_get_config(this->vp2.hid);
-
 	htc_config_get_fov(&config->base, 0, &this->hmd_parts->base.distortion.fov[0]);
 	htc_config_get_fov(&config->base, 1, &this->hmd_parts->base.distortion.fov[1]);
 
 	this->supported.brightness_control = true;
 	this->supported.presence = true;
 
-	return ret == 0;
+	return true;
+}
+
+bool
+HmdDevice::init_vive_cosmos(struct xrt_prober *xp)
+{
+	struct os_hid_device *hid_dev = open_hid(xp, COSMOS_VID, COSMOS_PID, "Vive Cosmos");
+	if (!hid_dev) {
+		return false;
+	}
+
+	if (cosmos_hid_open(hid_dev, &this->cosmos.hid) != 0) {
+		DEV_ERR("Failed to open Vive Cosmos HID device");
+		return false;
+	}
+
+	int width, height;
+	cosmos_resolution_get_extents(&width, &height);
+	setup_display_extents(width, height);
+
+	return true;
 }
 
 vr::ETrackedPropertyError
