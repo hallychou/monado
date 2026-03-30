@@ -50,8 +50,8 @@ xrt_instance_create(struct xrt_instance_info *ii, struct xrt_instance **out_xins
 			return XRT_SUCCESS;
 		}
 
-		fprintf(stderr, "monado: IPC connect attempt %d/%d failed, retrying...\n",
-		        attempt + 1, IPC_CONNECT_MAX_RETRIES);
+		fprintf(stderr, "monado: IPC connect attempt %d/%d failed, retrying...\n", attempt + 1,
+		        IPC_CONNECT_MAX_RETRIES);
 		usleep(IPC_CONNECT_INITIAL_SLEEP_US);
 	}
 

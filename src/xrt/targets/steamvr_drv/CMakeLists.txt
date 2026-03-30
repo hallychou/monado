@@ -23,14 +23,7 @@ add_library(driver_monado MODULE main.c)
 add_dependencies(driver_monado steamvr_generated_input_profiles)
 
 if(XRT_FEATURE_IPC_CLIENT)
-	target_link_libraries(
-		driver_monado
-		PRIVATE
-			xrt-external-openvr
-			aux_util
-			st_ovrd
-			ipc_client
-		)
+	target_link_libraries(driver_monado PRIVATE xrt-external-openvr aux_util st_ovrd ipc_client)
 else()
 	target_link_libraries(
 		driver_monado
