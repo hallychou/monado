@@ -14,8 +14,8 @@
 #ifdef XRT_FEATURE_IPC_CLIENT
 #include "client/ipc_client_interface.h"
 #include "xrt/xrt_instance.h"
+#include "os/os_time.h"
 #include <string.h>
-#include <unistd.h>
 #include <stdio.h>
 #endif
 
@@ -32,7 +32,7 @@
 
 #ifdef XRT_FEATURE_IPC_CLIENT
 #define IPC_CONNECT_MAX_RETRIES 10
-#define IPC_CONNECT_INITIAL_SLEEP_US 500000
+#define IPC_CONNECT_INITIAL_SLEEP_NS (500 * U_TIME_1MS_IN_NS)
 
 xrt_result_t
 xrt_instance_create(struct xrt_instance_info *ii, struct xrt_instance **out_xinst)
@@ -52,7 +52,7 @@ xrt_instance_create(struct xrt_instance_info *ii, struct xrt_instance **out_xins
 
 		fprintf(stderr, "monado: IPC connect attempt %d/%d failed, retrying...\n", attempt + 1,
 		        IPC_CONNECT_MAX_RETRIES);
-		usleep(IPC_CONNECT_INITIAL_SLEEP_US);
+		os_nanosleep(IPC_CONNECT_INITIAL_SLEEP_NS);
 	}
 
 	return xret;
