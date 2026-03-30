@@ -1564,12 +1564,22 @@ CServerDriver_Monado::Init(vr::IVRDriverContext *pDriverContext)
 		return vr::VRInitError_Init_HmdNotFound;
 	}
 
-	xret = xrt_instance_create_system(m_xinst, &m_xsys, &m_xsysd, &m_xso, NULL);
-	if (xret < 0) {
-		ovrd_log("Failed to create system devices\n");
+	bool available = false;
+	xret = xrt_instance_is_system_available(m_xinst, &available);
+	if (xret != XRT_SUCCESS || !available) {
+		ovrd_log("System not available (xret=%d, available=%d)\n", xret, available);
 		xrt_instance_destroy(&m_xinst);
 		return vr::VRInitError_Init_HmdNotFound;
 	}
+
+	xret = xrt_instance_create_system(m_xinst, &m_xsys, &m_xsysd, &m_xso, NULL);
+	if (xret < 0) {
+		ovrd_log("Failed to create system devices (xret=%d)\n", xret);
+		xrt_instance_destroy(&m_xinst);
+		return vr::VRInitError_Init_HmdNotFound;
+	}
+	ovrd_log("create_system returned %d, xdev_count=%u, head=%p\n",
+	         xret, m_xsysd->xdev_count, (void *)m_xsysd->static_roles.head);
 	if (m_xsysd->static_roles.head == NULL) {
 		ovrd_log("Didn't get a HMD device!\n");
 		xrt_space_overseer_destroy(&m_xso);
