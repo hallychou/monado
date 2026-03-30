@@ -1578,7 +1578,7 @@ CServerDriver_Monado::Init(vr::IVRDriverContext *pDriverContext)
 		xrt_instance_destroy(&m_xinst);
 		return vr::VRInitError_Init_HmdNotFound;
 	}
-	ovrd_log("create_system returned %d, xdev_count=%u, head=%p\n", xret, m_xsysd->xdev_count,
+	ovrd_log("create_system returned %d, xdev_count=%zu, head=%p\n", xret, m_xsysd->xdev_count,
 	         (void *)m_xsysd->static_roles.head);
 	if (m_xsysd->static_roles.head == NULL) {
 		ovrd_log("Didn't get a HMD device!\n");
