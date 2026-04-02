@@ -32,11 +32,10 @@ using ::winrt::Windows::Devices::Display::Core::DisplayPrimaryDescription;
 using ::winrt::Windows::Devices::Display::Core::DisplaySource;
 using ::winrt::Windows::Devices::Display::Core::DisplayTarget;
 
-/// We retry opening an HMD a few times since it sometimes fails spuriously
-constexpr int kMaxOpenAttempts = 2;
-
 CompositorSwapchain::CompositorSwapchain(struct comp_compositor *comp,
                                          DisplayObjects &&objects,
+                                         DisplayFence &&vblankFence,
+                                         wil::com_ptr<ID3D11Fence> &&d3d11VblankFence,
                                          winrt::Windows::Graphics::DirectX::DirectXColorSpace colorSpace,
                                          uint32_t numImages)
     : CompositorSwapchain(comp,
@@ -44,6 +43,8 @@ CompositorSwapchain::CompositorSwapchain(struct comp_compositor *comp,
                           std::get<DisplayTarget>(objects),
                           std::get<DisplayPath>(objects),
                           std::move(std::get<DisplaySource>(objects)),
+                          std::move(vblankFence),
+                          std::move(d3d11VblankFence),
                           colorSpace,
                           numImages)
 {}
@@ -53,12 +54,17 @@ CompositorSwapchain::CompositorSwapchain(struct comp_compositor *comp,
                                          const DisplayTarget &target,
                                          const DisplayPath &path,
                                          DisplaySource &&source,
+                                         DisplayFence &&vblankFence,
+                                         wil::com_ptr<ID3D11Fence> &&d3d11VblankFence,
                                          winrt::Windows::Graphics::DirectX::DirectXColorSpace colorSpace,
                                          uint32_t numImages)
 
-    : c(comp), m_source(std::move(source)), m_taskPool(device.CreateTaskPool()), m_path(path),
-      m_surfaces(numImages, nullptr), m_surfaceHandles(numImages), m_scanouts(numImages, nullptr)
+    : c(comp), m_device(std::move(device)), m_source(std::move(source)), m_taskPool(m_device.CreateTaskPool()),
+      m_path(path), m_surfaces(numImages, nullptr), m_surfaceHandles(numImages), m_scanouts(numImages, nullptr),
+      m_vblankFence(vblankFence), m_d3dVblankFence(d3d11VblankFence)
 {
+	m_vblankEvent.create();
+	m_completeEvent.create();
 	m_capability.populate();
 	winrt::Windows::Graphics::SizeInt32 const resolution = path.SourceResolution().Value();
 	winrt::Windows::Graphics::DirectX::Direct3D11::Direct3DMultisampleDescription const multisample{1, 0};
@@ -75,9 +81,9 @@ CompositorSwapchain::CompositorSwapchain(struct comp_compositor *comp,
 		THROW_IF_FAILED(deviceInterop->CreateSharedHandle(surfaceInspectable.get(), nullptr, GENERIC_ALL,
 		                                                  nullptr, m_surfaceHandles[i].put()));
 		//! @todo debug var for allow tearing
-		m_scanouts[i] = auxiliary::d3d::winrt::createScanout(
-		    m_capability, kMaxOpenAttempts, device, m_source, m_surfaces[i],
-		    /* SubResourceIndex */ 0, /* allowTearing */ false);
+		m_scanouts[i] = auxiliary::d3d::winrt::createScanout(m_capability, kMaxOpenAttempts, device, m_source,
+		                                                     m_surfaces[i],
+		                                                     /* SubResourceIndex */ 0, /* allowTearing */ true);
 	}
 }
 
@@ -90,11 +96,25 @@ CompositorSwapchain::acquireNext()
 }
 
 bool
-CompositorSwapchain::present(uint32_t i, const DisplayFence &fence, uint64_t fenceValue)
+CompositorSwapchain::present(uint32_t i, const wil::com_ptr<ID3D11Fence> &fence, uint64_t fenceValue)
 {
-	COMP_INFO(c, "Will scan out surface %" PRIu32 " after fence is signalled with %" PRIu64, i, fenceValue);
+	// COMP_INFO(c, "Will scan out surface %" PRIu32 " after fence is signalled with %" PRIu64, i, fenceValue);
+
+	// Wait for rendering to finish.
+	while (fence->GetCompletedValue() < fenceValue) {
+		_mm_pause();
+	}
+
+	fence->SetEventOnCompletion(fenceValue, m_completeEvent.get());
+
+	//! @todo Add a timeout?
+	m_completeEvent.wait(INFINITE);
+
 	auto task = m_taskPool.CreateTask();
-	task.SetWait(fence, fenceValue);
+
+	// We want to present starting next VBlank
+	m_vblankFenceTargetValue = m_d3dVblankFence->GetCompletedValue() + 1;
+	task.SetWait(m_vblankFence, m_vblankFenceTargetValue);
 	task.SetScanout(m_scanouts[i]);
 	if (m_capability.supportsScanoutOptionsAndTryExecuteTask) {
 		auto taskResult = m_taskPool.TryExecuteTask(task);
@@ -107,10 +127,21 @@ CompositorSwapchain::present(uint32_t i, const DisplayFence &fence, uint64_t fen
 	} else {
 		m_taskPool.ExecuteTask(task);
 	}
-	if (m_path.Status() != winrtWDDC::DisplayPathStatus::Succeeded) {
+	if (m_path.Status() != winrtWDDC::DisplayPathStatus::Succeeded &&
+	    m_path.Status() != winrtWDDC::DisplayPathStatus::Unknown) {
+		//! @todo is Unknown bad?
+		// For some reason, Unknown is the result being returned instead of Succeeded.
 		COMP_ERROR(c, "Path status is an error: %s", to_string(m_path.Status()));
 		return false;
 	}
 	return true;
+}
+
+void
+CompositorSwapchain::waitForPresent(time_duration_ns timeout_ns)
+{
+	m_d3dVblankFence->SetEventOnCompletion(m_vblankFenceTargetValue, m_vblankEvent.get());
+
+	m_vblankEvent.wait(timeout_ns / U_TIME_1MS_IN_NS);
 }
 } // namespace xrt::compositor::main

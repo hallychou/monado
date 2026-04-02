@@ -158,6 +158,7 @@ public:
 	std::optional<ConvertibleLuid> luid;
 
 	wil::com_ptr<ID3D11Fence> d3d11RenderCompleteFence;
+	wil::com_ptr<ID3D11Fence> d3d11VblankFence;
 	/// @}
 
 	wil::unique_handle renderCompleteFenceHandle;
@@ -168,6 +169,7 @@ public:
 	winrtWDDC::DisplayDevice displayDevice{nullptr};
 
 	winrtWDDC::DisplayFence renderCompleteFence{nullptr};
+	winrtWDDC::DisplayFence vblankFence{nullptr};
 
 	DisplayObjects objects{nullptr, nullptr, nullptr, nullptr};
 	/// @}
@@ -410,26 +412,32 @@ CompTargetData::openHmd(const winrtWDDC::DisplayTarget &target, DisplayObjects &
 			COMP_WARN(c, "Could not acquire and read state: %s", to_string(finalStateResult.ErrorCode()));
 			return false;
 		}
-		// displayState = finalStateResult.State();
-		// displayTarget = target;
-		// displayDevice = manager.CreateDisplayDevice(target.Adapter());
-		// displayPath = displayState.GetPathForTarget(target);
-		// std::get<winrtWDDC::DisplayState>(outObjects) = finalStateResult.State();
-		// std::get<winrtWDDC::DisplayTarget>(outObjects) = target;
-		// std::get<winrtWDDC::DisplayPath>(outObjects) = displayState.GetPathForTarget(target);
+
 		winrtWDDC::DisplayPath displayPath = finalStateResult.State().GetPathForTarget(target);
 
-		/// @todo This throws an exception right now:
-		// onecoreuap\windows\directx\dxg\ddisplay\core\ddisplaysource.cpp(210)\DDisplay.dll!00007FF8753A3DF5:
-		// (caller: 00007FF87538738B) ReturnHr(11) tid(e4d0) 80070057 The parameter is incorrect.
-		//     Msg:[onecoreuap\windows\directx\dxg\ddisplay\core\ddisplaysource.cpp(208)\DDisplay.dll!00007FF87538FA5E:
-		//     (caller: 00007FF87538738B) Exception(8) tid(e4d0) 80070057 The parameter is incorrect.
-		//     CallContext:[\DeviceCreateScanoutSource\DeviceCreateScanoutSource]
-		// ] CallContext:[\DeviceCreateScanoutSource\DeviceCreateScanoutSource]
-		// onecoreuap\windows\directx\dxg\ddisplay\core\ddisplaydevice.cpp(113)\DDisplay.dll!00007FF8753873ED:
-		// (caller: 00007FF84ABB422F) ReturnHr(12) tid(e4d0) 80070057 The parameter is incorrect.
-		//     CallContext:[\DeviceCreateScanoutSource]
 		winrtWDDC::DisplaySource displaySource = displayDevice.CreateScanoutSource(target);
+
+		{
+			// VBlank fence
+			vblankFence = displayDevice.CreatePeriodicFence(target, std::chrono::milliseconds(0));
+			d3d11VblankFence = nullptr;
+
+			HANDLE hSharedFence;
+
+			// Get shared handle
+			displayDevice.as<IDisplayDeviceInterop>()->CreateSharedHandle(
+			    vblankFence.as<IInspectable>().get(), nullptr, GENERIC_ALL, nullptr, &hSharedFence);
+
+			// Open shared handle in DX11
+			HRESULT result = d3d11Device->OpenSharedFence(hSharedFence, IID_PPV_ARGS(&d3d11VblankFence));
+
+			if (FAILED(result)) {
+				COMP_ERROR(c, "Failed to open shared fence in DX11.");
+			}
+
+			CloseHandle(hSharedFence);
+		}
+
 		outObjects = std::make_tuple(displayDevice, target, std::move(displayPath), std::move(displaySource));
 		return true;
 	} catch (winrt::hresult_error const &e) {
@@ -634,15 +642,14 @@ try_open_hmds(struct comp_target_direct_windows *ctdw) noexcept
 
 static void
 comp_target_direct_windows_create_images(struct comp_target *ct,
-                                         uint32_t preferred_width,
-                                         uint32_t preferred_height,
-                                         VkFormat color_format,
-                                         VkColorSpaceKHR color_space,
-                                         VkImageUsageFlags image_usage,
-                                         VkPresentModeKHR present_mode)
+                                         const struct comp_target_create_images_info *create_info,
+                                         struct vk_bundle_queue *present_queue)
 {
 	struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
 	struct vk_bundle *vk = get_vk(ctdw);
+
+	VkFormat const color_format = create_info->formats[0]; // @todo: select from list
+	VkColorSpaceKHR const color_space = create_info->color_space;
 
 	uint64_t const now_ns = os_monotonic_get_ns();
 	// Some platforms really don't like the pacing_compositor code.
@@ -679,8 +686,9 @@ comp_target_direct_windows_create_images(struct comp_target *ct,
 	 */
 
 	COMP_INFO(ct->c, "Creating compositor swapchain with %d images", image_count);
-	ctdw->swapchain = std::make_unique<CompositorSwapchain>(ctdw->base.c, std::move(ctdw->data->objects),
-	                                                        dxColorSpace, image_count);
+	ctdw->swapchain = std::make_unique<CompositorSwapchain>(
+	    ctdw->base.c, std::move(ctdw->data->objects), std::move(ctdw->data->vblankFence),
+	    std::move(ctdw->data->d3d11VblankFence), dxColorSpace, image_count);
 
 
 	/*
@@ -741,11 +749,11 @@ comp_target_direct_windows_acquire_next_image(struct comp_target *ct, uint32_t *
 
 static VkResult
 comp_target_direct_windows_present(struct comp_target *ct,
-                                   VkQueue queue,
+                                   struct vk_bundle_queue *present_queue,
                                    uint32_t index,
                                    uint64_t timeline_semaphore_value,
-                                   uint64_t desired_present_time_ns,
-                                   uint64_t present_slop_ns)
+                                   int64_t desired_present_time_ns,
+                                   int64_t present_slop_ns)
 {
 	struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
 	struct vk_bundle *vk = get_vk(ctdw);
@@ -753,9 +761,10 @@ comp_target_direct_windows_present(struct comp_target *ct,
 	assert(ctdw->current_frame_id >= 0);
 	assert(ctdw->current_frame_id <= UINT32_MAX);
 
-	if (!ctdw->swapchain->present(index, ctdw->data->renderCompleteFence, timeline_semaphore_value)) {
+	if (!ctdw->swapchain->present(index, ctdw->data->d3d11RenderCompleteFence, timeline_semaphore_value)) {
 		return VK_ERROR_DEVICE_LOST;
 	}
+
 #if 0
 	if (ctdw->vblank.has_started) {
 		os_thread_helper_lock(&ctdw->vblank.event_thread);
@@ -796,7 +805,7 @@ comp_target_direct_windows_init_post_vulkan(struct comp_target *ct, uint32_t wid
 		struct vk_bundle *vk = get_vk(ctdw);
 
 		ctdw->base.semaphores.render_complete_is_timeline = true;
-		VkResult const vkresult = vk_create_semaphore_from_native(
+		VkResult const vkresult = vk_create_timeline_semaphore_from_native(
 		    vk, ctdw->data->renderCompleteFenceHandle.get(), &ctdw->base.semaphores.render_complete);
 		if (vkresult != VK_SUCCESS) {
 			COMP_ERROR(ct->c, "Could not import timeline semaphore.");
@@ -862,21 +871,21 @@ comp_target_direct_windows_flush(struct comp_target *ct) noexcept
 static void
 comp_target_direct_windows_calc_frame_pacing(struct comp_target *ct,
                                              int64_t *out_frame_id,
-                                             uint64_t *out_wake_up_time_ns,
-                                             uint64_t *out_desired_present_time_ns,
-                                             uint64_t *out_present_slop_ns,
-                                             uint64_t *out_predicted_display_time_ns)
+                                             int64_t *out_wake_up_time_ns,
+                                             int64_t *out_desired_present_time_ns,
+                                             int64_t *out_present_slop_ns,
+                                             int64_t *out_predicted_display_time_ns)
 {
 	struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
 
 	int64_t frame_id = -1;
-	uint64_t wake_up_time_ns = 0;
-	uint64_t desired_present_time_ns = 0;
-	uint64_t present_slop_ns = 0;
-	uint64_t predicted_display_time_ns = 0;
-	uint64_t predicted_display_period_ns = 0;
-	uint64_t min_display_period_ns = 0;
-	uint64_t const now_ns = os_monotonic_get_ns();
+	int64_t wake_up_time_ns = 0;
+	int64_t desired_present_time_ns = 0;
+	int64_t present_slop_ns = 0;
+	int64_t predicted_display_time_ns = 0;
+	int64_t predicted_display_period_ns = 0;
+	int64_t min_display_period_ns = 0;
+	int64_t const now_ns = os_monotonic_get_ns();
 
 	u_pc_predict(ctdw->upc,                    //
 	             now_ns,                       //
@@ -898,10 +907,21 @@ comp_target_direct_windows_calc_frame_pacing(struct comp_target *ct,
 }
 
 static void
+comp_target_direct_windows_info_gpu(
+    struct comp_target *ct, int64_t frame_id, int64_t gpu_start_ns, int64_t gpu_end_ns, int64_t when_ns) noexcept
+{
+	struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
+
+	assert(frame_id == ctdw->current_frame_id);
+
+	u_pc_info_gpu(ctdw->upc, ctdw->current_frame_id, gpu_start_ns, gpu_end_ns, when_ns);
+}
+
+static void
 comp_target_direct_windows_mark_timing_point(struct comp_target *ct,
                                              enum comp_target_timing_point point,
                                              int64_t frame_id,
-                                             uint64_t when_ns) noexcept
+                                             int64_t when_ns) noexcept
 {
 	struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
 	assert(frame_id == ctdw->current_frame_id);
@@ -913,8 +933,11 @@ comp_target_direct_windows_mark_timing_point(struct comp_target *ct,
 	case COMP_TARGET_TIMING_POINT_BEGIN:
 		u_pc_mark_point(ctdw->upc, U_TIMING_POINT_BEGIN, ctdw->current_frame_id, when_ns);
 		break;
-	case COMP_TARGET_TIMING_POINT_SUBMIT:
-		u_pc_mark_point(ctdw->upc, U_TIMING_POINT_SUBMIT, ctdw->current_frame_id, when_ns);
+	case COMP_TARGET_TIMING_POINT_SUBMIT_BEGIN:
+		u_pc_mark_point(ctdw->upc, U_TIMING_POINT_SUBMIT_BEGIN, ctdw->current_frame_id, when_ns);
+		break;
+	case COMP_TARGET_TIMING_POINT_SUBMIT_END:
+		u_pc_mark_point(ctdw->upc, U_TIMING_POINT_SUBMIT_END, ctdw->current_frame_id, when_ns);
 		break;
 	default: assert(false);
 	}
@@ -934,10 +957,22 @@ comp_target_direct_windows_update_timings(struct comp_target *ct) noexcept
 
 	return VK_SUCCESS;
 }
+
+static VkResult
+comp_target_direct_windows_wait_for_present(struct comp_target *ct, time_duration_ns timeout_ns)
+{
+	struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
+	ctdw->swapchain->waitForPresent(timeout_ns);
+	ctdw->vblank.last_vblank_ns = os_monotonic_get_ns();
+	u_pc_update_vblank_from_display_control(ctdw->upc, ctdw->vblank.last_vblank_ns);
+	return VK_SUCCESS;
+}
+
 struct comp_target *
 comp_target_direct_windows_create(struct comp_compositor *c)
 {
 	try {
+		winrt::init_apartment();
 		xrt::auxiliary::d3d::winrt::SystemApiCapability capability;
 		capability.populate();
 
@@ -969,12 +1004,15 @@ comp_target_direct_windows_create(struct comp_compositor *c)
 		ctdw->base.destroy = comp_target_direct_windows_destroy;
 		ctdw->base.flush = comp_target_direct_windows_flush;
 		ctdw->base.has_images = comp_target_direct_windows_has_images;
+		ctdw->base.info_gpu = comp_target_direct_windows_info_gpu;
 		ctdw->base.init_post_vulkan = comp_target_direct_windows_init_post_vulkan;
 		ctdw->base.init_pre_vulkan = comp_target_direct_windows_init_pre_vulkan;
 		ctdw->base.mark_timing_point = comp_target_direct_windows_mark_timing_point;
 		ctdw->base.present = comp_target_direct_windows_present;
 		ctdw->base.set_title = comp_target_direct_windows_update_window_title;
 		ctdw->base.update_timings = comp_target_direct_windows_update_timings;
+		ctdw->base.wait_for_present = comp_target_direct_windows_wait_for_present; // TODO
+		ctdw->base.wait_for_present_supported = true;                              // TODO
 		ctdw->base.c = c;
 
 		return &(ctdw.release())->base;

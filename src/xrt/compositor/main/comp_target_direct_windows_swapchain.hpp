@@ -18,6 +18,7 @@
 #include "util/u_win32_com_guard.hpp"
 #include "xrt/xrt_windows.h"
 
+#include <d3d11_3.h>
 #include <dxgiformat.h>
 #include <winrt/base.h>
 #include <winrt/Windows.Devices.Display.Core.h>
@@ -26,9 +27,13 @@
 #include <winrt/Windows.Graphics.DirectX.h>
 
 // include after winrt base
+#include <wil/com.h>
 #include <wil/resource.h>
 
 #include <stdint.h>
+
+/// We retry opening an HMD a few times since it sometimes fails spuriously
+constexpr int kMaxOpenAttempts = 2;
 
 namespace xrt::compositor::main {
 
@@ -47,6 +52,8 @@ class CompositorSwapchain
 public:
 	CompositorSwapchain(struct comp_compositor *comp,
 	                    DisplayObjects &&objects,
+	                    winrtWDDC::DisplayFence &&vblankFence,
+	                    wil::com_ptr<ID3D11Fence> &&d3d11VblankFence,
 	                    winrt::Windows::Graphics::DirectX::DirectXColorSpace colorSpace,
 	                    uint32_t numImages);
 	CompositorSwapchain(struct comp_compositor *comp,
@@ -54,6 +61,8 @@ public:
 	                    const winrtWDDC::DisplayTarget &target,
 	                    const winrtWDDC::DisplayPath &path,
 	                    winrtWDDC::DisplaySource &&source,
+	                    winrtWDDC::DisplayFence &&vblankFence,
+	                    wil::com_ptr<ID3D11Fence> &&d3d11VblankFence,
 	                    winrt::Windows::Graphics::DirectX::DirectXColorSpace colorSpace,
 	                    uint32_t numImages);
 
@@ -99,7 +108,10 @@ public:
 	}
 
 	bool
-	present(uint32_t i, const winrtWDDC::DisplayFence &fence, uint64_t fenceValue);
+	present(uint32_t i, const wil::com_ptr<ID3D11Fence> &fence, uint64_t fenceValue);
+
+	void
+	waitForPresent(time_duration_ns timeout_ns);
 
 private:
 	/// The compositor that owns us
@@ -112,11 +124,18 @@ private:
 	/// For use in waiting on fences/events
 	uint64_t m_presentId{static_cast<uint64_t>(-1)};
 
+	winrtWDDC::DisplayDevice m_device;
 	winrtWDDC::DisplaySource m_source;
 	winrtWDDC::DisplayTaskPool m_taskPool;
 	winrtWDDC::DisplayPath m_path;
 	std::vector<winrtWDDC::DisplaySurface> m_surfaces;
 	std::vector<wil::unique_handle> m_surfaceHandles;
 	std::vector<winrtWDDC::DisplayScanout> m_scanouts;
+
+	winrtWDDC::DisplayFence m_vblankFence{nullptr};
+	wil::com_ptr<ID3D11Fence> m_d3dVblankFence;
+	uint64_t m_vblankFenceTargetValue = 0;
+	wil::unique_event m_completeEvent;
+	wil::unique_event m_vblankEvent;
 };
 } // namespace xrt::compositor::main
