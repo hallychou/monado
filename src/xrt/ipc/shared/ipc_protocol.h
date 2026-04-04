@@ -380,6 +380,18 @@ struct ipc_arg_swapchain_from_native
 };
 
 /*!
+ * Per-image metadata returned with @ref allocation_collection_get_native_images
+ * (handles are transferred separately).
+ */
+struct ipc_allocation_collection_native_images_meta
+{
+	uint32_t image_count;
+	XRT_ALIGNAS(8) uint64_t sizes[XRT_MAX_SWAPCHAIN_IMAGES];
+	bool use_dedicated_allocation[XRT_MAX_SWAPCHAIN_IMAGES];
+	bool is_dxgi_handle[XRT_MAX_SWAPCHAIN_IMAGES];
+};
+
+/*!
  * Arguments for xrt_device::get_view_poses with two views.
  */
 struct ipc_info_get_view_poses_2
