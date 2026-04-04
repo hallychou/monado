@@ -66,6 +66,7 @@ extern "C" {
 #define IPC_MAX_CLIENT_IO_CACHES 16
 #define IPC_MAX_CLIENT_SEMAPHORES 8
 #define IPC_MAX_CLIENT_SWAPCHAINS (XRT_MAX_LAYERS * 2)
+#define IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS IPC_MAX_CLIENT_SWAPCHAINS
 #define IPC_MAX_CLIENT_SPACES 128
 #define IPC_MAX_CLIENT_FUTURES 128
 
@@ -75,6 +76,7 @@ struct xrt_hand_tracker;
 struct xrt_io_cache;
 struct xrt_compositor;
 struct xrt_compositor_native;
+struct xrt_allocation_collection;
 
 
 /*!
@@ -108,6 +110,12 @@ struct ipc_client_state
 
 	struct
 	{
+		/*!
+		 * Allocation collections tracked for IPC by id (weak references;
+		 * lifetime owned by e.g. swapchains on the server).
+		 */
+		struct xrt_allocation_collection *xacs[IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS];
+
 		/*!
 		 * Array of tracking origins.
 		 *
