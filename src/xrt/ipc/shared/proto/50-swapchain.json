@@ -16,11 +16,8 @@
 		],
 		"out": [
 			{"name": "id", "type": "uint32_t"},
-			{"name": "image_count", "type": "uint32_t"},
-			{"name": "size", "type": "uint64_t"},
-			{"name": "use_dedicated_allocation", "type": "bool"}
-		],
-		"out_handles": {"type": "xrt_graphics_buffer_handle_t"}
+			{"name": "allocation_collection_id", "type": "uint32_t"}
+		]
 	},
 
 	"swapchain_import": {

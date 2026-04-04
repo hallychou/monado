@@ -14,7 +14,9 @@
 #include "util/u_trace_marker.h"
 
 #include "server/ipc_server.h"
+#include "server/ipc_server_objects.h"
 #include "ipc_server_generated.h"
+#include "xrt/xrt_compositor.h"
 #include "xrt/xrt_results.h"
 
 
@@ -84,12 +86,7 @@ xrt_result_t
 ipc_handle_swapchain_create(volatile struct ipc_client_state *ics,
                             const struct xrt_swapchain_create_info *info,
                             uint32_t *out_id,
-                            uint32_t *out_image_count,
-                            uint64_t *out_size,
-                            bool *out_use_dedicated_allocation,
-                            uint32_t max_handle_capacity,
-                            xrt_graphics_buffer_handle_t *out_handles,
-                            uint32_t *out_handle_count)
+                            uint32_t *out_allocation_collection_id)
 {
 	IPC_TRACE_MARKER();
 
@@ -126,24 +123,27 @@ ipc_handle_swapchain_create(volatile struct ipc_client_state *ics,
 
 	// Limit checking
 	assert(xsc->image_count <= XRT_MAX_SWAPCHAIN_IMAGES);
-	assert(xsc->image_count <= max_handle_capacity);
 
-	for (size_t i = 1; i < xsc->image_count; i++) {
-		assert(xscn->images[0].size == xscn->images[i].size);
-		assert(xscn->images[0].use_dedicated_allocation == xscn->images[i].use_dedicated_allocation);
+	if (xscn->xac == NULL) {
+		IPC_ERROR(ics->server, "Swapchain created without allocation collection");
+		xrt_swapchain_reference((struct xrt_swapchain **)&ics->xscs[index], NULL);
+		ics->swapchain_data[index].active = false;
+		ics->swapchain_count--;
+		return XRT_ERROR_FEATURE_NOT_SUPPORTED;
 	}
 
-	// Assuming all images allocated in the same swapchain have the same allocation requirements.
-	*out_size = xscn->images[0].size;
-	*out_use_dedicated_allocation = xscn->images[0].use_dedicated_allocation;
+	uint32_t xac_id = 0;
+	xret = ipc_server_objects_get_xac_id_or_add(ics, xscn->xac, &xac_id);
+	if (xret != XRT_SUCCESS) {
+		IPC_ERROR(ics->server, "Failed to register allocation collection for swapchain");
+		xrt_swapchain_reference((struct xrt_swapchain **)&ics->xscs[index], NULL);
+		ics->swapchain_data[index].active = false;
+		ics->swapchain_count--;
+		return xret;
+	}
+
 	*out_id = index;
-	*out_image_count = xsc->image_count;
-
-	// Setup the fds.
-	*out_handle_count = xsc->image_count;
-	for (size_t i = 0; i < xsc->image_count; i++) {
-		out_handles[i] = xscn->images[i].handle;
-	}
+	*out_allocation_collection_id = xac_id;
 
 	return XRT_SUCCESS;
 }
@@ -250,6 +250,12 @@ ipc_handle_swapchain_destroy(volatile struct ipc_client_state *ics, uint32_t id)
 	if (ics->xc == NULL) {
 		return XRT_ERROR_IPC_SESSION_NOT_CREATED;
 	}
+
+	/*
+	 * The allocation collection is not destroyed here, it is destroyed by
+	 * the client when it removes the last reference to it. It may live
+	 * longer than the swapchain.
+	 */
 
 	ics->swapchain_count--;
 
