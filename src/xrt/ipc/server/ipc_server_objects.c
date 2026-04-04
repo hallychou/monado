@@ -7,6 +7,7 @@
  * @ingroup ipc_server
  */
 
+#include "xrt/xrt_allocation_collection.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_tracking.h"
 #include "xrt/xrt_space.h"
@@ -20,6 +21,96 @@
 
 #include <assert.h>
 #include <string.h>
+
+
+/*
+ *
+ * Helpers
+ *
+ */
+
+static inline void
+volatile_reference_xac(struct xrt_allocation_collection *volatile *dst, struct xrt_allocation_collection *src)
+{
+	xrt_allocation_collection_reference((struct xrt_allocation_collection **)dst, src);
+}
+
+
+/*
+ *
+ * Allocation collection functions.
+ *
+ */
+
+xrt_result_t
+ipc_server_objects_get_xac_and_validate(volatile struct ipc_client_state *ics,
+                                        uint32_t id,
+                                        struct xrt_allocation_collection **out_xac)
+{
+	if (id >= IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS) {
+		IPC_ERROR(ics->server, "Invalid allocation collection ID %u (>= IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS)",
+		          id);
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	struct xrt_allocation_collection *xac = ics->objects.xacs[id];
+	if (xac == NULL) {
+		IPC_ERROR(ics->server, "Allocation collection ID %u not found (NULL)", id);
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	*out_xac = xac;
+
+	return XRT_SUCCESS;
+}
+
+xrt_result_t
+ipc_server_objects_get_xac_id_or_add(volatile struct ipc_client_state *ics,
+                                     struct xrt_allocation_collection *xac,
+                                     uint32_t *out_id)
+{
+	assert(out_id != NULL);
+	assert(xac != NULL);
+
+	// Check if the allocation collection is already tracked.
+	for (uint32_t index = 0; index < IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS; index++) {
+		if (ics->objects.xacs[index] == xac) {
+			*out_id = index;
+			return XRT_SUCCESS;
+		}
+	}
+
+	// If not, find a free slot and track it.
+	for (uint32_t index = 0; index < IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS; index++) {
+		if (ics->objects.xacs[index] == NULL) {
+			volatile_reference_xac(&ics->objects.xacs[index], xac);
+			*out_id = index;
+			return XRT_SUCCESS;
+		}
+	}
+
+	IPC_ERROR(ics->server, "Failed to find available slot for allocation collection");
+	return XRT_ERROR_IPC_FAILURE;
+}
+
+xrt_result_t
+ipc_server_objects_destroy_xac(volatile struct ipc_client_state *ics, uint32_t id)
+{
+	if (id >= IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS) {
+		IPC_ERROR(ics->server, "Invalid allocation collection ID %u (>= IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS)",
+		          id);
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	if (ics->objects.xacs[id] == NULL) {
+		IPC_ERROR(ics->server, "Client tried to destroy non-existent allocation collection!");
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	volatile_reference_xac(&ics->objects.xacs[id], NULL);
+
+	return XRT_SUCCESS;
+}
 
 
 /*
