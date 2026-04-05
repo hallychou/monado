@@ -10,6 +10,7 @@
 
 #include "xrt/xrt_config_have.h"
 #include "xrt/xrt_handles.h"
+#include "xrt/xrt_allocation_collection.h"
 
 #include "util/u_misc.h"
 #include "util/u_logging.h"
@@ -114,7 +115,28 @@ client_gl_memobj_swapchain_create(struct xrt_compositor *xc,
 	 */
 
 	const uint32_t image_count = xscn->base.image_count;
-	struct xrt_image_native *native_images = xscn->images;
+	struct xrt_image_native *native_images = NULL;
+
+	// Make sure the native images are initialized to invalid values.
+	struct xrt_image_native xac_images[XRT_MAX_SWAPCHAIN_IMAGES];
+	u_native_images_init_invalid(xac_images, image_count);
+
+	if (xscn->xac == NULL) {
+		// Use the native images from the swapchain.
+		native_images = xscn->images;
+	} else {
+		xrt_result_t xret = xrt_allocation_collection_get_all( //
+		    xscn->xac,                                         //
+		    XRT_ALLOCATION_TYPE_NATIVE_IMAGE,                  //
+		    sizeof(struct xrt_image_native),                   //
+		    xac_images);                                       //
+		if (xret != XRT_SUCCESS) {
+			U_LOG_E("xrt_allocation_collection_get_all failed");
+			return NULL;
+		}
+		// Take ownership of the native images.
+		native_images = xac_images;
+	}
 
 
 	/*
