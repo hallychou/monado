@@ -378,11 +378,6 @@ swapchain_server_import(struct ipc_client_compositor *icc,
 	ics->icc = icc;
 	ics->id = id;
 
-	// The handles were copied in the IPC call so we can reuse them here.
-	for (uint32_t i = 0; i < image_count; i++) {
-		ics->base.images[i] = native_images[i];
-	}
-
 	*out_xsc = &ics->base.base;
 
 	return XRT_SUCCESS;
