@@ -675,6 +675,12 @@ client_vk_swapchain_create(struct xrt_compositor *xc,
 	}
 	assert(xscn != NULL);
 
+	if (xscn->xac == NULL) {
+		VK_ERROR(vk, "The xscn->xac field is null!");
+		xrt_swapchain_native_reference(&xscn, NULL);
+		return XRT_ERROR_ALLOCATION;
+	}
+
 	struct xrt_swapchain *xsc = &xscn->base;
 
 	VkAccessFlags barrier_access_mask = vk_csci_get_barrier_access_mask(xinfo.bits);
@@ -696,23 +702,12 @@ client_vk_swapchain_create(struct xrt_compositor *xc,
 	sc->c = c;
 	sc->xscn = xscn;
 
-	// Get or create an allocation collection with VkImages.
-	if (xscn->xac == NULL) {
-		// No allocation collection, import from native images.
-		xret = a_allocator_import_from_natives(vk, &xinfo, xscn->images, xsc->image_count, &sc->xac);
-		if (xret != XRT_SUCCESS) {
-			VK_ERROR(vk, "Failed to import from native images: %u", xret);
-			client_vk_swapchain_destroy(&sc->base.base);
-			return xret;
-		}
-	} else {
-		// Allocation collection exists, ensure it supports VkImages.
-		xret = a_allocator_ensure_vk_images(vk, xscn->xac, &sc->xac);
-		if (xret != XRT_SUCCESS) {
-			VK_ERROR(vk, "Failed to ensure VkImages: %u", xret);
-			client_vk_swapchain_destroy(&sc->base.base);
-			return xret;
-		}
+	// Allocation collection exists, ensure it supports VkImages.
+	xret = a_allocator_ensure_vk_images(vk, xscn->xac, &sc->xac);
+	if (xret != XRT_SUCCESS) {
+		VK_ERROR(vk, "Failed to ensure VkImages: %u", xret);
+		client_vk_swapchain_destroy(&sc->base.base);
+		return xret;
 	}
 
 	// Get the VkImages from the allocation collection.

@@ -250,11 +250,6 @@ set_common_fields(struct comp_swapchain *sc,
 	sc->vk = vk;
 	sc->cscs = cscs;
 
-	// Make sure the handles are invalid.
-	for (uint32_t i = 0; i < ARRAY_SIZE(sc->base.images); i++) {
-		sc->base.images[i].handle = XRT_GRAPHICS_BUFFER_HANDLE_INVALID;
-	}
-
 	return sc;
 }
 
@@ -321,11 +316,6 @@ cleanup_post_create_vulkan_setup(struct vk_bundle *vk, struct comp_swapchain *sc
 		image_cleanup(vk, &sc->images[i]);
 	}
 
-	// Unref native handles.
-	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
-		u_graphics_buffer_unref(&sc->base.images[i].handle);
-	}
-
 	// Release the allocation collection (handles cleanup of VkImages).
 	xrt_allocation_collection_reference(&sc->base.xac, NULL);
 }
@@ -356,44 +346,6 @@ get_and_store_vk_images(struct vk_bundle *vk, struct comp_swapchain *sc)
 	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
 		sc->images[i].image = images[i];
 	}
-
-	return XRT_SUCCESS;
-}
-
-/*!
- * Get native images from the image collection and store them in the swapchain.
- *
- * @param vk Vulkan bundle (for logging).
- * @param sc The swapchain to populate.
- * @return XRT_SUCCESS on success.
- */
-XRT_MAYBE_UNUSED static XRT_CHECK_RESULT xrt_result_t
-get_and_store_native_images(struct vk_bundle *vk, struct comp_swapchain *sc)
-{
-#if defined(XRT_OS_OSX)
-	// Native handles are not used on macOS with Metal, leave them invalid.
-	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
-		sc->base.images[i].handle = XRT_GRAPHICS_BUFFER_HANDLE_INVALID;
-		sc->base.images[i].size = 0;
-		sc->base.images[i].use_dedicated_allocation = false;
-	}
-#else
-	struct xrt_image_native natives[XRT_MAX_SWAPCHAIN_IMAGES] = {0};
-
-	xrt_result_t xret = xrt_allocation_collection_get_all( //
-	    sc->base.xac,                                      //
-	    XRT_ALLOCATION_TYPE_NATIVE_IMAGE,                  //
-	    sizeof(struct xrt_image_native),                   //
-	    natives);                                          //
-	if (xret != XRT_SUCCESS) {
-		VK_ERROR(vk, "Failed to get all native images.");
-		return xret;
-	}
-
-	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
-		sc->base.images[i] = natives[i];
-	}
-#endif
 
 	return XRT_SUCCESS;
 }
@@ -647,10 +599,6 @@ comp_swapchain_create_init(struct comp_swapchain *sc,
 	// Get VkImages from the image collection and store them.
 	xret = get_and_store_vk_images(vk, sc);
 	XVK_CHK_WITH_GOTO(xret, "get_and_store_vk_images", error);
-
-	// Get native images from the image collection and store them.
-	xret = get_and_store_native_images(vk, sc);
-	XVK_CHK_WITH_GOTO(xret, "get_and_store_native_images", error);
 
 	// Post-create setup.
 	xret = do_post_create_vulkan_setup(vk, info, sc);
