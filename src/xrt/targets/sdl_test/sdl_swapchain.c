@@ -44,19 +44,11 @@ post_init_setup(struct sdl_swapchain *ssc,
 		    &results);                       // results
 		assert(bret);
 		(void)bret;
-	} else if (ssc->base.base.xac != NULL) {
+	} else {
 		bool bret = ogl_import_from_allocation_collection( //
 		    ssc->base.base.xac,                            // xac
 		    info,                                          // info
 		    &results);                                     // results
-		assert(bret);
-		(void)bret;
-	} else {
-		bool bret = ogl_import_from_native(  //
-		    ssc->base.base.images,           // native_images
-		    ssc->base.base.base.image_count, // native_count
-		    info,                            // info
-		    &results);                       // results
 		assert(bret);
 		(void)bret;
 	}

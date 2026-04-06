@@ -12,6 +12,8 @@
 
 #include "util/u_misc.h"
 #include "util/u_handles.h"
+#include "util/u_native_images.h"
+#include "util/u_native_images_xac.h"
 
 static void
 mock_compositor_swapchain_destroy(struct xrt_swapchain *xsc)
@@ -25,6 +27,7 @@ mock_compositor_swapchain_destroy(struct xrt_swapchain *xsc)
 	for (uint32_t i = 0; i < mcsc->base.base.image_count; ++i) {
 		u_graphics_buffer_unref(&(mcsc->handles[i]));
 	}
+	xrt_allocation_collection_reference(&mcsc->base.xac, NULL);
 	free(xsc);
 }
 
@@ -82,10 +85,19 @@ mock_compositor_swapchain_create(struct xrt_compositor *xc,
 	// Mini implementation of get_swapchain_create_properties to avoid an actual call causing confusing traces in
 	// the mock
 	uint32_t image_count = (0 != (info->create & XRT_SWAPCHAIN_CREATE_STATIC_IMAGE)) ? 1 : 3;
-	constexpr bool use_dedicated_allocation = false;
 
 
 	struct mock_compositor_swapchain *mcsc = U_TYPED_CALLOC(struct mock_compositor_swapchain);
+
+	// The mock doesn't allocate images, so the collection only hands out invalid handles.
+	struct xrt_image_native natives[XRT_MAX_SWAPCHAIN_IMAGES];
+	u_native_images_init_invalid(natives, image_count);
+	xrt_result_t xret = u_native_images_xac_create(info, natives, image_count, &mcsc->base.xac);
+	if (xret != XRT_SUCCESS) {
+		free(mcsc);
+		return xret;
+	}
+
 	mcsc->base.base.image_count = image_count;
 	mcsc->base.base.wait_image = mock_compositor_swapchain_wait_image;
 	mcsc->base.base.acquire_image = mock_compositor_swapchain_acquire_image;
@@ -106,12 +118,6 @@ mock_compositor_swapchain_create(struct xrt_compositor *xc,
 	if (mc->compositor_hooks.create_swapchain) {
 		return mc->compositor_hooks.create_swapchain(mc, mcsc, info, out_xsc);
 	}
-
-	for (uint32_t i = 0; i < image_count; i++) {
-		mcsc->base.images[i].handle = XRT_GRAPHICS_BUFFER_HANDLE_INVALID;
-		mcsc->base.images[i].use_dedicated_allocation = use_dedicated_allocation;
-	}
-
 
 	return XRT_SUCCESS;
 }
@@ -149,7 +155,6 @@ mock_compositor_swapchain_import(struct xrt_compositor *xc,
 
 	for (uint32_t i = 0; i < image_count; i++) {
 		mcsc->handles[i] = native_images[i].handle;
-		mcsc->base.images[i] = native_images[i];
 	}
 
 	return XRT_SUCCESS;

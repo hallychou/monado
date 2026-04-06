@@ -20,6 +20,7 @@
 #include "util/u_misc.h"
 #include "util/u_wait.h"
 #include "util/u_handles.h"
+#include "util/u_native_images_xac.h"
 #include "util/u_trace_marker.h"
 #include "util/u_limited_unique_id.h"
 
@@ -378,11 +379,6 @@ swapchain_server_import(struct ipc_client_compositor *icc,
 	ics->icc = icc;
 	ics->id = id;
 
-	// The handles were copied in the IPC call so we can reuse them here.
-	for (uint32_t i = 0; i < image_count; i++) {
-		ics->base.images[i] = native_images[i];
-	}
-
 	*out_xsc = &ics->base.base;
 
 	return XRT_SUCCESS;
@@ -395,6 +391,7 @@ swapchain_allocator_create(struct ipc_client_compositor *icc,
                            struct xrt_swapchain **out_xsc)
 {
 	struct xrt_swapchain_create_properties xsccp = {0};
+	struct xrt_allocation_collection *xac = NULL;
 	struct xrt_image_native *images = NULL;
 	xrt_result_t xret;
 
@@ -409,15 +406,23 @@ swapchain_allocator_create(struct ipc_client_compositor *icc,
 	xret = xrt_images_allocate(xina, info, xsccp.image_count, images);
 	IPC_CHK_WITH_GOTO(icc->ipc_c, xret, "xrt_images_allocate", out_free);
 
-	/*
-	 * The import function takes ownership of the handles,
-	 * we do not need free them if the call succeeds.
-	 */
+	// The import copies the handles, on success the collection takes ownership of them.
 	xret = swapchain_server_import(icc, info, images, xsccp.image_count, out_xsc);
 	IPC_CHK_ONLY_PRINT(icc->ipc_c, xret, "swapchain_server_import");
 	if (xret != XRT_SUCCESS) {
 		xrt_images_free(xina, xsccp.image_count, images);
+		goto out_free;
 	}
+
+	xret = u_native_images_xac_create(info, images, xsccp.image_count, &xac);
+	IPC_CHK_ONLY_PRINT(icc->ipc_c, xret, "u_native_images_xac_create");
+	if (xret != XRT_SUCCESS) {
+		xrt_swapchain_reference(out_xsc, NULL);
+		xrt_images_free(xina, xsccp.image_count, images);
+		goto out_free;
+	}
+
+	ipc_client_swapchain(*out_xsc)->base.xac = xac;
 
 out_free:
 	free(images);
