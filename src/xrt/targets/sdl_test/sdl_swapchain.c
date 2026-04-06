@@ -1,4 +1,5 @@
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -13,22 +14,52 @@
 #include "ogl/ogl_helpers.h"
 
 
+static void
+unref_natives(struct xrt_image_native *natives, uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++) {
+		// DXGI handles can't be closed.
+		if (!natives[i].is_dxgi_handle) {
+			u_graphics_buffer_unref(&natives[i].handle);
+		}
+	}
+}
 
 static void
-post_init_setup(struct sdl_swapchain *ssc, struct sdl_program *sp, const struct xrt_swapchain_create_info *info)
+post_init_setup(struct sdl_swapchain *ssc,
+                struct sdl_program *sp,
+                const struct xrt_swapchain_create_info *info,
+                struct xrt_image_native *natives)
 {
 	ST_DEBUG(sp, "CREATE");
 
 	sdl_make_current(sp);
 
 	struct ogl_import_results results = XRT_STRUCT_INIT;
-	bool bret = ogl_import_from_native(  //
-	    ssc->base.base.images,           // native_images
-	    ssc->base.base.base.image_count, // native_count
-	    info,                            // info
-	    &results);                       // results
-	assert(bret);
-	(void)bret;
+	if (natives != NULL) {
+		bool bret = ogl_import_from_native(  //
+		    natives,                         // native_images
+		    ssc->base.base.base.image_count, // native_count
+		    info,                            // info
+		    &results);                       // results
+		assert(bret);
+		(void)bret;
+	} else if (ssc->base.base.xac != NULL) {
+		bool bret = ogl_import_from_allocation_collection( //
+		    ssc->base.base.xac,                            // xac
+		    info,                                          // info
+		    &results);                                     // results
+		assert(bret);
+		(void)bret;
+	} else {
+		bool bret = ogl_import_from_native(  //
+		    ssc->base.base.images,           // native_images
+		    ssc->base.base.base.image_count, // native_count
+		    info,                            // info
+		    &results);                       // results
+		assert(bret);
+		(void)bret;
+	}
 
 	sdl_make_uncurrent(sp);
 
@@ -108,7 +139,7 @@ sdl_swapchain_create(struct xrt_compositor *xc,
 	}
 
 	// Init SDL fields and create OpenGL resources.
-	post_init_setup(ssc, sp, info);
+	post_init_setup(ssc, sp, info, NULL);
 
 	// Correctly setup refcounts, init sets refcount to zero.
 	xrt_swapchain_reference(out_xsc, &ssc->base.base.base);
@@ -126,6 +157,19 @@ sdl_swapchain_import(struct xrt_compositor *xc,
 	struct sdl_program *sp = from_comp(xc);
 	xrt_result_t xret;
 
+	if (native_image_count > XRT_MAX_SWAPCHAIN_IMAGES) {
+		return XRT_ERROR_ALLOCATION;
+	}
+
+	// comp_swapchain_import_init consumes the handles, keep references for the OpenGL import.
+	struct xrt_image_native gl_natives[XRT_MAX_SWAPCHAIN_IMAGES] = XRT_STRUCT_INIT;
+	for (uint32_t i = 0; i < native_image_count; i++) {
+		gl_natives[i] = native_images[i];
+		if (!gl_natives[i].is_dxgi_handle) {
+			gl_natives[i].handle = u_graphics_buffer_ref(native_images[i].handle);
+		}
+	}
+
 	struct sdl_swapchain *ssc = U_TYPED_CALLOC(struct sdl_swapchain);
 
 	xret = comp_swapchain_import_init( //
@@ -137,12 +181,14 @@ sdl_swapchain_import(struct xrt_compositor *xc,
 	    native_images,                 //
 	    native_image_count);           //
 	if (xret != XRT_SUCCESS) {
+		unref_natives(gl_natives, native_image_count);
 		free(ssc);
 		return xret;
 	}
 
 	// Init SDL fields and create OpenGL resources.
-	post_init_setup(ssc, sp, info);
+	post_init_setup(ssc, sp, info, gl_natives);
+	unref_natives(gl_natives, native_image_count);
 
 	// Correctly setup refcounts, init sets refcount to zero.
 	xrt_swapchain_reference(out_xsc, &ssc->base.base.base);
