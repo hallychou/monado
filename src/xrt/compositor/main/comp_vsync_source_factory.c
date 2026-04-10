@@ -13,6 +13,10 @@
 #include "vk/vk_display_control_vsync_source.h"
 #include "vk/vk_helpers.h"
 
+#if defined(XRT_OS_ANDROID)
+#include "android/android_choreographer_vsync_source.h"
+#endif
+
 #include "xrt/xrt_vsync_source.h"
 
 static inline struct vk_bundle *
@@ -49,6 +53,17 @@ comp_vk_display_control_vsync_source_create(struct comp_target_swapchain *cts)
 #endif
 }
 
+static inline struct xrt_vsync_source *
+comp_android_choreographer_vsync_source_create(struct comp_target_swapchain *cts)
+{
+	(void)cts;
+#if defined(XRT_OS_ANDROID)
+	return android_choreographer_vsync_source_create();
+#else
+	return NULL;
+#endif
+}
+
 xrt_result_t
 comp_vsync_source_factory_create(struct comp_target_swapchain *cts, struct xrt_vsync_source **out_xvs)
 {
@@ -62,6 +77,7 @@ comp_vsync_source_factory_create(struct comp_target_swapchain *cts, struct xrt_v
 	} while (false)
 
 	FACTORY_CHECK_RET(comp_vk_display_control_vsync_source_create(cts));
+	FACTORY_CHECK_RET(comp_android_choreographer_vsync_source_create(cts));
 
 #undef FACTORY_CHECK_RET
 	return XRT_ERROR_FEATURE_NOT_SUPPORTED;
