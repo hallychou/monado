@@ -12,6 +12,8 @@
 #include "util/u_misc.h"
 #include "util/u_trace_marker.h"
 
+#include "xrt/xrt_allocation_collection.h"
+
 #include "shared/ipc_protocol.h"
 #include "shared/ipc_shmem.h"
 #include "shared/ipc_utils.h"
@@ -140,6 +142,11 @@ common_shutdown(volatile struct ipc_client_state *ics)
 		 * so we just set the pointer to NULL.
 		 */
 		ics->objects.xtracks[i] = NULL;
+	}
+
+	// Clear the allocation collections array.
+	for (uint32_t i = 0; i < IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS; i++) {
+		xrt_allocation_collection_reference((struct xrt_allocation_collection **)&ics->objects.xacs[i], NULL);
 	}
 
 	// Make sure undestroyed plane detections are cleaned up

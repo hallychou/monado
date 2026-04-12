@@ -61,12 +61,14 @@ extern "C" {
 
 #define IPC_MAX_CLIENT_SEMAPHORES 8
 #define IPC_MAX_CLIENT_SWAPCHAINS (XRT_MAX_LAYERS * 2)
+#define IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS IPC_MAX_CLIENT_SWAPCHAINS
 #define IPC_MAX_CLIENT_SPACES 128
 #define IPC_MAX_CLIENT_FUTURES 128
 
 struct xrt_instance;
 struct xrt_compositor;
 struct xrt_compositor_native;
+struct xrt_allocation_collection;
 
 
 /*!
@@ -117,6 +119,12 @@ struct ipc_client_state
 		 * so we don't need to lock it.
 		 */
 		struct xrt_device *xdevs[XRT_SYSTEM_MAX_DEVICES];
+
+		/*!
+		 * Allocation collections tracked for IPC by id (weak references;
+		 * lifetime owned by e.g. swapchains on the server).
+		 */
+		struct xrt_allocation_collection *xacs[IPC_MAX_CLIENT_ALLOCATION_COLLECTIONS];
 	} objects;
 
 	//! Session for this client.

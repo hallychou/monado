@@ -13,6 +13,7 @@
 #include "xrt/xrt_config_have.h"
 #include "xrt/xrt_config_os.h"
 #include "xrt/xrt_handles.h"
+#include "xrt/xrt_allocation_collection.h"
 
 #include "util/u_misc.h"
 #include "util/u_logging.h"
@@ -178,6 +179,10 @@ client_gl_eglimage_swapchain_create(struct xrt_compositor *xc,
 		EGL_SC_ERROR("Native swapchain is null!");
 		return NULL;
 	}
+	if (xscn->xac == NULL) {
+		EGL_SC_ERROR("The xscn->xac field is null!");
+		return NULL;
+	}
 
 
 #if defined(XRT_GRAPHICS_BUFFER_HANDLE_IS_FD)
@@ -204,8 +209,20 @@ client_gl_eglimage_swapchain_create(struct xrt_compositor *xc,
 	 * Native images setup.
 	 */
 
-	const uint32_t image_count = xscn->base.image_count;
-	struct xrt_image_native *native_images = xscn->images;
+	struct xrt_image_native xac_images[XRT_MAX_SWAPCHAIN_IMAGES];
+	xrt_result_t xret = xrt_allocation_collection_get_all( //
+	    xscn->xac,                                         //
+	    XRT_ALLOCATION_TYPE_NATIVE_IMAGE,                  //
+	    sizeof(struct xrt_image_native),                   //
+	    xac_images);                                       //
+	if (xret != XRT_SUCCESS) {
+		EGL_SC_ERROR("xrt_allocation_collection_get_all failed");
+		return NULL;
+	}
+
+	// Take ownership of the native images.
+	const uint32_t image_count = xscn->xac->image_count;
+	struct xrt_image_native *native_images = xac_images;
 
 
 	/*
@@ -320,6 +337,9 @@ client_gl_eglimage_swapchain_create(struct xrt_compositor *xc,
 
 
 error:
+	// Unref the native images we own.
+	u_native_images_unref_all(native_images, image_count);
+
 	client_gl_eglimage_swapchain_teardown_storage(sc);
 	free(sc);
 

@@ -103,6 +103,8 @@ add_library(
 	client/ipc_client_system_devices.h
 	client/ipc_client_tracking_origin.c
 	client/ipc_client_tracking_origin.h
+	client/ipc_client_allocation_collection.c
+	client/ipc_client_allocation_collection.h
 	client/ipc_client_xdev.c
 	client/ipc_client_xdev.h
 	)
@@ -134,6 +136,7 @@ add_library(
 	${CMAKE_CURRENT_BINARY_DIR}/ipc_server_generated.h
 	server/ipc_server.h
 	server/ipc_server_handler.c
+	server/ipc_server_handler_allocation_collection.c
 	server/ipc_server_handler_swapchain.c
 	server/ipc_server_per_client_thread.c
 	server/ipc_server_process.c

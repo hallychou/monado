@@ -1,4 +1,5 @@
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -22,11 +23,10 @@ post_init_setup(struct sdl_swapchain *ssc, struct sdl_program *sp, const struct 
 	sdl_make_current(sp);
 
 	struct ogl_import_results results = XRT_STRUCT_INIT;
-	bool bret = ogl_import_from_native(  //
-	    ssc->base.base.images,           // native_images
-	    ssc->base.base.base.image_count, // native_count
-	    info,                            // info
-	    &results);                       // results
+	bool bret = ogl_import_from_allocation_collection( //
+	    ssc->base.base.xac,                            // xac
+	    info,                                          // info
+	    &results);                                     // results
 	assert(bret);
 	(void)bret;
 
