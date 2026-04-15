@@ -556,6 +556,23 @@ struct render_resources
 		//! Whether distortion images have been pre-rotated 90 degrees.
 		bool pre_rotated;
 	} distortion;
+
+	/*!
+	 * @brief Per-strip resources for single-buffered strip rendering.
+	 */
+	struct
+	{
+		VkQueryPool *query_pools;
+
+		VkCommandPool *cmd_pools;
+
+		VkCommandBuffer *cmds;
+
+		VkFence *fences;
+
+		uint32_t strip_count;
+
+	} strip_distortion;
 };
 
 /*!

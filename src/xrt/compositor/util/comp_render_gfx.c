@@ -1030,5 +1030,30 @@ comp_render_gfx_distortion_fast_path(struct render_gfx *render,
 void
 comp_render_gfx_clear(struct render_gfx *render, const struct comp_render_dispatch_data *d)
 {
-	crg_clear_output(render, d);
+	assert(render && d);
+
+	if (d->target.gfx.rtr->rgrp->load_op == VK_ATTACHMENT_LOAD_OP_CLEAR) {
+		crg_clear_output(render, d);
+		return;
+	}
+
+	render_gfx_begin_target(     //
+	    render,                  //
+	    d->target.gfx.rtr,       //
+	    &background_color_idle); //
+
+	/*!
+	 * This is not best practice and the vk validation layer with
+	 * "Best Practices" enabled will print perf warning messages
+	 * about using vkCmdClearAttachments but this function is only
+	 * used when we have no layers to render and we just want to
+	 * clear the screen, so it should not matter.
+	 *
+	 * The other alternative is to use vkCmdClearColorImage but
+	 * this requires VK_IMAGE_USAGE_TRANSFER_DST_BIT flag set on
+	 * the comp target images.
+	 */
+	render_gfx_clear_color_attachment(render, &background_color_idle);
+
+	render_gfx_end_target(render);
 }

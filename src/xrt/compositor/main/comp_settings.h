@@ -77,6 +77,8 @@ struct comp_settings
 	//! Not used with direct mode.
 	bool fullscreen;
 
+	bool disable_gfx_strip_render;
+
 	//! Logging level.
 	enum u_logging_level log_level;
 

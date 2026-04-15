@@ -933,6 +933,101 @@ render_resources_init(struct render_resources *r,
 	    &r->compute.distortion.ubo); // buffer
 	VK_CHK_WITH_RET(ret, "render_buffer_map", false);
 
+	/*
+	 * Strip Distortion - for front-buffer split rendering
+	 */
+
+	struct xrt_device_compositor_info compositor_info = {0};
+	if (xdev->supported.compositor_info) {
+		const struct xrt_device_compositor_mode compositor_mode = {0};
+		xrt_result_t xret = xrt_device_get_compositor_info( //
+		    xdev,                                           //
+		    &compositor_mode,                               //
+		    &compositor_info);                              //
+		if (xret != XRT_SUCCESS) {
+			compositor_info.strip_render.strip_count = 0;
+		}
+	}
+
+	const uint32_t strip_count = compositor_info.strip_render.strip_count;
+
+	if (strip_count != 0) {
+
+		r->strip_distortion.strip_count = strip_count;
+
+		r->strip_distortion.query_pools = U_TYPED_ARRAY_CALLOC(VkQueryPool, strip_count);
+		r->strip_distortion.cmd_pools = U_TYPED_ARRAY_CALLOC(VkCommandPool, strip_count);
+		r->strip_distortion.cmds = U_TYPED_ARRAY_CALLOC(VkCommandBuffer, strip_count);
+
+		char obj_name[256] = {0};
+
+		for (uint32_t i = 0; i < strip_count; ++i) {
+
+			VkQueryPoolCreateInfo poolInfo = {
+			    .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+			    .pNext = NULL,
+			    .flags = 0, // Reserved.
+			    .queryType = VK_QUERY_TYPE_TIMESTAMP,
+			    .queryCount = 2,         // Start & end
+			    .pipelineStatistics = 0, // Not used.
+			};
+			ret = vk->vkCreateQueryPool(              //
+			    vk->device,                           //
+			    &poolInfo,                            //
+			    NULL,                                 //
+			    &r->strip_distortion.query_pools[i]); //
+			VK_CHK_WITH_RET(ret, "vkCreateQueryPool", false);
+
+			snprintf(obj_name, sizeof(obj_name), "render_resources::strip_distortion::query_pools[%u]", i);
+			VK_NAME_QUERY_POOL(vk, r->strip_distortion.query_pools[i], obj_name);
+
+			VkCommandPoolCreateInfo command_pool_info = {
+			    .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+			    .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+			    .queueFamilyIndex = vk->main_queue->family_index,
+			};
+			ret = vk->vkCreateCommandPool(vk->device, &command_pool_info, NULL,
+			                              &r->strip_distortion.cmd_pools[i]);
+			VK_CHK_WITH_RET(ret, "vkCreateCommandPool", false);
+
+			snprintf(obj_name, sizeof(obj_name), "render_resources::strip_distortion::cmd_pools[%u]", i);
+			VK_NAME_COMMAND_POOL(vk, r->strip_distortion.cmd_pools[i], obj_name);
+
+			const VkCommandBufferAllocateInfo cmd_buffer_info = {
+			    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+			    .commandPool = r->strip_distortion.cmd_pools[i],
+			    .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+			    .commandBufferCount = 1,
+			};
+			ret = vk->vkAllocateCommandBuffers( //
+			    vk->device,                     // device
+			    &cmd_buffer_info,               // pAllocateInfo
+			    &r->strip_distortion.cmds[i]);  // pCommandBuffers
+			VK_CHK_WITH_RET(ret, "vkAllocateCommandBuffers", false);
+
+			snprintf(obj_name, sizeof(obj_name), "render_resources::strip_distortion::cmds[%u]", i);
+			VK_NAME_COMMAND_BUFFER(vk, r->strip_distortion.cmds[i], obj_name);
+		}
+
+		r->strip_distortion.fences = U_TYPED_ARRAY_CALLOC(VkFence, strip_count);
+
+		const VkFenceCreateInfo fence_info = {
+		    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		    .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+		};
+		for (uint32_t i = 0; i < strip_count; ++i) {
+			ret = vk->vkCreateFence(             //
+			    vk->device,                      //
+			    &fence_info,                     //
+			    NULL,                            //
+			    &r->strip_distortion.fences[i]); //
+			VK_CHK_WITH_RET(ret, "render_resources::strip_distortion::fences", false);
+
+			snprintf(obj_name, sizeof(obj_name), "render_resources::strip_distortion::fences[%u]", i);
+
+			VK_NAME_FENCE(vk, r->strip_distortion.fences[i], obj_name);
+		}
+	}
 
 	/*
 	 * Clear pipeline.
@@ -1075,6 +1170,31 @@ render_resources_fini(struct render_resources *r)
 
 	vk_cmd_pool_destroy(vk, &r->distortion_pool);
 	D(CommandPool, r->cmd_pool);
+
+	if (r->strip_distortion.fences) {
+		for (uint32_t i = 0; i < r->strip_distortion.strip_count; ++i) {
+			D(Fence, r->strip_distortion.fences[i]);
+		}
+		free(r->strip_distortion.fences);
+	}
+
+	if (r->strip_distortion.cmd_pools) {
+		for (uint32_t i = 0; i < r->strip_distortion.strip_count; ++i) {
+			D(CommandPool, r->strip_distortion.cmd_pools[i]);
+		}
+		free(r->strip_distortion.cmd_pools);
+	}
+
+	if (r->strip_distortion.query_pools) {
+		for (uint32_t i = 0; i < r->strip_distortion.strip_count; ++i) {
+			D(QueryPool, r->strip_distortion.query_pools[i]);
+		}
+		free(r->strip_distortion.query_pools);
+	}
+
+	free(r->strip_distortion.cmds);
+
+	r->strip_distortion.strip_count = 0;
 
 	// Finally forget about the vk bundle. We do not own it!
 	r->vk = NULL;

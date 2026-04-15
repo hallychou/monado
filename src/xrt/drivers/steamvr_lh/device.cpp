@@ -882,6 +882,7 @@ HmdDevice::get_compositor_info(const struct xrt_device_compositor_mode *mode,
 	    .panel_refresh_type = panel_refresh_type,
 	    .scanout_direction = scanout_direction,
 	    .scanout_time_ns = scanout_time_ns,
+	    .strip_render = {},
 	};
 
 	return XRT_SUCCESS;
