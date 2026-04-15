@@ -105,13 +105,33 @@ chl_frame_state_gfx_set_views(struct chl_frame_state *frame_state,
  * information from the _set_views call and as such this needs to be called
  * before calling this function. This is the graphics version.
  *
+ * This is a scissor parameterized variant of @ref chl_frame_state_gfx_set_target.
+ *
  * @memberof chl_frame_state
  */
 void
+chl_frame_state_gfx_set_target_scissored(struct chl_frame_state *frame_state,
+                                         struct render_gfx_target_resources *target_rtr,
+                                         const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS],
+                                         const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
+                                         const render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS]);
+
+/*!
+ * Adds the needed information to also perform a distortion step, reuses some
+ * information from the _set_views call and as such this needs to be called
+ * before calling this function. This is the graphics version.
+ *
+ * @memberof chl_frame_state
+ */
+static inline void
 chl_frame_state_gfx_set_target(struct chl_frame_state *frame_state,
                                struct render_gfx_target_resources *target_rtr,
                                const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
-                               const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS]);
+                               const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS])
+{
+	chl_frame_state_gfx_set_target_scissored(frame_state, target_rtr, vertex_rots, target_viewport_datas,
+	                                         target_viewport_datas);
+}
 
 /*!
  * A single do all function, runs the default graphics pipeline.

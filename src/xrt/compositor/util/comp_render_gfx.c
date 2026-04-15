@@ -571,10 +571,13 @@ crg_distortion_common(struct render_gfx *render,
 		// Convenience.
 		const struct render_viewport_data *viewport_data = &d->views[i].target.viewport_data;
 
-		render_gfx_begin_view( //
-		    render,            //
-		    i,                 // view_index
-		    viewport_data);    //
+		const render_scissor_data_t *scissor_data = &d->views[i].target.scissor_data;
+
+		render_gfx_begin_view_scissored( //
+		    render,                      //
+		    i,                           // view_index
+		    viewport_data,               //
+		    scissor_data);               //
 
 		render_gfx_mesh_draw(      //
 		    render,                //
