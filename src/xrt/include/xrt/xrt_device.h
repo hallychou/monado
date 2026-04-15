@@ -111,6 +111,17 @@ struct xrt_device_compositor_info
 	 * @note alignas for 32 bit client support, see @ref ipc-design
 	 */
 	XRT_ALIGNAS(8) int64_t scanout_time_ns;
+
+	//! single-buffer strip-rendering
+	struct
+	{
+		/*!
+		 * Number of strips to divide the display into for strip rendering.
+		 *
+		 * If strip_count is 0, strip rendering path is disabled.
+		 */
+		uint32_t strip_count;
+	} strip_render;
 };
 
 /*!
