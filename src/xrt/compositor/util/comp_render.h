@@ -492,6 +492,17 @@ comp_render_gfx_dispatch(struct render_gfx *render,
                          const uint32_t layer_count,
                          const struct comp_render_dispatch_data *d);
 
+void
+comp_render_gfx_distortion_after_squash(struct render_gfx *render, const struct comp_render_dispatch_data *d);
+
+void
+comp_render_gfx_distortion_fast_path(struct render_gfx *render,
+                                     const struct comp_layer *single_layer,
+                                     const struct comp_render_dispatch_data *d);
+
+void
+comp_render_gfx_clear(struct render_gfx *render, const struct comp_render_dispatch_data *d);
+
 /* end of comp_render_gfx group */
 
 /*! @} */
