@@ -1027,6 +1027,18 @@ comp_target_swapchain_info_gpu(
 	u_pc_info_gpu(cts->upc, frame_id, gpu_start_ns, gpu_end_ns, when_ns);
 }
 
+static xrt_result_t
+comp_target_swapchain_wait_next_vsync(struct comp_target *ct, struct xrt_vsync_event *vsync_event)
+{
+	COMP_TRACE_MARKER();
+	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
+	if (cts->vsync_source == NULL) {
+		return XRT_ERROR_NOT_IMPLEMENTED;
+	}
+	return xrt_vsync_source_wait_next(cts->vsync_source, vsync_event);
+}
+
+
 
 /*
  *
@@ -1121,4 +1133,5 @@ comp_target_swapchain_init_and_set_fnptrs(struct comp_target_swapchain *cts,
 	cts->base.update_timings = comp_target_swapchain_update_timings;
 	cts->base.info_gpu = comp_target_swapchain_info_gpu;
 	cts->base.queue_supports_present = comp_target_swapchain_queue_supports_present;
+	cts->base.wait_next_vsync = comp_target_swapchain_wait_next_vsync;
 }
