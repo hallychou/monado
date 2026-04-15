@@ -106,6 +106,16 @@ struct comp_target_semaphores
 	VkSemaphore present_complete;
 
 	/*!
+	 * Optional Semaphore the renderer (consuming this target)
+	 *
+	 * Only used in cases where the compositor stages are split up
+	 * such as with single-buffer strip rendering
+	 *
+	 * When used, should signal when layer squashing is complete.
+	 */
+	VkSemaphore layer_squash_complete;
+
+	/*!
 	 * Semaphore the renderer (consuming this target)
 	 * should signal when rendering is complete.
 	 */

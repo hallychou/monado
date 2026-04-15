@@ -489,6 +489,11 @@ target_fini_semaphores(struct comp_target_swapchain *cts)
 		vk->vkDestroySemaphore(vk->device, cts->base.semaphores.render_complete, NULL);
 		cts->base.semaphores.render_complete = VK_NULL_HANDLE;
 	}
+
+	if (cts->base.semaphores.layer_squash_complete != VK_NULL_HANDLE) {
+		vk->vkDestroySemaphore(vk->device, cts->base.semaphores.layer_squash_complete, NULL);
+		cts->base.semaphores.layer_squash_complete = VK_NULL_HANDLE;
+	}
 }
 
 static void
@@ -518,6 +523,14 @@ target_init_semaphores(struct comp_target_swapchain *cts)
 	}
 
 	VK_NAME_SEMAPHORE(vk, cts->base.semaphores.render_complete, "comp_target_swapchain semaphore render complete");
+
+	ret = vk->vkCreateSemaphore(vk->device, &info, NULL, &cts->base.semaphores.layer_squash_complete);
+	if (ret != VK_SUCCESS) {
+		COMP_ERROR(cts->base.c, "vkCreateSemaphore: %s", vk_str_result(ret));
+	}
+
+	VK_NAME_SEMAPHORE(vk, cts->base.semaphores.layer_squash_complete,
+	                  "comp_target_swapchain::semaphore::layer_squash_complete");
 }
 
 
