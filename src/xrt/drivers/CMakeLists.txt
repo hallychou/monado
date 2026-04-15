@@ -124,10 +124,7 @@ if(XRT_BUILD_DRIVER_XREAL_AIR)
 		drv_xreal_air STATIC xreal_air/xreal_air_hmd.h xreal_air/xreal_air_hmd.c
 				     xreal_air/xreal_air_interface.h xreal_air/xreal_air_packet.c
 		)
-	target_link_libraries(
-		drv_xreal_air PRIVATE xrt-interfaces HIDAPI::hidapi aux_util xrt-external-cjson
-		)
-	target_include_directories(drv_xreal_air PRIVATE ${HIDAPI_INCLUDE_DIRS})
+	target_link_libraries(drv_xreal_air PRIVATE xrt-interfaces aux_util xrt-external-cjson)
 	list(APPEND ENABLED_HEADSET_DRIVERS xreal_air)
 endif()
 
@@ -210,8 +207,7 @@ if(XRT_BUILD_DRIVER_PSVR)
 		psvr/psvr_packet.c
 		psvr/psvr_prober.c
 		)
-	target_link_libraries(drv_psvr PRIVATE xrt-interfaces HIDAPI::hidapi aux_util)
-	target_include_directories(drv_psvr PRIVATE ${HIDAPI_INCLUDE_DIRS})
+	target_link_libraries(drv_psvr PRIVATE xrt-interfaces xrt-external-hidapi-libusb aux_util)
 	list(APPEND ENABLED_HEADSET_DRIVERS psvr)
 endif()
 
@@ -580,7 +576,7 @@ if(XRT_BUILD_DRIVER_SIMULAVR)
 	list(APPEND ENABLED_HEADSET_DRIVERS svr)
 endif()
 
-if(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE OR XRT_BUILD_DRIVER_SURVIVE)
+if(XRT_HAVE_HIDAPI AND XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE OR XRT_BUILD_DRIVER_SURVIVE)
 	add_library(drv_vp2 STATIC vp2/vp2_hid.c vp2/vp2_hid.h vp2/vp2_config.cpp vp2/vp2_config.h)
 	target_link_libraries(
 		drv_vp2

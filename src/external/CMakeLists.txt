@@ -164,3 +164,38 @@ add_library(xrt-external-vdf INTERFACE)
 target_include_directories(
 	xrt-external-vdf SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/valve-file-vdf
 	)
+
+# hidapi
+if(XRT_HAVE_HIDAPI)
+	add_library(xrt-external-hidapi STATIC)
+	target_include_directories(
+		xrt-external-hidapi SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/hidapi/hidapi
+		)
+
+	if(LINUX AND XRT_HAVE_LIBUDEV)
+		target_sources(
+			xrt-external-hidapi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hidapi/linux/hid.c
+			)
+	elseif(WIN32)
+		target_sources(
+			xrt-external-hidapi
+			PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hidapi/windows/hid.c
+			)
+	elseif(APPLE)
+		target_sources(
+			xrt-external-hidapi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hidapi/mac/hid.c
+			)
+	endif()
+endif()
+
+if(XRT_HAVE_LIBUSB AND XRT_HAVE_LINUX)
+	add_library(
+		xrt-external-hidapi-libusb STATIC ${CMAKE_CURRENT_SOURCE_DIR}/hidapi/libusb/hid.c
+		)
+	target_include_directories(
+		xrt-external-hidapi-libusb SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/hidapi/hidapi
+		)
+	target_link_libraries(xrt-external-hidapi-libusb PRIVATE ${LIBUSB1_LIBRARIES})
+	target_include_directories(xrt-external-hidapi-libusb PUBLIC ${LIBUSB1_INCLUDE_DIRS})
+	target_compile_definitions(xrt-external-hidapi-libusb PUBLIC XRT_HIDAPI_LIBUSB)
+endif()
