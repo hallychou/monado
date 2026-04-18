@@ -101,6 +101,10 @@
 #include "xreal_air/xreal_air_interface.h"
 #endif
 
+#ifdef XRT_BUILD_DRIVER_XREAL_ONE
+#include "xreal_one/xreal_one_interface.h"
+#endif
+
 #ifdef XRT_BUILD_DRIVER_EUROC
 #include "euroc/euroc_interface.h"
 #endif
@@ -167,6 +171,10 @@ xrt_builder_create_func_t target_builder_list[] = {
 #ifdef XRT_BUILD_DRIVER_XREAL_AIR
     xreal_air_builder_create,
 #endif // T_BUILDER_XREAL_AIR
+
+#ifdef XRT_BUILD_DRIVER_XREAL_ONE
+    xreal_one_builder_create,
+#endif // XRT_BUILD_DRIVER_XREAL_ONE
 
 #ifdef T_BUILDER_LEGACY
     t_builder_legacy_create,

@@ -131,6 +131,16 @@ if(XRT_BUILD_DRIVER_XREAL_AIR)
 	list(APPEND ENABLED_HEADSET_DRIVERS xreal_air)
 endif()
 
+if(XRT_BUILD_DRIVER_XREAL_ONE)
+	add_library(
+		drv_xreal_one STATIC xreal_one/xreal_one_interface.h
+				     xreal_one/xreal_one_hmd.h
+				     xreal_one/xreal_one_hmd.c
+		)
+	target_link_libraries(drv_xreal_one PRIVATE xrt-interfaces aux_util aux_math)
+	list(APPEND ENABLED_HEADSET_DRIVERS xreal_one)
+endif()
+
 if(XRT_BUILD_DRIVER_UVC)
 	add_library(drv_uvc STATIC uvc/uvc_interface.h uvc/uvc_driver.c uvc/uvc_internal.h)
 	target_link_libraries(drv_uvc PRIVATE xrt-interfaces aux_os aux_util ${LIBUSB1_LIBRARIES})
