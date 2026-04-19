@@ -49,6 +49,18 @@
 
 /*
  *
+ * IMU chip axis calibration.
+ *
+ * The IMU chip is rotated ~30° around the glasses' X (pitch/right) axis,
+ * mixing the physical yaw and roll signals across the gy/gz wire channels.
+ * sin(30°) = 0.5 exactly; cos(30°) = √3/2.
+ */
+#define CHIP_SIN 0.50000000f   /* sin(30°) */
+#define CHIP_COS 0.86602540f   /* cos(30°) = √3/2 */
+
+
+/*
+ *
  * Logging helpers.
  *
  */
@@ -245,19 +257,17 @@ update_fusion_locked(struct xreal_one_hmd *hmd, const struct xreal_one_parsed_sa
 {
 	const float G_TO_MS2 = 9.80665f;
 
-	// Wire gyro axes: gx=pitch, gy=yaw, gz=roll (confirmed by Python demo).
-	// Monado frame:   X=right, Y=up, Z=backward.
-	// Yaw negated: Monado +Y = turning left; hardware +gy = turning right → negate.
+	// 30° chip rotation decoupling (CHIP_SIN=0.5, CHIP_COS=√3/2).
 	struct xrt_vec3 gyro = {
-	    .x = s->gx,    // pitch: right axis matches
-	    .y = -s->gy,   // yaw:   gy = rotation around up; negate for Monado convention
-	    .z = -s->gz,   // roll:  gz = rotation around forward → Monado -Z; sign TBD
+	    .x = s->gx,                                    // pitch
+	    .y = CHIP_SIN * s->gz - CHIP_COS * s->gy,     // yaw
+	    .z = -(CHIP_SIN * s->gy + CHIP_COS * s->gz),  // roll
 	};
 
 	struct xrt_vec3 accel = {
 	    .x = s->ax * G_TO_MS2,
-	    .y = s->az * G_TO_MS2,   // XReal Z(up) → Monado Y(up)
-	    .z = -s->ay * G_TO_MS2,  // XReal Y(forward) → Monado -Z(backward)
+	    .y = s->az * G_TO_MS2,  // XReal Z(up) → Monado Y(up)
+	    .z = -s->ay * G_TO_MS2, // XReal Y(forward) → Monado -Z(backward)
 	};
 
 	hmd->read.raw_gyro  = (struct xrt_vec3){s->gx, s->gy, s->gz};
@@ -290,8 +300,8 @@ push_sample(struct xreal_one_hmd *hmd, const struct xreal_one_parsed_sample *s)
 	// The remapped gyro values (same frame as fusion) are accumulated here.
 	if (!hmd->calib.done) {
 		hmd->calib.sum.x += s->gx;
-		hmd->calib.sum.y += -s->gy;   // matches gyro.y
-		hmd->calib.sum.z += -s->gz;   // matches gyro.z
+		hmd->calib.sum.y += CHIP_SIN * s->gz - CHIP_COS * s->gy;
+		hmd->calib.sum.z += -(CHIP_SIN * s->gy + CHIP_COS * s->gz);
 		hmd->calib.count++;
 
 		if (hmd->calib.count >= 500) {
