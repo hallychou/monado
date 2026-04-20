@@ -162,6 +162,13 @@ struct comp_renderer
 	 */
 	uint32_t buffer_count;
 
+	/*!
+	 * Only relevant when using present modes from VK_KHR_shared_presentable_image,
+	 * tracks whether we have waited on the shared present semaphore at least once,
+	 * subsequents present waits are redundant and can be skipped.
+	 */
+	bool shared_present_semaphore_wait_once;
+
 	//! @}
 };
 
@@ -433,12 +440,12 @@ renderer_create_renderings_and_fences(struct comp_renderer *r)
 	if (!use_compute) {
 		r->rtr_array = U_TYPED_ARRAY_CALLOC(struct render_gfx_target_resources, r->buffer_count);
 
-		render_gfx_render_pass_init(     //
-		    &r->target_render_pass,      // rgrp
-		    &r->c->nr,                   // struct render_resources
-		    r->c->target->format,        //
-		    VK_ATTACHMENT_LOAD_OP_CLEAR, // load_op
-		    r->c->target->final_layout); // final_layout
+		render_gfx_render_pass_init(       //
+		    &r->target_render_pass,        // rgrp
+		    &r->c->nr,                     // struct render_resources
+		    r->c->target->format,          //
+		    r->c->target->present_load_op, // load_op
+		    r->c->target->final_layout);   // final_layout
 
 		for (uint32_t i = 0; i < r->buffer_count; ++i) {
 			renderer_build_rendering_target_resources(r, &r->rtr_array[i], i);
@@ -650,6 +657,26 @@ renderer_wait_for_last_fence(struct comp_renderer *r)
 	r->fenced_buffer = -1;
 }
 
+static inline bool
+requires_present_acquire_wait(struct comp_renderer *r)
+{
+	/*!
+	 * With shared presentable images there is only one image
+	 * shared between the presentation layer and the compositor,
+	 *
+	 * We only need to wait on the first "acquire image",
+	 * subsueqent frames waiting is redundant.
+	 */
+	if (comp_target_is_shared_presentable_image(r->c->target)) {
+		if (r->shared_present_semaphore_wait_once) {
+			return false;
+		}
+		r->shared_present_semaphore_wait_once = true;
+	}
+
+	return true;
+}
+
 static XRT_CHECK_RESULT VkResult
 renderer_submit_queue(struct comp_renderer *r, VkCommandBuffer cmd, VkPipelineStageFlags pipeline_stage_flag)
 {
@@ -684,8 +711,9 @@ renderer_submit_queue(struct comp_renderer *r, VkCommandBuffer cmd, VkPipelineSt
 	struct vk_semaphore_list_signal signal_sems = XRT_STRUCT_INIT;
 	struct vk_submit_info_builder builder = XRT_STRUCT_INIT;
 
-	// Add wait semaphore (present_complete from target).
-	ADD_WAIT(wait_sems, ct->semaphores.present_complete, pipeline_stage_flag, false);
+	if (requires_present_acquire_wait(r)) {
+		ADD_WAIT(wait_sems, ct->semaphores.present_complete, pipeline_stage_flag, false);
+	}
 
 	// Add signal semaphore (render_complete to target).
 	ADD_SIGNAL(signal_sems, ct->semaphores.render_complete, ct->semaphores.render_complete_is_timeline);
@@ -984,6 +1012,7 @@ dispatch_compute(struct comp_renderer *r,
 	// Target Vulkan resources..
 	VkImage target_image = r->c->target->images[r->acquired_buffer].handle;
 	VkImageView target_storage_view = r->c->target->images[r->acquired_buffer].view;
+	VkImageLayout target_final_layout = r->c->target->final_layout;
 
 	// Target view information.
 	struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS];
@@ -1001,6 +1030,7 @@ dispatch_compute(struct comp_renderer *r,
 	    fovs,                            //
 	    target_image,                    //
 	    target_storage_view,             //
+	    target_final_layout,             //
 	    target_viewport_datas);          //
 
 	// Everything is ready, submit to the queue.
