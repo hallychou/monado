@@ -443,12 +443,8 @@ endif()
 
 if(XRT_BUILD_DRIVER_SURVIVE)
 	add_library(
-		drv_survive STATIC
-		survive/survive_driver.c
-		survive/survive_interface.h
-		survive/survive_internal.h
-		survive/survive_vp2.c
-		survive/survive_vp2.h
+		drv_survive STATIC survive/survive_driver.c survive/survive_interface.h
+				   survive/survive_internal.h
 		)
 	target_link_libraries(
 		drv_survive
@@ -459,9 +455,12 @@ if(XRT_BUILD_DRIVER_SURVIVE)
 			aux_math
 			aux_vive
 			drv_includes
-			drv_vp2
 			PkgConfig::SURVIVE
 		)
+	if(XRT_BUILD_DRIVER_VP2)
+		target_link_libraries(drv_survive PRIVATE drv_vp2)
+		target_sources(drv_survive PRIVATE survive/survive_vp2.c survive/survive_vp2.h)
+	endif()
 	list(APPEND ENABLED_HEADSET_DRIVERS survive)
 endif()
 
@@ -576,7 +575,7 @@ if(XRT_BUILD_DRIVER_SIMULAVR)
 	list(APPEND ENABLED_HEADSET_DRIVERS svr)
 endif()
 
-if(XRT_HAVE_HIDAPI AND XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE OR XRT_BUILD_DRIVER_SURVIVE)
+if(XRT_BUILD_DRIVER_VP2)
 	add_library(drv_vp2 STATIC vp2/vp2_hid.c vp2/vp2_hid.h vp2/vp2_config.cpp vp2/vp2_config.h)
 	target_link_libraries(
 		drv_vp2
@@ -608,7 +607,6 @@ if(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE)
 			aux_util
 			aux_math
 			aux_vive
-			drv_vp2
 			drv_includes
 			xrt-interfaces
 			xrt-external-openvr
@@ -616,6 +614,9 @@ if(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE)
 			xrt-external-vdf
 			${CMAKE_DL_LIBS}
 		)
+	if(XRT_BUILD_DRIVER_VP2)
+		target_link_libraries(drv_steamvr_lh PRIVATE drv_vp2)
+	endif()
 	list(APPEND ENABLED_HEADSET_DRIVERS steamvr_lh)
 endif()
 

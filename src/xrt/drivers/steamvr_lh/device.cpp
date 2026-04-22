@@ -28,7 +28,9 @@
 
 #include "vive/vive_poses.h"
 
+#ifdef XRT_BUILD_DRIVER_VP2
 #include "vp2/vp2_config.h"
+#endif
 
 #include "openvr_driver.h"
 
@@ -755,9 +757,11 @@ Device::get_battery_status(bool *out_present, bool *out_charging, float *out_cha
 xrt_result_t
 HmdDevice::get_brightness(float *out_brightness)
 {
+#ifdef XRT_BUILD_DRIVER_VP2
 	if (variant == VIVE_VARIANT_PRO2 && vp2.hid != nullptr) {
 		this->brightness = vp2_get_brightness(vp2.hid);
 	}
+#endif
 
 	*out_brightness = this->brightness;
 	return XRT_SUCCESS;
@@ -766,6 +770,7 @@ HmdDevice::get_brightness(float *out_brightness)
 xrt_result_t
 HmdDevice::set_brightness(float brightness, bool relative)
 {
+#ifdef XRT_BUILD_DRIVER_VP2
 	// Vive Pro 2 has a special command for setting brightness directly on the headset
 	if (variant == VIVE_VARIANT_PRO2 && vp2.hid != nullptr) {
 		brightness = relative ? vp2_get_brightness(vp2.hid) + brightness : brightness;
@@ -780,6 +785,7 @@ HmdDevice::set_brightness(float brightness, bool relative)
 
 		return XRT_SUCCESS;
 	}
+#endif
 
 	constexpr auto min_brightness = 0.2f;
 	constexpr auto max_brightness = 1.5f;
@@ -960,6 +966,7 @@ HmdDevice::get_view_poses(const xrt_vec3 *default_eye_relation,
 xrt_result_t
 HmdDevice::compute_distortion(uint32_t view, float u, float v, xrt_uv_triplet *out_result)
 {
+#ifdef XRT_BUILD_DRIVER_VP2
 	// Vive Pro 2 has it's own special distortion model
 	if (this->variant == VIVE_VARIANT_PRO2 && this->vp2.hid != nullptr) {
 		vp2_config *config = vp2_get_config(this->vp2.hid);
@@ -971,6 +978,7 @@ HmdDevice::compute_distortion(uint32_t view, float u, float v, xrt_uv_triplet *o
 			return XRT_SUCCESS;
 		}
 	}
+#endif
 
 	// Vive Pro 2 has a vertically flipped distortion map.
 	if (this->variant == VIVE_VARIANT_PRO2) {
@@ -1296,6 +1304,7 @@ Device::handle_property_write(const vr::PropertyWrite_t &prop)
 	return handle_generic_property_write(prop);
 }
 
+#ifdef XRT_BUILD_DRIVER_VP2
 bool
 HmdDevice::init_vive_pro_2(struct xrt_prober *xp)
 {
@@ -1360,6 +1369,7 @@ HmdDevice::init_vive_pro_2(struct xrt_prober *xp)
 
 	return ret == 0;
 }
+#endif
 
 vr::ETrackedPropertyError
 HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)

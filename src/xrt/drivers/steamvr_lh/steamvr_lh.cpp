@@ -956,8 +956,14 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out
 
 	// Include the HMD
 	if (svrs->ctx->hmd) {
-		if (svrs->ctx->hmd->variant == VIVE_VARIANT_PRO2 && !svrs->ctx->hmd->init_vive_pro_2(xp)) {
-			U_LOG_IFL_W(level, "Found Vive Pro 2, but failed to initialize.");
+		if (svrs->ctx->hmd->variant == VIVE_VARIANT_PRO2) {
+#ifdef XRT_BUILD_DRIVER_VP2
+			if (!svrs->ctx->hmd->init_vive_pro_2(xp)) {
+				U_LOG_IFL_W(level, "Found Vive Pro 2, but failed to initialize.");
+			}
+#else
+			U_LOG_IFL_W(level, "Found a Vive Pro 2 but the driver is not enabled");
+#endif
 		}
 
 		// Always have a head at index 0 and iterate dev count.

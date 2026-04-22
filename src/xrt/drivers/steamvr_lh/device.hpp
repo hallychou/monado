@@ -16,7 +16,9 @@
 
 #include "vive/vive_common.h"
 
+#ifdef XRT_BUILD_DRIVER_VP2
 #include "vp2/vp2_hid.h"
+#endif
 
 #include "openvr_driver.h"
 
@@ -132,6 +134,7 @@ private:
 	init_chaperone(const std::string &steam_install);
 };
 
+#ifdef XRT_BUILD_DRIVER_VP2
 struct VivePro2Data
 {
 	vp2_hid *hid{nullptr};
@@ -144,6 +147,7 @@ struct VivePro2Data
 		}
 	}
 };
+#endif
 
 class HmdDevice : public Device
 {
@@ -163,9 +167,11 @@ public:
 		float max{1.0f};
 	};
 
+#ifdef XRT_BUILD_DRIVER_VP2
 	struct VivePro2Data vp2
 	{
 	};
+#endif
 
 	HmdDevice(const DeviceBuilder &builder);
 
@@ -206,8 +212,10 @@ public:
 	xrt_result_t
 	get_compositor_info(const struct xrt_device_compositor_mode *mode, struct xrt_device_compositor_info *out_info);
 
+#ifdef XRT_BUILD_DRIVER_VP2
 	bool
 	init_vive_pro_2(struct xrt_prober *xp);
+#endif
 
 private:
 	std::unique_ptr<Parts> hmd_parts{nullptr};
