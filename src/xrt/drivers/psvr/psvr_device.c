@@ -36,6 +36,9 @@
 
 #include "psvr_device.h"
 
+#ifndef XRT_HIDAPI_LIBUSB
+#error "The PSVR driver requires hidapi-libusb"
+#endif
 
 /*
  *
