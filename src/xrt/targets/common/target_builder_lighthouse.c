@@ -406,10 +406,12 @@ valve_index_setup_visual_trackers(struct lighthouse_system *lhs,
 
 	t_stereo_camera_calibration_reference(&stereo_calib, NULL);
 
+#ifdef XRT_BUILD_DRIVER_VIVE
 	if (lhs->driver == DRIVER_VIVE) { // Refresh trackers status in vive driver
 		LH_ASSERT_(vive_head != NULL);
 		vive_set_trackers_status(vive_head, lhs->vive_tstatus);
 	}
+#endif
 
 	// Setup frame graph
 
@@ -472,6 +474,7 @@ stream_data_sources(struct lighthouse_system *lhs,
 
 	uint32_t mode = get_selected_mode(lhs->xfs);
 
+#ifdef XRT_BUILD_DRIVER_VIVE
 	// If SLAM is enabled (only on vive driver) we intercept the data sink
 	if (lhs->vive_tstatus.slam_enabled) {
 		LH_ASSERT_(lhs->driver == DRIVER_VIVE);
@@ -480,6 +483,7 @@ stream_data_sources(struct lighthouse_system *lhs,
 
 		vive_source_hook_into_sinks(vive_head->source, &sinks);
 	}
+#endif
 
 	bool bret = xrt_fs_stream_start(lhs->xfs, sinks.cams[0], XRT_FS_CAPTURE_TYPE_TRACKING, mode);
 	if (!bret) {
