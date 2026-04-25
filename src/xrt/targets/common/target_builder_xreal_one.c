@@ -51,7 +51,7 @@ DEBUG_GET_ONCE_LOG_OPTION(xreal_one_log, "XREAL_ONE_LOG", U_LOGGING_WARN)
 
 static enum u_logging_level xreal_one_log_level;
 
-#define XREAL_ONE_WARN(...)  U_LOG_IFL_W(xreal_one_log_level, __VA_ARGS__)
+#define XREAL_ONE_WARN(...) U_LOG_IFL_W(xreal_one_log_level, __VA_ARGS__)
 #define XREAL_ONE_ERROR(...) U_LOG_IFL_E(xreal_one_log_level, __VA_ARGS__)
 
 static const char *driver_list[] = {
@@ -95,7 +95,7 @@ xreal_one_probe_device(void)
 	struct sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port   = htons(XREAL_ONE_PORT);
+	addr.sin_port = htons(XREAL_ONE_PORT);
 	inet_pton(AF_INET, XREAL_ONE_IP, &addr.sin_addr);
 
 	int ret = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
@@ -107,11 +107,11 @@ xreal_one_probe_device(void)
 	} else if (errno == EINPROGRESS) {
 		// Wait up to PROBE_TIMEOUT_MS for the connection to complete.
 		struct pollfd pfd = {.fd = fd, .events = POLLOUT};
-		int poll_ret      = poll(&pfd, 1, PROBE_TIMEOUT_MS);
+		int poll_ret = poll(&pfd, 1, PROBE_TIMEOUT_MS);
 
 		if (poll_ret > 0 && (pfd.revents & POLLOUT) && !(pfd.revents & POLLERR)) {
 			// Verify there is no pending error on the socket.
-			int sock_err  = 0;
+			int sock_err = 0;
 			socklen_t len = sizeof(sock_err);
 			getsockopt(fd, SOL_SOCKET, SO_ERROR, &sock_err, &len);
 			connected = (sock_err == 0);
@@ -187,12 +187,12 @@ xreal_one_builder_create(void)
 {
 	struct t_builder *ub = U_TYPED_CALLOC(struct t_builder);
 
-	ub->base.estimate_system        = xreal_one_estimate_system;
-	ub->base.open_system            = t_builder_open_system_static_roles;
-	ub->base.destroy                = xreal_one_destroy;
-	ub->base.identifier             = "xreal_one";
-	ub->base.name                   = "XReal One Pro";
-	ub->base.driver_identifiers     = driver_list;
+	ub->base.estimate_system = xreal_one_estimate_system;
+	ub->base.open_system = t_builder_open_system_static_roles;
+	ub->base.destroy = xreal_one_destroy;
+	ub->base.identifier = "xreal_one";
+	ub->base.name = "XReal One Pro";
+	ub->base.driver_identifiers = driver_list;
 	ub->base.driver_identifier_count = ARRAY_SIZE(driver_list);
 
 	ub->open_system_static_roles = xreal_one_open_system_impl;

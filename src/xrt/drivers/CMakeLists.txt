@@ -133,8 +133,7 @@ endif()
 
 if(XRT_BUILD_DRIVER_XREAL_ONE)
 	add_library(
-		drv_xreal_one STATIC xreal_one/xreal_one_interface.h
-				     xreal_one/xreal_one_hmd.h
+		drv_xreal_one STATIC xreal_one/xreal_one_interface.h xreal_one/xreal_one_hmd.h
 				     xreal_one/xreal_one_hmd.c
 		)
 	target_link_libraries(drv_xreal_one PRIVATE xrt-interfaces aux_util aux_math)

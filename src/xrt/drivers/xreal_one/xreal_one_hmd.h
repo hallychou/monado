@@ -20,7 +20,7 @@ extern "C" {
  */
 
 //! IP address of the glasses' USB network interface (RNDIS link-local).
-#define XREAL_ONE_IP   "169.254.2.1"
+#define XREAL_ONE_IP "169.254.2.1"
 
 //! TCP port the glasses' IMU service listens on.
 #define XREAL_ONE_PORT 52998
@@ -62,11 +62,11 @@ extern "C" {
  * verified against hardware captures.
  */
 
-#define XREAL_ONE_HEADER_SIZE     6
+#define XREAL_ONE_HEADER_SIZE 6
 #define XREAL_ONE_SENSOR_MSG_SIZE 6
 
 //! Offset of the first IMU float from the start of the framed message.
-#define XREAL_ONE_IMU_OFFSET       34
+#define XREAL_ONE_IMU_OFFSET 34
 
 //! Offset of the sensor-message ID magic, used for packet validation.
 //! Wire order after IMU block: DATE_INFO (20 bytes) then SENSOR_MSG (6 bytes).

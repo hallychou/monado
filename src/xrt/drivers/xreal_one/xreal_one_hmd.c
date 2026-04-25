@@ -55,8 +55,8 @@
  * mixing the physical yaw and roll signals across the gy/gz wire channels.
  * sin(30°) = 0.5 exactly; cos(30°) = √3/2.
  */
-#define CHIP_SIN 0.50000000f   /* sin(30°) */
-#define CHIP_COS 0.86602540f   /* cos(30°) = √3/2 */
+#define CHIP_SIN 0.50000000f /* sin(30°) */
+#define CHIP_COS 0.86602540f /* cos(30°) = √3/2 */
 
 
 /*
@@ -66,8 +66,8 @@
  */
 
 #define XREAL_ONE_DEBUG(hmd, ...) U_LOG_XDEV_IFL_D(&hmd->base, hmd->log_level, __VA_ARGS__)
-#define XREAL_ONE_INFO(hmd, ...)  U_LOG_XDEV_IFL_I(&hmd->base, hmd->log_level, __VA_ARGS__)
-#define XREAL_ONE_WARN(hmd, ...)  U_LOG_XDEV_IFL_W(&hmd->base, hmd->log_level, __VA_ARGS__)
+#define XREAL_ONE_INFO(hmd, ...) U_LOG_XDEV_IFL_I(&hmd->base, hmd->log_level, __VA_ARGS__)
+#define XREAL_ONE_WARN(hmd, ...) U_LOG_XDEV_IFL_W(&hmd->base, hmd->log_level, __VA_ARGS__)
 #define XREAL_ONE_ERROR(hmd, ...) U_LOG_XDEV_IFL_E(&hmd->base, hmd->log_level, __VA_ARGS__)
 
 
@@ -77,7 +77,7 @@
  *
  */
 
-const uint8_t XREAL_ONE_HEADER_MAGIC[XREAL_ONE_HEADER_SIZE]         = {0x27, 0x36, 0x00, 0x00, 0x00, 0x80};
+const uint8_t XREAL_ONE_HEADER_MAGIC[XREAL_ONE_HEADER_SIZE] = {0x27, 0x36, 0x00, 0x00, 0x00, 0x80};
 const uint8_t XREAL_ONE_SENSOR_MSG_MAGIC[XREAL_ONE_SENSOR_MSG_SIZE] = {0x00, 0x40, 0x1F, 0x00, 0x00, 0x40};
 
 /*
@@ -267,10 +267,10 @@ update_fusion_locked(struct xreal_one_hmd *hmd, const struct xreal_one_parsed_sa
 	    .z = -(CHIP_SIN * s->ay + CHIP_COS * s->ax),
 	};
 
-	hmd->read.raw_gyro  = (struct xrt_vec3){s->gx, s->gy, s->gz};
+	hmd->read.raw_gyro = (struct xrt_vec3){s->gx, s->gy, s->gz};
 	hmd->read.raw_accel = (struct xrt_vec3){s->ax, s->ay, s->az};
-	hmd->read.gyro      = gyro;
-	hmd->read.accel     = accel;
+	hmd->read.gyro = gyro;
+	hmd->read.accel = accel;
 
 	m_imu_3dof_update(&hmd->fusion, timestamp_ns, &accel, &gyro);
 }
@@ -355,8 +355,8 @@ process_recv_buffer(struct xreal_one_hmd *hmd, uint8_t *buf, size_t len)
 		consumed += (size_t)h1;
 
 		// Find the start of the next message (which marks the end of this one).
-		ssize_t h2 = find_header(buf + consumed + XREAL_ONE_HEADER_SIZE,
-		                          len - consumed - XREAL_ONE_HEADER_SIZE);
+		ssize_t h2 =
+		    find_header(buf + consumed + XREAL_ONE_HEADER_SIZE, len - consumed - XREAL_ONE_HEADER_SIZE);
 		if (h2 < 0) {
 			// Current message not yet fully received — wait for more data.
 			break;
@@ -364,7 +364,7 @@ process_recv_buffer(struct xreal_one_hmd *hmd, uint8_t *buf, size_t len)
 
 		// Message = buf[consumed .. consumed+HEADER_SIZE+h2)
 		size_t msg_start = consumed;
-		size_t msg_len   = (size_t)XREAL_ONE_HEADER_SIZE + (size_t)h2;
+		size_t msg_len = (size_t)XREAL_ONE_HEADER_SIZE + (size_t)h2;
 
 		struct xreal_one_parsed_sample sample;
 		if (xreal_one_parse_message(buf + msg_start, msg_len, &sample)) {
@@ -377,11 +377,11 @@ process_recv_buffer(struct xreal_one_hmd *hmd, uint8_t *buf, size_t len)
 				XREAL_ONE_DEBUG(hmd,
 				                "Dropped malformed message (%zu bytes); "
 				                "bytes@%d: %02x %02x %02x %02x %02x %02x",
-				                msg_len, XREAL_ONE_SENSOR_MSG_OFFSET,
-				                at[0], at[1], at[2], at[3], at[4], at[5]);
+				                msg_len, XREAL_ONE_SENSOR_MSG_OFFSET, at[0], at[1], at[2], at[3], at[4],
+				                at[5]);
 			} else {
-				XREAL_ONE_DEBUG(hmd, "Dropped short message (%zu bytes, need %d)",
-				                msg_len, XREAL_ONE_MIN_MSG_LEN);
+				XREAL_ONE_DEBUG(hmd, "Dropped short message (%zu bytes, need %d)", msg_len,
+				                XREAL_ONE_MIN_MSG_LEN);
 			}
 		}
 
@@ -422,7 +422,7 @@ tcp_connect(struct xreal_one_hmd *hmd)
 	struct sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port   = htons(XREAL_ONE_PORT);
+	addr.sin_port = htons(XREAL_ONE_PORT);
 	if (inet_pton(AF_INET, XREAL_ONE_IP, &addr.sin_addr) != 1) {
 		XREAL_ONE_ERROR(hmd, "inet_pton() failed for " XREAL_ONE_IP);
 		close(fd);
@@ -446,8 +446,8 @@ read_thread(void *ptr)
 
 	struct xreal_one_hmd *hmd = (struct xreal_one_hmd *)ptr;
 
-	uint8_t  recv_buf[RECV_BUF_SIZE];
-	size_t   recv_buf_len = 0;
+	uint8_t recv_buf[RECV_BUF_SIZE];
+	size_t recv_buf_len = 0;
 
 	while (true) {
 		os_thread_helper_lock(&hmd->oth);
@@ -465,8 +465,8 @@ read_thread(void *ptr)
 			continue;
 		}
 
-		hmd->sock_fd  = fd;
-		recv_buf_len  = 0;
+		hmd->sock_fd = fd;
+		recv_buf_len = 0;
 
 		// Glasses stream IMU at ~1000 Hz; if we go 3s without a byte the
 		// link is dead (e.g. RNDIS interface cycled) even though the kernel
@@ -488,7 +488,7 @@ read_thread(void *ptr)
 				// Drop everything and start fresh.
 				XREAL_ONE_WARN(hmd, "Receive buffer full, resetting");
 				recv_buf_len = 0;
-				space        = RECV_BUF_SIZE;
+				space = RECV_BUF_SIZE;
 			}
 
 			ssize_t n = recv(fd, recv_buf + recv_buf_len, space, 0);
@@ -564,7 +564,7 @@ xreal_one_hmd_get_tracked_pose(struct xrt_device *xdev,
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT);
 
 	struct xrt_space_relation relation = XRT_SPACE_RELATION_ZERO;
-	relation.relation_flags            = flags;
+	relation.relation_flags = flags;
 
 	m_relation_history_get(hmd->relation_hist, at_timestamp_ns, &relation);
 	relation.relation_flags = flags; // Restore after history_get.
@@ -673,21 +673,21 @@ xreal_one_hmd_create_device(enum u_logging_level log_level)
 	struct xreal_one_hmd *hmd = U_DEVICE_ALLOCATE(struct xreal_one_hmd, flags, 1, 0);
 
 	hmd->log_level = log_level;
-	hmd->sock_fd   = -1;
+	hmd->sock_fd = -1;
 
-	hmd->base.update_inputs    = xreal_one_hmd_update_inputs;
+	hmd->base.update_inputs = xreal_one_hmd_update_inputs;
 	hmd->base.get_tracked_pose = xreal_one_hmd_get_tracked_pose;
-	hmd->base.get_view_poses   = u_device_get_view_poses;
+	hmd->base.get_view_poses = u_device_get_view_poses;
 	hmd->base.compute_distortion = u_distortion_mesh_none;
-	hmd->base.destroy          = xreal_one_hmd_destroy;
+	hmd->base.destroy = xreal_one_hmd_destroy;
 
-	hmd->base.name                          = XRT_DEVICE_GENERIC_HMD;
-	hmd->base.device_type                   = XRT_DEVICE_TYPE_HMD;
-	hmd->base.inputs[0].name               = XRT_INPUT_GENERIC_HEAD_POSE;
+	hmd->base.name = XRT_DEVICE_GENERIC_HMD;
+	hmd->base.device_type = XRT_DEVICE_TYPE_HMD;
+	hmd->base.inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;
 	hmd->base.supported.orientation_tracking = true;
-	hmd->base.supported.position_tracking    = false;
+	hmd->base.supported.position_tracking = false;
 
-	snprintf(hmd->base.str,    XRT_DEVICE_NAME_LEN, "XReal One Pro");
+	snprintf(hmd->base.str, XRT_DEVICE_NAME_LEN, "XReal One Pro");
 	snprintf(hmd->base.serial, XRT_DEVICE_NAME_LEN, "XReal One Pro");
 
 	// Init synchronisation primitives before any possible teardown path.
@@ -712,10 +712,10 @@ xreal_one_hmd_create_device(enum u_logging_level log_level)
 
 	// Debug UI variables.
 	u_var_add_root(hmd, "XReal One Pro", true);
-	u_var_add_ro_vec3_f32(hmd, &hmd->read.raw_gyro,  "raw.gyro  (gx,gy,gz rad/s)");
+	u_var_add_ro_vec3_f32(hmd, &hmd->read.raw_gyro, "raw.gyro  (gx,gy,gz rad/s)");
 	u_var_add_ro_vec3_f32(hmd, &hmd->read.raw_accel, "raw.accel (ax,ay,az g)");
-	u_var_add_ro_vec3_f32(hmd, &hmd->read.gyro,      "mapped.gyro  (rad/s, Monado frame)");
-	u_var_add_ro_vec3_f32(hmd, &hmd->read.accel,     "mapped.accel (m/s², Monado frame)");
+	u_var_add_ro_vec3_f32(hmd, &hmd->read.gyro, "mapped.gyro  (rad/s, Monado frame)");
+	u_var_add_ro_vec3_f32(hmd, &hmd->read.accel, "mapped.accel (m/s², Monado frame)");
 	u_var_add_log_level(hmd, &hmd->log_level, "Log level");
 	m_imu_3dof_add_vars(&hmd->fusion, hmd, "Fusion");
 
