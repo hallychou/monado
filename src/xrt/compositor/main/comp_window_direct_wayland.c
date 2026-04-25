@@ -29,6 +29,7 @@
 #endif
 
 DEBUG_GET_ONCE_OPTION(requested_connector, "XRT_COMPOSITOR_WAYLAND_CONNECTOR", NULL)
+DEBUG_GET_ONCE_OPTION(requested_device_path, "XRT_COMPOSITOR_WAYLAND_DEVICE_PATH", NULL)
 
 struct direct_wayland_lease
 {
@@ -57,6 +58,7 @@ struct direct_wayland_lease_device
 	int drm_fd;
 	char *path;
 	bool done;
+	int score;
 	struct wp_drm_lease_device_v1 *device;
 	struct direct_wayland_lease_connector *connectors;
 	struct direct_wayland_lease_device *next;
@@ -296,6 +298,18 @@ static const struct wp_drm_lease_connector_v1_listener lease_connector_listener 
     .withdrawn = _lease_connector_withdrawn,
 };
 
+static const char *
+_drm_bus_type_to_string(int drm_bus_type)
+{
+	switch (drm_bus_type) {
+	case DRM_BUS_PCI: return "PCI";
+	case DRM_BUS_USB: return "USB";
+	case DRM_BUS_PLATFORM: return "Platform";
+	case DRM_BUS_HOST1X: return "Host1X";
+	default: return "Unknown";
+	}
+}
+
 static void
 _drm_lease_device_drm_fd(void *data, struct wp_drm_lease_device_v1 *drm_lease_device, int fd)
 {
@@ -303,6 +317,42 @@ _drm_lease_device_drm_fd(void *data, struct wp_drm_lease_device_v1 *drm_lease_de
 	dev->drm_fd = fd;
 	dev->path = drmGetDeviceNameFromFd2(fd);
 	COMP_INFO(dev->w->base.base.c, "Available DRM lease device: %s", dev->path);
+
+	// Spit out some information about the DRM lease device for debugging
+	// purposes, and assign a score based on properties of the DRM device.
+
+	drmDevicePtr device_info = NULL;
+	drmGetDevice(fd, &device_info);
+	if (device_info->bustype == DRM_BUS_PCI) {
+		uint16_t vendor_id = device_info->deviceinfo.pci->vendor_id;
+		uint16_t device_id = device_info->deviceinfo.pci->device_id;
+		COMP_DEBUG(dev->w->base.base.c, "	PCI: [%04x:%02x:%02x.%x] %04x:%04x",
+		           device_info->businfo.pci->domain, device_info->businfo.pci->bus,
+		           device_info->businfo.pci->dev, device_info->businfo.pci->func, vendor_id, device_id);
+		// Assign a higher score to PCI devices from known vendors:
+		switch (vendor_id) {
+		case 0x10de:
+			// NVidia -- most likely a discrete gpu
+			dev->score += 100;
+			break;
+		case 0x1002:
+			// AMD / ATI -- possibly a discrete gpu but could be integrated
+			dev->score += 50;
+			break;
+		}
+	} else {
+		COMP_DEBUG(dev->w->base.base.c, "  on bus: %s", _drm_bus_type_to_string(device_info->bustype));
+	}
+
+	// If this specific device was requested, significantly boost the device score
+
+	const char *requested_device_path = debug_get_option_requested_device_path();
+	if (requested_device_path && !strcmp(dev->path, requested_device_path)) {
+		COMP_INFO(dev->w->base.base.c, "  (requested via debug option)");
+		dev->score += 1000;
+	}
+
+	COMP_DEBUG(dev->w->base.base.c, "  Score: %d", dev->score);
 }
 
 static void
@@ -374,9 +424,9 @@ static const struct wl_registry_listener registry_listener = {
     .global_remove = _registry_global_remove_cb,
 };
 
-// Find the connector matching name, return the first available if no match
+// Find the connector matching name, return the best available if no match
 static bool
-get_named_connector_or_first(struct comp_window_direct_wayland *w, const char *name)
+get_named_connector_or_best_effort(struct comp_window_direct_wayland *w, const char *name)
 {
 	struct direct_wayland_lease_device *dev = w->devices;
 	struct direct_wayland_lease_connector *conn = NULL;
@@ -387,19 +437,18 @@ get_named_connector_or_first(struct comp_window_direct_wayland *w, const char *n
 			continue;
 		}
 		if (dev->connectors) {
-			/* Use the first connector available as default */
-			if (!w->selected_connector) {
+			/* Use the highest scored connector available as default */
+			if (!w->selected_connector || dev->score > w->selected_device->score) {
 				w->selected_device = dev;
 				w->selected_connector = dev->connectors;
-				if (!name) {
-					return false;
-				}
 			}
 
 			// If no connector is chosen, we're done.
 			conn = dev->connectors;
 			while (conn) {
-				if (!strcmp(name, conn->name)) {
+				// If we spot the requested connector name, stop comparing scores and
+				// just return it.
+				if (name && !strcmp(name, conn->name)) {
 					w->selected_device = dev;
 					w->selected_connector = conn;
 					return true;
@@ -437,10 +486,10 @@ comp_window_direct_wayland_init(struct comp_target *w)
 	if (requested_connector) {
 		COMP_INFO(w->c, "Requesting connector %s", requested_connector);
 	} else {
-		COMP_INFO(w->c, "No connector was chosen, will use first available connector");
+		COMP_INFO(w->c, "No connector was requested, will use best available connector");
 	}
 
-	bool found = get_named_connector_or_first(w_wayland, requested_connector);
+	bool found = get_named_connector_or_best_effort(w_wayland, requested_connector);
 
 	if (!w_wayland->selected_connector) {
 		COMP_INFO(w->c, "Found no connectors available for direct mode");
@@ -449,7 +498,7 @@ comp_window_direct_wayland_init(struct comp_target *w)
 
 	// Inform when chosen connector was not found
 	if (requested_connector && !found) {
-		COMP_WARN(w->c, "Could not find requested connector %s, selected first available connector %s",
+		COMP_WARN(w->c, "Could not find requested connector %s, selected best available connector %s",
 		          requested_connector, w_wayland->selected_connector->name);
 	}
 
