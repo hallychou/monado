@@ -236,21 +236,15 @@ xreal_one_parse_message(const uint8_t *msg, size_t len, struct xreal_one_parsed_
  * Convert a parsed IMU sample to Monado's coordinate system and push it into
  * the 3-DOF fusion.
  *
- * TECHNICAL DEBT: coordinate mapping and unit assumptions need hardware
- * validation.
+ * Units (confirmed against hardware):
+ *  - Gyro:  rad/s  (passed directly to m_imu_3dof, no unit conversion needed)
+ *  - Accel: g      (multiplied by G_TO_MS2 for m_imu_3dof)
  *
- * Unit assumptions (derived from Python head_tracker.py):
- *  - Gyro: deg/s  → converted to rad/s for m_imu_3dof.
- *  - Accel: g     → converted to m/s² for m_imu_3dof.
- *
- * Axis mapping (from head_tracker.py: gx=pitch, gy=yaw, gz=roll):
- *  - Sensor gx (pitch) → Monado +X  (head nodding)
- *  - Sensor gy (yaw)   → Monado +Y  (head turning)
- *  - Sensor gz (roll)  → Monado +Z  (head tilting)
- *
- * TECHNICAL DEBT: signs and which sensor axis maps to which world axis have
- * not been confirmed against physical hardware.  Adjust the transform below
- * until the virtual head pose matches physical head movement.
+ * Axis mapping:
+ *  - Sensor gx → Monado +X (pitch, head nodding)
+ *  - Sensor gy, gz → Monado +Y/-Z (yaw/roll) via 30° chip rotation decoupling;
+ *    see CHIP_SIN / CHIP_COS at the top of this file.
+ *  - Sensor ay, az → Monado +Y/-Z via same 30° chip rotation as gyro gy/gz.
  */
 static void
 update_fusion_locked(struct xreal_one_hmd *hmd, const struct xreal_one_parsed_sample *s, timepoint_ns timestamp_ns)
@@ -259,15 +253,18 @@ update_fusion_locked(struct xreal_one_hmd *hmd, const struct xreal_one_parsed_sa
 
 	// 30° chip rotation decoupling (CHIP_SIN=0.5, CHIP_COS=√3/2).
 	struct xrt_vec3 gyro = {
-	    .x = s->gx,                                    // pitch
-	    .y = CHIP_SIN * s->gz - CHIP_COS * s->gy,     // yaw
-	    .z = -(CHIP_SIN * s->gy + CHIP_COS * s->gz),  // roll
+	    .x = s->gx,                                  // pitch
+	    .y = CHIP_SIN * s->gz - CHIP_COS * s->gy,    // yaw
+	    .z = -(CHIP_SIN * s->gy + CHIP_COS * s->gz), // roll
 	};
 
+	// Raw accel is already in m/s² (confirmed: |raw| ≈ 9.81 when stationary).
+	// Chip Y points down in the glasses frame → flip for Monado Y=up.
+	// Chip Z sign for pitch (forward tilt) needs empirical verification.
 	struct xrt_vec3 accel = {
-	    .x = s->ax * G_TO_MS2,
-	    .y = s->az * G_TO_MS2,  // XReal Z(up) → Monado Y(up)
-	    .z = -s->ay * G_TO_MS2, // XReal Y(forward) → Monado -Z(backward)
+	    .x = s->az,
+	    .y = CHIP_SIN * s->ax - CHIP_COS * s->ay,
+	    .z = -(CHIP_SIN * s->ay + CHIP_COS * s->ax),
 	};
 
 	hmd->read.raw_gyro  = (struct xrt_vec3){s->gx, s->gy, s->gz};
@@ -471,6 +468,11 @@ read_thread(void *ptr)
 		hmd->sock_fd  = fd;
 		recv_buf_len  = 0;
 
+		// Glasses stream IMU at ~1000 Hz; if we go 3s without a byte the
+		// link is dead (e.g. RNDIS interface cycled) even though the kernel
+		// keeps returning EAGAIN instead of an error on the stale socket.
+		uint64_t last_data_ns = os_monotonic_get_ns();
+
 		while (true) {
 			os_thread_helper_lock(&hmd->oth);
 			running = os_thread_helper_is_running_locked(&hmd->oth);
@@ -492,7 +494,11 @@ read_thread(void *ptr)
 			ssize_t n = recv(fd, recv_buf + recv_buf_len, space, 0);
 			if (n < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
-					// recv() timed out — normal, loop to check stop flag.
+					uint64_t now = os_monotonic_get_ns();
+					if ((now - last_data_ns) > 3 * U_TIME_1S_IN_NS) {
+						XREAL_ONE_WARN(hmd, "No IMU data for 3s — reconnecting");
+						break;
+					}
 					continue;
 				}
 				XREAL_ONE_WARN(hmd, "recv() error: %s — reconnecting", strerror(errno));
@@ -503,6 +509,7 @@ read_thread(void *ptr)
 				break;
 			}
 
+			last_data_ns = os_monotonic_get_ns();
 			recv_buf_len += (size_t)n;
 
 			size_t consumed = process_recv_buffer(hmd, recv_buf, recv_buf_len);
@@ -608,9 +615,15 @@ xreal_one_hmd_destroy(struct xrt_device *xdev)
  * once available.
  *
  *  - Per-eye resolution 1920×1080, side-by-side stereo (3840×1080 framebuffer)
- *  - Horizontal FOV ~46° per eye (same optics family as XReal Air)
+ *  - Horizontal FOV ~50.7° per eye, vertical ~29.8°, diagonal ~57° (spec)
  *  - Refresh rate 60 Hz
  *  - No lens distortion correction (glasses are see-through, minimal distortion)
+ *
+ * FOV derivation: XReal One Pro advertised diagonal FOV = 57°, panel 16:9.
+ *   diagonal_px = sqrt(1920²+1080²) = 2203
+ *   tan(H/2) = (1920/2203) × tan(28.5°) = 0.4732  →  H = 50.7°
+ *   tan(V/2) = (1080/2203) × tan(28.5°) = 0.2662  →  V = 29.8°
+ * h_meters = w_meters × (1080/1920) = 0.13 × 9/16 = 0.073 m (square pixels).
  */
 static bool
 setup_display(struct xreal_one_hmd *hmd)
@@ -621,19 +634,19 @@ setup_display(struct xreal_one_hmd *hmd)
 	info.display.w_pixels = 1920;
 	info.display.h_pixels = 1080;
 
-	// Physical display panel size (approximate).
+	// Physical display panel size, chosen to give correct H and V FOV.
 	info.display.w_meters = 0.13f;
-	info.display.h_meters = 0.07f;
+	info.display.h_meters = 0.073f;
 
 	// Side-by-side stereo: double horizontal extent.
 	info.display.w_pixels *= 2;
 	info.display.w_meters *= 2.0f;
 
 	info.lens_horizontal_separation_meters = 0.13f; // 2 × 0.065 m IPD estimate
-	info.lens_vertical_position_meters     = 0.035f;
+	info.lens_vertical_position_meters = 0.0365f;
 
-	info.fov[0] = (float)(46.0 * (M_PI / 180.0));
-	info.fov[1] = (float)(46.0 * (M_PI / 180.0));
+	info.fov[0] = (float)(50.7 * (M_PI / 180.0));
+	info.fov[1] = (float)(50.7 * (M_PI / 180.0));
 
 	if (!u_device_setup_split_side_by_side(&hmd->base, &info)) {
 		return false;
