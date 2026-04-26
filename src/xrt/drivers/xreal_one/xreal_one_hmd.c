@@ -494,7 +494,7 @@ read_thread(void *ptr)
 			if (n < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
 					uint64_t now = os_monotonic_get_ns();
-					if ((now - last_data_ns) > 3 * U_TIME_1S_IN_NS) {
+					if ((now - last_data_ns) / U_TIME_1S_IN_NS > 3u) {
 						XREAL_ONE_WARN(hmd, "No IMU data for 3s — reconnecting");
 						break;
 					}
