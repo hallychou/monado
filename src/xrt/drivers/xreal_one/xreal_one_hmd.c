@@ -238,7 +238,7 @@ xreal_one_parse_message(const uint8_t *msg, size_t len, struct xreal_one_parsed_
  *
  * Units (confirmed against hardware):
  *  - Gyro:  rad/s  (passed directly to m_imu_3dof, no unit conversion needed)
- *  - Accel: g      (multiplied by G_TO_MS2 for m_imu_3dof)
+ *  - Accel: g      (passed directly to m_imu_3dof, no unit conversion needed)
  *
  * Axis mapping:
  *  - Sensor gx → Monado +X (pitch, head nodding)
@@ -249,7 +249,6 @@ xreal_one_parse_message(const uint8_t *msg, size_t len, struct xreal_one_parsed_
 static void
 update_fusion_locked(struct xreal_one_hmd *hmd, const struct xreal_one_parsed_sample *s, timepoint_ns timestamp_ns)
 {
-	const float G_TO_MS2 = 9.80665f;
 
 	// 30° chip rotation decoupling (CHIP_SIN=0.5, CHIP_COS=√3/2).
 	struct xrt_vec3 gyro = {
