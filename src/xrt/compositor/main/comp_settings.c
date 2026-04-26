@@ -37,6 +37,7 @@ DEBUG_GET_ONCE_NUM_OPTION(xcb_display, "XRT_COMPOSITOR_XCB_DISPLAY", -1)
 DEBUG_GET_ONCE_NUM_OPTION(default_framerate, "XRT_COMPOSITOR_DEFAULT_FRAMERATE", 60)
 DEBUG_GET_ONCE_BOOL_OPTION(compute, "XRT_COMPOSITOR_COMPUTE", USE_COMPUTE_DEFAULT)
 DEBUG_GET_ONCE_BOOL_OPTION(disable_gfx_strip_render, "XRT_COMPOSITOR_DISABLE_GFX_STRIP_RENDERING", false)
+DEBUG_GET_ONCE_BOOL_OPTION(single_pose_for_all_strips, "XRT_COMPOSITOR_SINGLE_POSE_FOR_ALL_STRIPS", false)
 // clang-format on
 
 static inline void
@@ -174,7 +175,8 @@ comp_settings_init(struct comp_settings *s, struct xrt_device *xdev)
 	s->client_gpu_index = debug_get_num_option_force_client_gpu_index();
 	s->desired_mode = debug_get_num_option_desired_mode();
 	s->viewport_scale = debug_get_num_option_scale_percentage() / 100.0;
-	s->disable_gfx_strip_render = debug_get_bool_option_disable_gfx_strip_render();
+	s->gfx_strip_render.disable = debug_get_bool_option_disable_gfx_strip_render();
+	s->gfx_strip_render.single_pose_for_all_strips = debug_get_bool_option_single_pose_for_all_strips();
 
 	s->nvidia_display = debug_get_option_nvidia_display();
 	if (debug_get_bool_option_force_nvidia()) {

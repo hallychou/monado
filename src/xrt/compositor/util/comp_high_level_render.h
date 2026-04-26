@@ -88,17 +88,62 @@ chl_frame_state_fini(struct chl_frame_state *state);
  */
 
 /*!
+ * Variant of @ref chl_frame_state_gfx_set_views that takes distinct begin,
+ * end, and squash poses per view. Used by strip rendering: the mesh shader
+ * blends between begin and end for intra-strip timewarp, and
+ * @c crg_distortion_after_squash uses the squash pose as the warp source.
+ *
+ * @memberof chl_frame_state
+ */
+void
+chl_frame_state_gfx_set_views_scanout_range(struct chl_frame_state *frame_state,
+                                            const struct xrt_pose world_pose_scanout_begin[XRT_MAX_VIEWS],
+                                            const struct xrt_pose world_pose_scanout_end[XRT_MAX_VIEWS],
+                                            const struct xrt_pose world_pose_squash[XRT_MAX_VIEWS],
+                                            const struct xrt_pose eye_pose[XRT_MAX_VIEWS],
+                                            const struct xrt_fov fov[XRT_MAX_VIEWS],
+                                            uint32_t layer_count);
+
+/*!
  * Sets all the needed state to run the layer squasher to the scratch images,
  * this is the graphics version.
  *
  * @memberof chl_frame_state
  */
-void
+static inline void
 chl_frame_state_gfx_set_views(struct chl_frame_state *frame_state,
                               const struct xrt_pose world_pose[XRT_MAX_VIEWS],
-                              const struct xrt_pose eye_pose[XRT_MAX_VIEWS],
-                              const struct xrt_fov fov[XRT_MAX_VIEWS],
-                              uint32_t layer_count);
+                              const struct xrt_pose eye_poses[XRT_MAX_VIEWS],
+                              const struct xrt_fov fovs[XRT_MAX_VIEWS],
+                              uint32_t layer_count)
+{
+	chl_frame_state_gfx_set_views_scanout_range( //
+	    frame_state,                             //
+	    world_pose,                              //
+	    world_pose,                              //
+	    world_pose,                              //
+	    eye_poses,                               //
+	    fovs,                                    //
+	    layer_count);                            //
+}
+
+/*!
+ * Adds the needed information to also perform a distortion step, reuses some
+ * information from the _set_views call and as such this needs to be called
+ * before calling this function. This is the graphics version.
+ *
+ * This is a variant of @ref chl_frame_state_gfx_set_target[_scissored] used for strip-rendering.
+ *
+ * @memberof chl_frame_state
+ */
+void
+chl_frame_state_gfx_set_target_stripped(struct chl_frame_state *frame_state,
+                                        struct render_gfx_target_resources *target_rtr,
+                                        uint32_t scan_axis,
+                                        const struct xrt_normalized_rect *strip_range_ndc,
+                                        const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS],
+                                        const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
+                                        const render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS]);
 
 /*!
  * Adds the needed information to also perform a distortion step, reuses some
@@ -109,12 +154,27 @@ chl_frame_state_gfx_set_views(struct chl_frame_state *frame_state,
  *
  * @memberof chl_frame_state
  */
-void
+static inline void
 chl_frame_state_gfx_set_target_scissored(struct chl_frame_state *frame_state,
                                          struct render_gfx_target_resources *target_rtr,
                                          const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS],
                                          const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
-                                         const render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS]);
+                                         const render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS])
+{
+	const struct xrt_normalized_rect full_view_ndc = {
+	    .x = -1.0f,
+	    .y = 2.0f,
+	    .w = 0.0f,
+	    .h = 0.0f,
+	};
+	chl_frame_state_gfx_set_target_stripped(frame_state,           //
+	                                        target_rtr,            //
+	                                        0,                     // scan_axis
+	                                        &full_view_ndc,        //
+	                                        vertex_rots,           //
+	                                        target_viewport_datas, //
+	                                        target_scissor_datas); //
+}
 
 /*!
  * Adds the needed information to also perform a distortion step, reuses some

@@ -533,17 +533,25 @@ crg_distortion_common(struct render_gfx *render,
 		struct render_gfx_mesh_ubo_data data = {
 		    .vertex_rot = d->views[i].target.gfx.vertex_rot,
 		    .post_transform = md->views[i].src_norm_rect,
+		    .strip_range_ndc = d->target.gfx.strip_range_ndc,
+		    .scan_axis = d->target.gfx.scan_axis,
 		};
 
 		// Extra arguments for timewarp.
 		if (do_timewarp) {
 			data.pre_transform = d->views[i].pre_transform;
 
+			render_calc_time_warp_matrix(                //
+			    &md->views[i].src_pose,                  //
+			    &md->views[i].src_fov,                   //
+			    &d->views[i].world_pose_scanout_begin,   //
+			    &data.transform_timewarp_scanout_begin); //
+
 			render_calc_time_warp_matrix(              //
 			    &md->views[i].src_pose,                //
 			    &md->views[i].src_fov,                 //
-			    &d->views[i].world_pose_scanout_begin, //
-			    &data.transform);                      //
+			    &d->views[i].world_pose_scanout_end,   //
+			    &data.transform_timewarp_scanout_end); //
 		}
 
 		ret = render_gfx_mesh_alloc_and_write( //
@@ -607,7 +615,7 @@ crg_distortion_after_squash(struct render_gfx *render, const struct comp_render_
 
 	struct gfx_mesh_data md = XRT_STRUCT_INIT;
 	for (uint32_t i = 0; i < d->target.view_count; i++) {
-		struct xrt_pose src_pose = d->views[i].world_pose_scanout_begin;
+		struct xrt_pose src_pose = d->views[i].world_pose_squash;
 		struct xrt_fov src_fov = d->views[i].fov;
 		VkImageView src_image_view = d->views[i].squash_as_src.sample_view;
 		struct xrt_normalized_rect src_norm_rect = d->views[i].squash_as_src.norm_rect;
@@ -622,7 +630,6 @@ crg_distortion_after_squash(struct render_gfx *render, const struct comp_render_
 		    src_image_view);       //
 	}
 
-	// We are passing in the same old and new poses.
 	crg_distortion_common( //
 	    render,            //
 	    do_timewarp,       //

@@ -915,7 +915,31 @@ struct render_gfx_mesh_ubo_data
 
 	// Only used for timewarp.
 	struct xrt_normalized_rect pre_transform;
-	struct xrt_matrix_4x4 transform;
+
+	struct xrt_matrix_4x4 transform_timewarp_scanout_begin;
+	struct xrt_matrix_4x4 transform_timewarp_scanout_end;
+
+	/*!
+	 * For strip rendering, current strip extents
+	 * on the scan axis in NDC:
+	 *     * strip_range.x = ndc min,
+	 *     * strip_range.y = ndc extent,
+	 *     * strip_range.zw is unused.
+	 *
+	 * Used by the mesh.vert to derive the per-vertex
+	 * strip blend factor.
+	 */
+	struct xrt_normalized_rect strip_range_ndc;
+
+	/*!
+	 * For strip rendering, picks which NDC component the
+	 * mesh.vert uses for the strip blend factor.
+	 *
+	 * Valid values:
+	 *     * 0 = y (top-to-bottom scan),
+	 *     * 1 = x (left-to-right scan).
+	 */
+	uint32_t scan_axis;
 };
 
 /*!

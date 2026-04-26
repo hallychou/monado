@@ -86,6 +86,8 @@ DEBUG_GET_ONCE_LOG_OPTION(comp_frame_lag_level, "XRT_COMP_FRAME_LAG_LOG_AS_LEVEL
 		}                                                                                                      \
 	} while (false)
 
+#define COMP_RENDERER_MAX_STRIP_POSES 16
+
 
 /*
  *
@@ -169,6 +171,17 @@ struct comp_renderer
 	 * subsequents present waits are redundant and can be skipped.
 	 */
 	bool shared_present_semaphore_wait_once;
+
+	/*!
+	 * List of strip boundary world poses for strip rendering.
+	 *
+	 * The entries will filled as:
+	 *   @ref world_strip_boundary_poses[X] is the begin strip pose.
+	 *   @ref world_strip_boundary_poses[X+1] is the end strip pose.
+	 *
+	 * The boundary pose is shared between strip X's end and strip X+1's begin.
+	 */
+	struct xrt_pose world_strip_boundary_poses[COMP_RENDERER_MAX_STRIP_POSES][XRT_MAX_VIEWS];
 
 	VkResult (*dispatch_graphics)(struct comp_renderer *r,
 	                              struct render_gfx *render,
@@ -341,6 +354,22 @@ calc_strip_view_scissors(uint32_t view_count,
 		    .w = x1 > x0 ? x1 - x0 : 0,
 		    .h = y1 > y0 ? y1 - y0 : 0,
 		};
+	}
+}
+
+static inline void
+calc_strip_ndc_range(const VkRect2D *strip_render_area,
+                     const VkExtent2D *target_extent,
+                     uint32_t scan_axis,
+                     struct xrt_normalized_rect *out_strip_range)
+{
+	*out_strip_range = (struct xrt_normalized_rect)XRT_STRUCT_INIT;
+	if (scan_axis == 0u) {
+		out_strip_range->x = 2.0f * (float)strip_render_area->offset.y / (float)target_extent->height - 1.0f;
+		out_strip_range->y = 2.0f * (float)strip_render_area->extent.height / (float)target_extent->height;
+	} else {
+		out_strip_range->x = 2.0f * (float)strip_render_area->offset.x / (float)target_extent->width - 1.0f;
+		out_strip_range->y = 2.0f * (float)strip_render_area->extent.width / (float)target_extent->width;
 	}
 }
 
@@ -559,6 +588,77 @@ calc_pose_data(struct comp_renderer *r,
 	                              view_count);             //
 }
 
+/*!
+ * @brief Per-strip boundary poses for blended intra-strip timewarping.
+ *
+ * @param[out] out_world_strip_boundary_poses is expected to be of size [strip_count + 1][XRT_MAX_VIEWS],
+ *             where the entries will filled as:
+ *               @ref out_world_strip_boundary_poses[X] is the begin strip pose.
+ *               @ref out_world_strip_boundary_poses[X+1] is the end strip pose.
+ *
+ *              The boundary pose is shared between strip X's end and strip X+1's begin.
+ *
+ * When @param pose_query_per_strip is true:
+ *
+ *     Samples @param strip_count + 1 world poses at strip-boundaries,
+ *     at scanout times, starting from @param target_vsync_ns.
+ *
+ * When @param pose_query_per_strip is false:
+ *
+ *     Only a single pose is sampled at the mid-point of scanout and copied to
+ *     all entries of @param out_world_strip_boundary_poses,
+ *     use when hmd pose queries are expensive or debugging purposes.
+ */
+static inline void
+calc_poses_for_strips(struct comp_renderer *r,
+                      int64_t target_vsync_ns,
+                      int64_t scanout_time_ns,
+                      int64_t strip_duration_ns,
+                      enum comp_target_fov_source fov_source,
+                      uint32_t view_count,
+                      uint32_t strip_count,
+                      bool pose_query_per_strip,
+                      struct xrt_fov out_fovs[XRT_MAX_VIEWS],
+                      struct xrt_pose out_eye[XRT_MAX_VIEWS],
+                      struct xrt_pose out_world_strip_boundary_poses[COMP_RENDERER_MAX_STRIP_POSES][XRT_MAX_VIEWS])
+{
+	assert((strip_count + 1) <= COMP_RENDERER_MAX_STRIP_POSES);
+
+	if (pose_query_per_strip) {
+		const uint32_t mid_strip = strip_count / 2;
+		struct xrt_fov unused_fov[XRT_MAX_VIEWS];
+		struct xrt_pose unused_eye[XRT_MAX_VIEWS];
+
+		for (uint32_t x = 0; x <= strip_count; ++x) {
+			const bool is_mid_strip = (x == mid_strip);
+			const int64_t scanout_timestamp_ns = target_vsync_ns + (int64_t)x * strip_duration_ns;
+			calc_pose_data_at_time(                   //
+			    r,                                    //
+			    scanout_timestamp_ns,                 //
+			    fov_source,                           //
+			    is_mid_strip ? out_fovs : unused_fov, //
+			    out_world_strip_boundary_poses[x],    //
+			    is_mid_strip ? out_eye : unused_eye,  //
+			    view_count);                          //
+		}
+	} else {
+		const int64_t mid_scanout_ns = target_vsync_ns + scanout_time_ns / 2;
+		calc_pose_data_at_time(                //
+		    r,                                 //
+		    mid_scanout_ns,                    //
+		    fov_source,                        //
+		    out_fovs,                          //
+		    out_world_strip_boundary_poses[0], //
+		    out_eye,                           //
+		    view_count);                       //
+		for (uint32_t x = 1; x <= strip_count; ++x) {
+			memcpy(out_world_strip_boundary_poses[x],          //
+			       out_world_strip_boundary_poses[0],          //
+			       sizeof(out_world_strip_boundary_poses[0])); //
+		}
+	}
+}
+
 //! @pre comp_target_has_images(r->c->target)
 static void
 renderer_build_rendering_target_resources(struct comp_renderer *r,
@@ -756,7 +856,7 @@ renderer_ensure_images_and_renderings(struct comp_renderer *r, bool force_recrea
 
 	r->dispatch_graphics = dispatch_gfx;
 
-	if (!c->settings.disable_gfx_strip_render && //
+	if (!c->settings.gfx_strip_render.disable && //
 	    comp_target_is_shared_presentable_image(target)) {
 
 		struct xrt_device_compositor_mode compositor_mode = {
@@ -1344,7 +1444,7 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
                                   enum comp_target_fov_source fov_source,
                                   const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS],
                                   const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
-                                  struct xrt_pose world_poses_scanout_begin[XRT_MAX_VIEWS],
+                                  struct xrt_pose world_pose_layer_squash[XRT_MAX_VIEWS],
                                   struct xrt_pose eye_poses[XRT_MAX_VIEWS],
                                   struct xrt_fov fovs[XRT_MAX_VIEWS])
 {
@@ -1362,6 +1462,7 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 	// Basics
 	struct vk_bundle *vk = &r->c->base.vk;
 	struct comp_target *ct = r->c->target;
+	const struct comp_settings *settings = &r->c->settings;
 
 	assert(r->acquired_buffer >= 0);
 	struct render_gfx_target_resources *target_rtr = &r->rtr_array[r->acquired_buffer];
@@ -1374,6 +1475,9 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 	const uint32_t layer_count = r->c->base.layer_accum.layer_count;
 	//! should not get here with zero layer submissions
 	assert(layer_count > 0);
+
+	const uint32_t target_scan_axis =
+	    (scanout_info->scanout_direction == XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM) ? 0u : 1u;
 
 	int64_t scanout_time_ns = scanout_info->scanout_time_ns;
 	//! If unknown (0), estimate at 95% of nominal_period/frame_interval.
@@ -1398,6 +1502,8 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 	const bool using_layer_squasher = !fast_path;
 
 	const bool sem_wait_for_present_acquire = requires_present_acquire_wait(r);
+
+	const bool pose_query_per_strip = !settings->gfx_strip_render.single_pose_for_all_strips;
 
 	// Save render_gfx scratch state; restored at cleanup.
 	const VkQueryPool main_query_pool = render->r->query_pool;
@@ -1439,34 +1545,17 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 	const int64_t current_vsync_ns = vs.timestamp_ns;
 	const int64_t target_vsync_ns = current_vsync_ns + period_ns;
 
-	/*!
-	 * One shared warp reference for all strips,
-	 * sampled at mid-scanout to centre the residual motion error.
-	 *
-	 * Ideally we would late-latch a new pose per strip
-	 * however this will cause seams between strips during
-	 * head-rotations.
-	 *
-	 * There are various ways to try handling this,
-	 * all with different trade-offs that are not acceptable
-	 * to me from testing.
-	 *
-	 * The only other option i have yet to try is to modify the
-	 * mesh shader to do intra-strip interpolation with two poses.
-	 *
-	 * On the plus side it does mean there is only one pose query
-	 * instead of if the strip_count is 8...
-	 *
-	 */
-	const int64_t mid_scanout_ns = target_vsync_ns + scanout_time_ns / 2;
-	calc_pose_data_at_time(        //
-	    r,                         //
-	    mid_scanout_ns,            //
-	    fov_source,                //
-	    fovs,                      //
-	    world_poses_scanout_begin, //
-	    eye_poses,                 //
-	    render->r->view_count);    //
+	calc_poses_for_strips(r,                              //
+	                      target_vsync_ns,                //
+	                      scanout_time_ns,                //
+	                      strip_duration_ns,              //
+	                      fov_source,                     //
+	                      render->r->view_count,          //
+	                      strip_count,                    //
+	                      pose_query_per_strip,           //
+	                      fovs,                           //
+	                      eye_poses,                      //
+	                      r->world_strip_boundary_poses); //
 
 	for (uint32_t strip = 0; strip < strip_count; ++strip) {
 		const VkFence strip_fence = render->r->strip_distortion.fences[strip];
@@ -1504,19 +1593,29 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 		                         target_viewport_datas,    //
 		                         target_scissor_datas);    //
 
-		chl_frame_state_gfx_set_views( //
-		    frame_state,               //
-		    world_poses_scanout_begin, //
-		    eye_poses,                 //
-		    fovs,                      //
-		    layer_count);              //
+		struct xrt_normalized_rect target_strip_range_ndc;
+		calc_strip_ndc_range(&target_rtr->render_area, //
+		                     &main_render_area.extent, //
+		                     target_scan_axis,         //
+		                     &target_strip_range_ndc); //
 
-		chl_frame_state_gfx_set_target_scissored( //
-		    frame_state,                          //
-		    target_rtr,                           //
-		    vertex_rots,                          //
-		    target_viewport_datas,                //
-		    target_scissor_datas);                //
+		chl_frame_state_gfx_set_views_scanout_range(  //
+		    frame_state,                              //
+		    r->world_strip_boundary_poses[strip],     // begin = top of strip
+		    r->world_strip_boundary_poses[strip + 1], // end   = bottom of strip
+		    world_pose_layer_squash,                  // squash pose (unused on fast path)
+		    eye_poses,                                //
+		    fovs,                                     //
+		    layer_count);                             //
+
+		chl_frame_state_gfx_set_target_stripped( //
+		    frame_state,                         //
+		    target_rtr,                          //
+		    target_scan_axis,                    //
+		    &target_strip_range_ndc,             //
+		    vertex_rots,                         //
+		    target_viewport_datas,               //
+		    target_scissor_datas);               //
 
 		// Start the graphics pipeline.
 		render_gfx_begin(render);
@@ -1630,8 +1729,11 @@ dispatch_gfx_strip_render(struct comp_renderer *r,
 
 	// Device view information.
 	struct xrt_fov fovs[XRT_MAX_VIEWS];
-	struct xrt_pose world_poses_scanout_begin[XRT_MAX_VIEWS];
 	struct xrt_pose eye_poses[XRT_MAX_VIEWS];
+	struct xrt_pose world_poses_scanout_begin[XRT_MAX_VIEWS] = {
+	    XRT_POSE_IDENTITY,
+	    XRT_POSE_IDENTITY,
+	};
 
 	//! Only clear screen and return if no layers.
 	if (c->base.layer_accum.layer_count == 0) {

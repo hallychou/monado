@@ -64,11 +64,13 @@ chl_frame_state_fini(struct chl_frame_state *frame_state)
  */
 
 void
-chl_frame_state_gfx_set_views(struct chl_frame_state *frame_state,
-                              const struct xrt_pose world_poses[XRT_MAX_VIEWS],
-                              const struct xrt_pose eye_poses[XRT_MAX_VIEWS],
-                              const struct xrt_fov fovs[XRT_MAX_VIEWS],
-                              uint32_t layer_count)
+chl_frame_state_gfx_set_views_scanout_range(struct chl_frame_state *frame_state,
+                                            const struct xrt_pose world_pose_scanout_begin[XRT_MAX_VIEWS],
+                                            const struct xrt_pose world_pose_scanout_end[XRT_MAX_VIEWS],
+                                            const struct xrt_pose world_pose_squash[XRT_MAX_VIEWS],
+                                            const struct xrt_pose eye_poses[XRT_MAX_VIEWS],
+                                            const struct xrt_fov fovs[XRT_MAX_VIEWS],
+                                            uint32_t layer_count)
 {
 	for (uint32_t i = 0; i < frame_state->view_count; i++) {
 		// Which image of the scratch images for this view are we using.
@@ -91,14 +93,16 @@ chl_frame_state_gfx_set_views(struct chl_frame_state *frame_state,
 		    .h = scratch_view->info.height,
 		};
 
-		comp_render_gfx_add_squash_view( //
-		    &frame_state->data,          //
-		    &world_poses[i],             //
-		    &eye_poses[i],               //
-		    &fovs[i],                    //
-		    rsci->image,                 // squash_image
-		    rsci_rtr,                    // squash_rtr
-		    &layer_viewport_data);       // squash_viewport_data
+		comp_render_gfx_add_squash_view(  //
+		    &frame_state->data,           //
+		    &world_pose_scanout_begin[i], //
+		    &world_pose_scanout_end[i],   //
+		    &world_pose_squash[i],        //
+		    &eye_poses[i],                //
+		    &fovs[i],                     //
+		    rsci->image,                  // squash_image
+		    rsci_rtr,                     // squash_rtr
+		    &layer_viewport_data);        // squash_viewport_data
 
 		if (layer_count == 0) {
 			frame_state->scratch_state.views[i].used = false;
@@ -109,14 +113,19 @@ chl_frame_state_gfx_set_views(struct chl_frame_state *frame_state,
 }
 
 void
-chl_frame_state_gfx_set_target_scissored(struct chl_frame_state *frame_state,
-                                         struct render_gfx_target_resources *target_rtr,
-                                         const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS],
-                                         const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
-                                         const render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS])
+chl_frame_state_gfx_set_target_stripped(struct chl_frame_state *frame_state,
+                                        struct render_gfx_target_resources *target_rtr,
+                                        uint32_t target_scan_axis,
+                                        const struct xrt_normalized_rect *target_strip_range_ndc,
+                                        const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS],
+                                        const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
+                                        const render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS])
 {
 	// Add the target info.
-	comp_render_gfx_add_target(&frame_state->data, target_rtr);
+	comp_render_gfx_add_target(&frame_state->data,     //
+	                           target_rtr,             //
+	                           target_strip_range_ndc, //
+	                           target_scan_axis);      //
 
 	for (uint32_t i = 0; i < frame_state->view_count; i++) {
 		// Which image of the scratch images for this view are we using.
