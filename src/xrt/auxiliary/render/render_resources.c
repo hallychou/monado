@@ -1317,7 +1317,7 @@ render_resources_get_timestamps(struct render_resources *r, uint64_t *out_gpu_st
 }
 
 bool
-render_resources_get_duration(struct render_resources *r, uint64_t *out_gpu_duration_ns)
+render_resources_get_duration(struct render_resources *r, bool wait_for_results, uint64_t *out_gpu_duration_ns)
 {
 	struct vk_bundle *vk = r->vk;
 	VkResult ret = VK_SUCCESS;
@@ -1326,7 +1326,11 @@ render_resources_get_duration(struct render_resources *r, uint64_t *out_gpu_dura
 	 * Query how long things took.
 	 */
 
-	VkQueryResultFlags flags = VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT;
+	VkQueryResultFlags flags = VK_QUERY_RESULT_64_BIT;
+	if (wait_for_results) {
+		flags |= VK_QUERY_RESULT_WAIT_BIT;
+	}
+
 	uint64_t timestamps[2] = {0};
 
 	ret = vk->vkGetQueryPoolResults( //

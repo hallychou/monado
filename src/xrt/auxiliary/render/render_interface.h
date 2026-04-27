@@ -621,14 +621,18 @@ render_resources_get_timestamps(struct render_resources *r, uint64_t *out_gpu_st
  * Returns the duration for the latest GPU work that was submitted using
  * @ref render_gfx or @ref render_compute cmd buf builders.
  *
- * Behaviour for this function is undefined if the GPU has not completed before
- * calling this function, so make sure to call vkQueueWaitIdle or wait on the
- * fence that the work was submitted with have fully completed.
+ * @param[in]  r                   The Render resources
+ * @param[in]  wait_for_results    Whether to block until results are available
+ * @param[out] out_gpu_duration_ns The resulting GPU duration.
+ *
+ * If @ref wait_for_results is set the behaviour for this function is undefined
+ * if the GPU has not completed before calling this function, so make sure to call
+ * vkQueueWaitIdle or wait on the fence that the work was submitted with have fully completed.
  *
  * @public @memberof render_resources
  */
 bool
-render_resources_get_duration(struct render_resources *r, uint64_t *out_gpu_duration_ns);
+render_resources_get_duration(struct render_resources *r, bool wait_for_results, uint64_t *out_gpu_duration_ns);
 
 
 /*
