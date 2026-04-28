@@ -38,6 +38,7 @@ DEBUG_GET_ONCE_NUM_OPTION(default_framerate, "XRT_COMPOSITOR_DEFAULT_FRAMERATE",
 DEBUG_GET_ONCE_BOOL_OPTION(compute, "XRT_COMPOSITOR_COMPUTE", USE_COMPUTE_DEFAULT)
 DEBUG_GET_ONCE_BOOL_OPTION(disable_gfx_strip_render, "XRT_COMPOSITOR_DISABLE_GFX_STRIP_RENDERING", false)
 DEBUG_GET_ONCE_BOOL_OPTION(single_pose_for_all_strips, "XRT_COMPOSITOR_SINGLE_POSE_FOR_ALL_STRIPS", false)
+DEBUG_GET_ONCE_BOOL_OPTION(use_beam_racing, "XRT_COMPOSITOR_USE_BEAM_RACING", false)
 // clang-format on
 
 static inline void
@@ -177,7 +178,7 @@ comp_settings_init(struct comp_settings *s, struct xrt_device *xdev)
 	s->viewport_scale = debug_get_num_option_scale_percentage() / 100.0;
 	s->gfx_strip_render.disable = debug_get_bool_option_disable_gfx_strip_render();
 	s->gfx_strip_render.single_pose_for_all_strips = debug_get_bool_option_single_pose_for_all_strips();
-
+	s->gfx_strip_render.use_beam_racing = debug_get_bool_option_use_beam_racing();
 	s->nvidia_display = debug_get_option_nvidia_display();
 	if (debug_get_bool_option_force_nvidia()) {
 		s->target_identifier = "x11_direct_nvidia";

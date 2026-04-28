@@ -88,6 +88,10 @@ DEBUG_GET_ONCE_LOG_OPTION(comp_frame_lag_level, "XRT_COMP_FRAME_LAG_LOG_AS_LEVEL
 
 #define COMP_RENDERER_MAX_STRIP_POSES 16
 
+#define COMP_RENDERER_STRIP_GPU_TIME_ESTIMATE_NS (U_TIME_1MS_IN_NS / 2)
+
+#define COMP_RENDERER_STRIP_CPU_TIME_ESTIMATE_NS (U_TIME_1MS_IN_NS / 2)
+
 
 /*
  *
@@ -182,6 +186,12 @@ struct comp_renderer
 	 * The boundary pose is shared between strip X's end and strip X+1's begin.
 	 */
 	struct xrt_pose world_strip_boundary_poses[COMP_RENDERER_MAX_STRIP_POSES][XRT_MAX_VIEWS];
+
+	//! How long each strip render took on the GPU (on the previous frame).
+	int64_t last_strip_gpu_times_ns[COMP_RENDERER_MAX_STRIP_POSES];
+
+	//! How long each strip render took on the CPU (on the previous frame).
+	int64_t last_strip_cpu_times_ns[COMP_RENDERER_MAX_STRIP_POSES];
 
 	VkResult (*dispatch_graphics)(struct comp_renderer *r,
 	                              struct render_gfx *render,
@@ -892,6 +902,11 @@ renderer_init(struct comp_renderer *r, struct comp_compositor *c, VkExtent2D scr
 	//! default to standard dispatch_graphics function
 	r->dispatch_graphics = dispatch_gfx;
 
+	for (uint32_t i = 0; i < COMP_RENDERER_MAX_STRIP_POSES; ++i) {
+		r->last_strip_cpu_times_ns[i] = COMP_RENDERER_STRIP_CPU_TIME_ESTIMATE_NS;
+		r->last_strip_gpu_times_ns[i] = COMP_RENDERER_STRIP_GPU_TIME_ESTIMATE_NS;
+	}
+
 	// Setup the scratch images.
 	bool bret = chl_scratch_ensure( //
 	    &c->scratch,                // scratch
@@ -1504,6 +1519,14 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 	const bool sem_wait_for_present_acquire = requires_present_acquire_wait(r);
 
 	const bool pose_query_per_strip = !settings->gfx_strip_render.single_pose_for_all_strips;
+	const bool use_beam_racing = settings->gfx_strip_render.use_beam_racing;
+
+	/*!
+	 * Race + per-strip-pose mode samples each strip's boundary poses
+	 * just before submission. Chase and single-pose modes pre-sample
+	 * upfront via calc_poses_for_strips.
+	 */
+	const bool beam_race_latch_pose_per_strip = use_beam_racing && pose_query_per_strip;
 
 	// Save render_gfx scratch state; restored at cleanup.
 	const VkQueryPool main_query_pool = render->r->query_pool;
@@ -1511,8 +1534,23 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 	const VkCommandBuffer main_cmd = render->r->cmd;
 	const VkRect2D main_render_area = target_rtr->render_area;
 
-	// Pad so the beam has clearly left a strip before we start writing it.
-	const int64_t safety_margin_ns = U_TIME_1MS_IN_NS / 2;
+	// Pad so the beam has clearly left a head or behind a strip before we start writing it.
+	int64_t safety_margin_ns = use_beam_racing ? scanout_info->strip_render.beam_race.beam_offset_ns
+	                                           : scanout_info->strip_render.beam_chase.beam_offset_ns;
+	if (safety_margin_ns == 0) {
+		safety_margin_ns = U_TIME_1MS_IN_NS / 2;
+	}
+
+	/*!
+	 * Small safety pad on top of the measured per-strip duration.
+	 *
+	 * Used to absorb any unaccounted for time that may cause tearing,
+	 * such as Vulkan API / driver internal overheads or OS-scheduler
+	 * jitter.
+	 */
+	const int64_t race_safety_pad_ns = scanout_info->strip_render.beam_race.safety_pad_ns != 0
+	                                       ? scanout_info->strip_render.beam_race.safety_pad_ns
+	                                       : (200 * U_TIME_1US_IN_NS);
 
 	const int64_t max_spin_ns =
 #ifdef XRT_OS_ANDROID
@@ -1533,7 +1571,6 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 		renderer_wait_for_last_fence(r);
 	}
 
-	//! For beam-chasing, anchor on the vsync that just fired
 	struct xrt_vsync_event vs = {0};
 	const xrt_result_t xres = comp_target_wait_next_vsync(ct, &vs);
 	if (xres != XRT_SUCCESS) {
@@ -1545,17 +1582,19 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 	const int64_t current_vsync_ns = vs.timestamp_ns;
 	const int64_t target_vsync_ns = current_vsync_ns + period_ns;
 
-	calc_poses_for_strips(r,                              //
-	                      target_vsync_ns,                //
-	                      scanout_time_ns,                //
-	                      strip_duration_ns,              //
-	                      fov_source,                     //
-	                      render->r->view_count,          //
-	                      strip_count,                    //
-	                      pose_query_per_strip,           //
-	                      fovs,                           //
-	                      eye_poses,                      //
-	                      r->world_strip_boundary_poses); //
+	if (!beam_race_latch_pose_per_strip) {
+		calc_poses_for_strips(r,                              //
+		                      target_vsync_ns,                //
+		                      scanout_time_ns,                //
+		                      strip_duration_ns,              //
+		                      fov_source,                     //
+		                      render->r->view_count,          //
+		                      strip_count,                    //
+		                      pose_query_per_strip,           //
+		                      fovs,                           //
+		                      eye_poses,                      //
+		                      r->world_strip_boundary_poses); //
+	}
 
 	for (uint32_t strip = 0; strip < strip_count; ++strip) {
 		const VkFence strip_fence = render->r->strip_distortion.fences[strip];
@@ -1566,16 +1605,51 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 		ret = vk->vkWaitForFences(vk->device, 1, &strip_fence, VK_TRUE, UINT64_MAX);
 		VK_CHK_WITH_GOTO(ret, "vkWaitForFences", restore_cleanup);
 
-		// Wake once the beam has left this strip on the current refresh.
-		const int64_t wake_at_ns =
-		    current_vsync_ns + (int64_t)(strip + 1) * strip_duration_ns + safety_margin_ns;
-		precise_sleep_until(wake_at_ns, max_spin_ns);
-
 		// Point render_gfx at this strip's resources.
 		const VkCommandBuffer strip_cmd = render->r->strip_distortion.cmds[strip];
 		render->r->query_pool = render->r->strip_distortion.query_pools[strip];
 		render->r->cmd_pool = render->r->strip_distortion.cmd_pools[strip];
 		render->r->cmd = strip_cmd;
+
+		uint64_t gpu_duration_ns = 0;
+		if (render_resources_get_duration(render->r, //
+		                                  false,     // wait_for_results
+		                                  &gpu_duration_ns)) {
+			r->last_strip_gpu_times_ns[strip] = (int64_t)gpu_duration_ns;
+		}
+
+		const int64_t strip_gpu_estimate_ns = r->last_strip_gpu_times_ns[strip];
+		const int64_t strip_cpu_estimate_ns = r->last_strip_cpu_times_ns[strip];
+		const int64_t pipeline_estimate_ns = strip_cpu_estimate_ns + strip_gpu_estimate_ns + race_safety_pad_ns;
+
+		const int64_t wake_at_ns =
+		    use_beam_racing ? (target_vsync_ns + (int64_t)strip * strip_duration_ns - safety_margin_ns -
+		                       pipeline_estimate_ns)
+		                    : (current_vsync_ns + (int64_t)(strip + 1) * strip_duration_ns + safety_margin_ns);
+		precise_sleep_until(wake_at_ns, max_spin_ns);
+
+		const int64_t strip_cpu_start = os_monotonic_get_ns();
+
+		if (beam_race_latch_pose_per_strip) {
+			if (strip == 0) {
+				const int64_t top_time_ns = target_vsync_ns + (int64_t)strip * strip_duration_ns;
+				calc_pose_data_at_time(r,                                    //
+				                       top_time_ns,                          //
+				                       fov_source,                           //
+				                       fovs,                                 //
+				                       r->world_strip_boundary_poses[strip], //
+				                       eye_poses, render->r->view_count);    //
+			}
+
+			const int64_t bottom_time_ns = target_vsync_ns + (int64_t)(strip + 1) * strip_duration_ns;
+			calc_pose_data_at_time(r,                                        //
+			                       bottom_time_ns,                           //
+			                       fov_source,                               //
+			                       fovs,                                     //
+			                       r->world_strip_boundary_poses[strip + 1], //
+			                       eye_poses,                                //
+			                       render->r->view_count);                   //
+		}
 
 		comp_render_initial_init( //
 		    &frame_state->data,   //
@@ -1675,6 +1749,9 @@ gfx_strip_render_strip_distortion(struct comp_renderer *r,
 
 		ret = vk_cmd_submit_locked(vk, vk->main_queue, 1, &builder.submit_info, strip_fence);
 		VK_CHK_WITH_GOTO(ret, "vk_cmd_submit_locked", restore_cleanup);
+
+		const int64_t strip_cpu_end = os_monotonic_get_ns();
+		r->last_strip_cpu_times_ns[strip] = strip_cpu_end - strip_cpu_start;
 	}
 
 restore_cleanup:

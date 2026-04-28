@@ -121,6 +121,42 @@ struct xrt_device_compositor_info
 		 * If strip_count is 0, strip rendering path is disabled.
 		 */
 		uint32_t strip_count;
+
+		struct
+		{
+			/*!
+			 * A small offset of time to add to the wait time
+			 * for the beam to have clearly left strip regions
+			 * before strip rendering.
+			 *
+			 * If beam_offset_ns is 0, defaults to 0.5ms.
+			 */
+			int64_t beam_offset_ns;
+		} beam_chase;
+
+		struct
+		{
+			/*!
+			 * A small offset of time to subtract to the wait time
+			 * for the beam to be clearly behind strip regions
+			 * before strip rendering.
+			 *
+			 * If beam_offset_ns is 0, defaults to 0.5ms.
+			 */
+			int64_t beam_offset_ns;
+
+			/*!
+			 * Small safety pad on top of the measured per-strip duration.
+			 *
+			 * Use this to absorb any unaccounted for time that may cause tearing,
+			 * such as Vulkan API / driver internal overheads or OS-scheduler
+			 * jitter.
+			 *
+			 * If safety_pad_ns is 0, defaults to 200us.
+			 */
+			int64_t safety_pad_ns;
+		} beam_race;
+
 	} strip_render;
 };
 
