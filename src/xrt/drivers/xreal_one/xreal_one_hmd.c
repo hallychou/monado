@@ -18,6 +18,7 @@
 #error "XReal One Pro driver requires Linux (POSIX sockets / poll(2))"
 #endif
 
+#include "xrt/xrt_byte_order.h"
 #include "xrt/xrt_compiler.h"
 #include "xrt/xrt_defines.h"
 
@@ -164,19 +165,15 @@ xreal_one_hmd(struct xrt_device *xdev)
  *
  */
 
-/*!
- * Read a little-endian IEEE 754 float from @p buf.
- *
- * TECHNICAL DEBT: assumes host is little-endian (true for x86 / ARM64 Linux).
- * If ever ported to a big-endian platform, add a byte-swap here.
- */
-static inline float
-read_float_le(const uint8_t *buf)
+struct xreal_one_imu_wire
 {
-	float v;
-	memcpy(&v, buf, sizeof(v));
-	return v;
-}
+	__lef32 gx;
+	__lef32 gy;
+	__lef32 gz;
+	__lef32 az;
+	__lef32 ay;
+	__lef32 ax;
+};
 
 /*!
  * Locate the first occurrence of XREAL_ONE_HEADER_MAGIC in [@p buf, @p buf+len).
@@ -210,17 +207,17 @@ xreal_one_parse_message(const uint8_t *msg, size_t len, struct xreal_one_parsed_
 		return false;
 	}
 
-	const uint8_t *imu = msg + XREAL_ONE_IMU_OFFSET;
-
 	// Wire order (from the Python demo's decode_imu_data):
 	//   values[0] = gx,  values[1] = gy,  values[2] = gz
 	//   values[3] = az,  values[4] = ay,  values[5] = ax
-	out_sample->gx = read_float_le(imu + 0);
-	out_sample->gy = read_float_le(imu + 4);
-	out_sample->gz = read_float_le(imu + 8);
-	out_sample->az = read_float_le(imu + 12);
-	out_sample->ay = read_float_le(imu + 16);
-	out_sample->ax = read_float_le(imu + 20);
+	struct xreal_one_imu_wire imu_wire;
+	memcpy(&imu_wire, msg + XREAL_ONE_IMU_OFFSET, sizeof(imu_wire));
+	out_sample->gx = __lef32_to_cpu(imu_wire.gx);
+	out_sample->gy = __lef32_to_cpu(imu_wire.gy);
+	out_sample->gz = __lef32_to_cpu(imu_wire.gz);
+	out_sample->az = __lef32_to_cpu(imu_wire.az);
+	out_sample->ay = __lef32_to_cpu(imu_wire.ay);
+	out_sample->ax = __lef32_to_cpu(imu_wire.ax);
 
 	return true;
 }
