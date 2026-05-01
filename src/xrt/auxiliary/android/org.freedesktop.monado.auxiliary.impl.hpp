@@ -76,6 +76,13 @@ namespace org::freedesktop::monado::auxiliary {
 		return refreshRateVector;
 	}
 
+	inline int64_t
+	MonadoView::getAppVsyncOffsetNanos(const android::content::Context &displayContext, int32_t displayId)
+	{
+		return static_cast<int64_t>(Meta::data().clazz().call<long long>(Meta::data().getAppVsyncOffsetNanos,
+		                                                                 displayContext.object(), displayId));
+	}
+
 	inline void *
 	MonadoView::getNativePointer()
 	{

@@ -181,6 +181,22 @@ public class MonadoView extends SurfaceView
     }
 
     /**
+     * Gets the app VSYNC offset, in nanoseconds.
+     *
+     * <p>High level wrapper for Display.getAppVsyncOffsetNanos()
+     *
+     * @param context Display context used for looking for target window.
+     * @param display The display ID for which the mode is to be queried.
+     * @return The app VSYNC offset, in nanoseconds.
+     */
+    @Keep
+    public static long getAppVsyncOffsetNanos(@NonNull final Context context, int display) {
+        DisplayManager dm = (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
+        Display dp = dm.getDisplay(display);
+        return dp.getAppVsyncOffsetNanos();
+    }
+
+    /**
      * Get the height of the specified display mode on the specified display ID
      *
      * <p>If the specified mode ID is not in the list of supported mode IDs for the specified
