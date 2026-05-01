@@ -107,6 +107,17 @@ class Display : public ObjectWrapperBase {
     void getRealMetrics(util::DisplayMetrics &out_displayMetrics);
 
     /*!
+     * Wrapper for the getAppVsyncOffsetNanos method
+     *
+     * Java prototype:
+     * `public long getAppVsyncOffsetNanos();`
+     *
+     * JNI signature: ()J
+     *
+     */
+    int64_t getAppVsyncOffsetNanos() const;
+
+    /*!
      * Class metadata
      */
     struct Meta : public MetaBaseDroppable {
@@ -116,6 +127,7 @@ class Display : public ObjectWrapperBase {
         jni::method_t getDeviceProductInfo;
         jni::method_t getRealSize;
         jni::method_t getRealMetrics;
+        jni::method_t getAppVsyncOffsetNanos;
 
         /*!
          * Singleton accessor

@@ -17,7 +17,8 @@ Display::Meta::Meta(bool deferDrop)
       getRealSize(
           classRef().getMethod("getRealSize", "(Landroid/graphics/Point;)V")),
       getRealMetrics(classRef().getMethod("getRealMetrics",
-                                          "(Landroid/util/DisplayMetrics;)V")) {
+                                          "(Landroid/util/DisplayMetrics;)V")),
+      getAppVsyncOffsetNanos(classRef().getMethod("getAppVsyncOffsetNanos", "()J")) {
     if (!deferDrop) {
         MetaBaseDroppable::dropClassRef();
     }

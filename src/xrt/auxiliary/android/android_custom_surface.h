@@ -112,6 +112,9 @@ android_custom_surface_can_draw_overlays(struct _JavaVM *vm, void *context);
 float
 android_custom_surface_get_display_refresh_rate(struct _JavaVM *vm, void *context);
 
+int64_t
+android_custom_surface_get_app_vsync_offset_ns(struct _JavaVM *vm, void *context, int32_t display_id);
+
 #ifdef __cplusplus
 }
 #endif
