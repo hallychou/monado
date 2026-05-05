@@ -301,7 +301,8 @@ calc_pose_data(struct comp_renderer *r,
 
 		if (xret != XRT_SUCCESS) {
 			COMP_WARN(r->c, "xrt_device_get_compositor_info failed, assuming 0 scanout time");
-		} else if (device_compositor_info.scanout_direction == XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM) {
+		} else if (device_compositor_info.panel_refresh_type == XRT_PANEL_REFRESH_TYPE_ROLLING &&
+		           device_compositor_info.scanout_direction == XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM) {
 			scanout_time_ns = device_compositor_info.scanout_time_ns;
 		} else {
 			COMP_SPEW(r->c,
