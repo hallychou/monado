@@ -1054,7 +1054,7 @@ create_target(const struct comp_target_factory *ctf, struct comp_compositor *c, 
 //     VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 // };
 
-const struct comp_target_factory comp_target_factory_directwinrt = {
+const struct comp_target_factory comp_target_factory_direct_winrt = {
     .name = "Microsoft Windows(TM) Direct Mode via WinRT",
     .identifier = "directwinrt",
     .requires_vulkan_for_create = false,

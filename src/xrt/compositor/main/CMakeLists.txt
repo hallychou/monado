@@ -55,7 +55,7 @@ endif()
 if(WIN32)
 	target_sources(comp_main PRIVATE comp_window_mswin.c)
 endif()
-if(XRT_HAVE_WIN_DIRECT)
+if(XRT_HAVE_WINRT_DIRECT)
 	target_sources(
 		comp_main PRIVATE comp_target_direct_windows.cpp
 				  comp_target_direct_windows_swapchain.cpp
@@ -124,7 +124,7 @@ if(ANDROID)
 	target_link_libraries(comp_main PRIVATE aux_ogl aux_android)
 	target_compile_options(comp_main PRIVATE -Wno-gnu-offsetof-extensions)
 endif()
-if(XRT_HAVE_WIN_DIRECT)
+if(XRT_HAVE_WINRT_DIRECT)
 	target_include_directories(comp_main SYSTEM PRIVATE ${CPPWINRT_INCLUDE_DIR})
 	target_link_libraries(comp_main PRIVATE ${DXGI_LIBRARY} ${WINDOWSAPP_LIBRARY})
 endif()
