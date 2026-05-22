@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
- * @brief  Windows 10 direct mode code.
+ * @brief  Windows 10/11 direct mode code.
  *
  * Has to implement comp_target instead of comp_target_swapchain because
  * we don't get a VkSurfaceKHR, etc: we manually import images instead.
@@ -15,7 +15,6 @@
 
 
 #include "comp_target_direct_windows_swapchain.hpp"
-#include "comp_window.h"
 
 #include "d3d/d3d_convertible_luid.hpp"
 #include "d3d/d3d_d3d11_helpers.hpp"
@@ -59,12 +58,15 @@
 #include <utility>
 #include <vector>
 
+
 namespace winrtWDDC = winrt::Windows::Devices::Display::Core;
 namespace winrtWDD = winrt::Windows::Devices::Display;
 namespace Collections = winrt::Windows::Foundation::Collections;
 
 using xrt::auxiliary::d3d::ConvertibleLuid;
 using namespace xrt::compositor::main;
+
+
 /*
  *
  * Private structs.
@@ -210,15 +212,14 @@ CompTargetData::populateAdapterSpecificData()
 		// 	luid = ConvertibleLuid{desc.AdapterLuid};
 		// }
 
-		// get the adapter and device for winrt
+		// Get the adapter and device for winrt
 		{
 			winrt::Windows::Graphics::DisplayAdapterId id = adapterLuid;
 			displayAdapter = winrtWDDC::DisplayAdapter::FromId(id);
 			if (displayAdapter == nullptr) {
 				throw std::runtime_error("Could not get adapter by ID in WinRT!");
 			}
-			// onecore\windows\directx\database\helperlibrary\lib\directxdatabasehelper.cpp(652)\dxgi.dll!00007FF8D2FACF61:
-			// (caller: 00007FF8D2FACA68) ReturnHr(28) tid(4e54) 80004002 No such interface supported
+
 			displayDevice = manager.CreateDisplayDevice(displayAdapter);
 		}
 		// Get the handle for the fence
@@ -228,7 +229,7 @@ CompTargetData::populateAdapterSpecificData()
 			                                                             fenceHandle.put()));
 			renderCompleteFenceHandle = std::move(fenceHandle);
 		}
-		// get the winrt object for the fence
+		// Get the winrt object for the fence
 		{
 			winrt::com_ptr<::IInspectable> fence;
 			THROW_IF_FAILED(displayDevice.as<IDisplayDeviceInterop>()->OpenSharedHandle(
@@ -236,17 +237,8 @@ CompTargetData::populateAdapterSpecificData()
 			renderCompleteFence = fence.as<winrtWDDC::DisplayFence>();
 		}
 		return true;
-	} catch (winrt::hresult_error const &e) {
-		COMP_ERROR(c, "Caught WinRT exception: (%" PRId32 ") %s", e.code().value,
-		           winrt::to_string(e.message()).c_str());
-		return false;
-	} catch (std::exception const &e) {
-		COMP_ERROR(c, "Caught exception: %s", e.what());
-		return false;
-	} catch (...) {
-		COMP_ERROR(c, "Caught exception");
-		return false;
 	}
+	D3D_WINRT_CATCH_GUARDS_WITH_RETURN(false)
 }
 
 
@@ -299,18 +291,10 @@ targetPredicate(struct comp_compositor *c,
 
 		COMP_INFO(c, "Display '%s' meets our requirements for direct mode on Windows!", displayName.c_str());
 		return true;
-	} catch (winrt::hresult_error const &e) {
-		COMP_ERROR(c, "Caught WinRT exception: (%" PRId32 ") %s", e.code().value,
-		           winrt::to_string(e.message()).c_str());
-		return false;
-	} catch (std::exception const &e) {
-		COMP_ERROR(c, "Caught exception: %s", e.what());
-		return false;
-	} catch (...) {
-		COMP_ERROR(c, "Caught exception");
-		return false;
 	}
+	D3D_WINRT_CATCH_GUARDS_WITH_RETURN(false)
 }
+
 HmdSearchResults
 findHmds(struct comp_compositor *c,
          const winrtWDDC::DisplayManager &manager,
@@ -440,14 +424,8 @@ CompTargetData::openHmd(const winrtWDDC::DisplayTarget &target, DisplayObjects &
 
 		outObjects = std::make_tuple(displayDevice, target, std::move(displayPath), std::move(displaySource));
 		return true;
-	} catch (winrt::hresult_error const &e) {
-		COMP_ERROR(c, "Caught WinRT exception: (%" PRId32 ") %s", e.code().value,
-		           winrt::to_string(e.message()).c_str());
-		return false;
-	} catch (std::exception const &e) {
-		COMP_ERROR(c, "Caught exception: %s", e.what());
-		return false;
 	}
+	D3D_WINRT_CATCH_GUARDS_WITH_RETURN(false)
 }
 
 } // namespace
@@ -592,24 +570,6 @@ create_image_views(struct comp_target_direct_windows *ctdw)
 	free(images);
 }
 
-static void
-do_update_timings_vblank_thread(struct comp_target_direct_windows *ctdw)
-{
-	if (!ctdw->vblank.has_started) {
-		return;
-	}
-
-	uint64_t last_vblank_ns;
-
-	os_thread_helper_lock(&ctdw->vblank.event_thread);
-	last_vblank_ns = ctdw->vblank.last_vblank_ns;
-	ctdw->vblank.last_vblank_ns = 0;
-	os_thread_helper_unlock(&ctdw->vblank.event_thread);
-
-	if (last_vblank_ns) {
-		u_pc_update_vblank_from_display_control(ctdw->upc, last_vblank_ns);
-	}
-}
 static bool
 try_open_hmds(struct comp_target_direct_windows *ctdw) noexcept
 {
@@ -701,20 +661,6 @@ comp_target_direct_windows_create_images(struct comp_target *ct,
 	ctdw->base.surface_transform = (VkSurfaceTransformFlagBitsKHR)0;
 
 	create_image_views(ctdw);
-
-#if 0
-	if (vk->has_EXT_display_control && ctdw->display != VK_NULL_HANDLE) {
-		if (ctdw->vblank.has_started) {
-			// Already running.
-		} else if (create_vblank_event_thread(ct)) {
-			COMP_INFO(ct->c, "Started vblank event thread!");
-		} else {
-			COMP_ERROR(ct->c, "Failed to register vblank event");
-		}
-	} else {
-		COMP_INFO(ct->c, "Not using vblank event thread!");
-	}
-#endif
 }
 
 static bool
@@ -737,14 +683,8 @@ comp_target_direct_windows_acquire_next_image(struct comp_target *ct, uint32_t *
 	try {
 		*out_index = ctdw->swapchain->acquireNext();
 		return VK_SUCCESS;
-	} catch (winrt::hresult_error const &e) {
-		COMP_ERROR(ctdw->base.c, "Caught WinRT exception: (%" PRId32 ") %s", e.code().value,
-		           winrt::to_string(e.message()).c_str());
-		return VK_ERROR_DEVICE_LOST;
-	} catch (std::exception const &e) {
-		COMP_ERROR(ctdw->base.c, "Caught exception: %s", e.what());
-		return VK_ERROR_DEVICE_LOST;
 	}
+	D3D_WINRT_CATCH_GUARDS_WITH_RETURN(VK_ERROR_DEVICE_LOST)
 }
 
 static VkResult
@@ -756,7 +696,6 @@ comp_target_direct_windows_present(struct comp_target *ct,
                                    int64_t present_slop_ns)
 {
 	struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
-	struct vk_bundle *vk = get_vk(ctdw);
 
 	assert(ctdw->current_frame_id >= 0);
 	assert(ctdw->current_frame_id <= UINT32_MAX);
@@ -764,17 +703,6 @@ comp_target_direct_windows_present(struct comp_target *ct,
 	if (!ctdw->swapchain->present(index, ctdw->data->d3d11RenderCompleteFence, timeline_semaphore_value)) {
 		return VK_ERROR_DEVICE_LOST;
 	}
-
-#if 0
-	if (ctdw->vblank.has_started) {
-		os_thread_helper_lock(&ctdw->vblank.event_thread);
-		if (!ctdw->vblank.should_wait) {
-			ctdw->vblank.should_wait = true;
-			os_thread_helper_signal_locked(&ctdw->vblank.event_thread);
-		}
-		os_thread_helper_unlock(&ctdw->vblank.event_thread);
-	}
-#endif
 
 	return VK_SUCCESS;
 }
@@ -789,7 +717,6 @@ comp_target_direct_windows_check_ready(struct comp_target *ct) noexcept
 static bool
 comp_target_direct_windows_init_pre_vulkan(struct comp_target *ct) noexcept
 {
-	// struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
 	return true;
 }
 
@@ -813,17 +740,8 @@ comp_target_direct_windows_init_post_vulkan(struct comp_target *ct, uint32_t wid
 		}
 
 		return try_open_hmds(ctdw);
-	} catch (winrt::hresult_error const &e) {
-		COMP_ERROR(ct->c, "Caught WinRT exception: (%" PRId32 ") %s", e.code().value,
-		           winrt::to_string(e.message()).c_str());
-		return false;
-	} catch (std::exception const &e) {
-		COMP_ERROR(ct->c, "Caught exception: %s", e.what());
-		return false;
-	} catch (...) {
-		COMP_ERROR(ct->c, "Caught exception");
-		return false;
 	}
+	D3D_WINRT_CATCH_GUARDS_WITH_RETURN(false)
 }
 
 
@@ -831,8 +749,6 @@ static void
 comp_target_direct_windows_destroy(struct comp_target *ct) noexcept
 {
 	struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
-
-	// struct vk_bundle *vk = get_vk(ctdw);
 
 	// Thread if it has been started must be stopped first.
 	if (ctdw->vblank.has_started) {
@@ -853,13 +769,14 @@ comp_target_direct_windows_destroy(struct comp_target *ct) noexcept
 static void
 comp_target_direct_windows_update_window_title(struct comp_target *ct, const char *title) noexcept
 {
-	// struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
+	(void)ct;
+	(void)title;
 }
 
 static void
 comp_target_direct_windows_flush(struct comp_target *ct) noexcept
 {
-	// struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
+	(void)ct;
 }
 
 /*
@@ -948,13 +865,6 @@ comp_target_direct_windows_update_timings(struct comp_target *ct) noexcept
 {
 	COMP_TRACE_MARKER();
 
-	// struct comp_target_direct_windows *ctdw = (struct comp_target_direct_windows *)ct;
-
-	/// @todo
-
-	// do_update_timings_google_display_timing(ctdw);
-	// do_update_timings_vblank_thread(ctdw);
-
 	return VK_SUCCESS;
 }
 
@@ -1016,18 +926,8 @@ comp_target_direct_windows_create(struct comp_compositor *c)
 		ctdw->base.c = c;
 
 		return &(ctdw.release())->base;
-
-	} catch (winrt::hresult_error const &e) {
-		COMP_ERROR(c, "Caught WinRT exception: (%" PRId32 ") %s", e.code().value,
-		           winrt::to_string(e.message()).c_str());
-		return nullptr;
-	} catch (std::exception const &e) {
-		COMP_ERROR(c, "Caught exception: %s", e.what());
-		return nullptr;
-	} catch (...) {
-		COMP_ERROR(c, "Caught exception");
-		return nullptr;
 	}
+	D3D_WINRT_CATCH_GUARDS_WITH_RETURN(nullptr)
 }
 
 // No special detection
@@ -1049,10 +949,6 @@ create_target(const struct comp_target_factory *ctf, struct comp_compositor *c, 
 
 	return true;
 }
-
-// static const char *instance_extensions[] = {
-//     VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-// };
 
 const struct comp_target_factory comp_target_factory_direct_winrt = {
     .name = "Microsoft Windows(TM) Direct Mode via WinRT",
