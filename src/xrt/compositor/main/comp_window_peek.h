@@ -40,7 +40,10 @@ void
 comp_window_peek_destroy(struct comp_window_peek **w_ptr);
 
 void
-comp_window_peek_blit(struct comp_window_peek *w, VkImage src, int32_t width, int32_t height);
+comp_window_peek_blit(struct comp_window_peek *w,
+                      const VkImage src[],
+                      const uint32_t widths[],
+                      const uint32_t heights[]);
 
 /*!
  *

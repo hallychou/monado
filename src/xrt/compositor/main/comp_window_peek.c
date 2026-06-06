@@ -289,7 +289,10 @@ comp_window_peek_destroy(struct comp_window_peek **w_ptr)
 }
 
 void
-comp_window_peek_blit(struct comp_window_peek *w, VkImage src, int32_t width, int32_t height)
+comp_window_peek_blit(struct comp_window_peek *w,
+                      const VkImage src[],
+                      const uint32_t widths[],
+                      const uint32_t heights[])
 {
 	if (w->hidden || !w->running) {
 		return;
@@ -298,6 +301,14 @@ comp_window_peek_blit(struct comp_window_peek *w, VkImage src, int32_t width, in
 	if (w->width != w->base.base.width || w->height != w->base.base.height) {
 		COMP_DEBUG(w->c, "Resizing swapchain");
 		create_images(w);
+	}
+
+	size_t src_count;
+	switch (w->eye) {
+	case COMP_WINDOW_PEEK_EYE_LEFT:
+	case COMP_WINDOW_PEEK_EYE_RIGHT:
+	case COMP_WINDOW_PEEK_EYE_BOTH: src_count = 1; break;
+	default: COMP_ERROR(w->c, "comp_window_peek_blit: Invalid eye: %d", w->eye); return;
 	}
 
 	while (!comp_target_check_ready(&w->base.base))
@@ -330,18 +341,20 @@ comp_window_peek_blit(struct comp_window_peek *w, VkImage src, int32_t width, in
 	    .layerCount = 1,
 	};
 
-	// Barrier to make source a source
-	vk_cmd_image_barrier_locked(                       //
-	    vk,                                            // vk_bundle
-	    w->cmd,                                        // cmdbuffer
-	    src,                                           // image
-	    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,          // srcAccessMask
-	    VK_ACCESS_TRANSFER_READ_BIT,                   // dstAccessMask
-	    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,      // oldImageLayout
-	    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,          // newImageLayout
-	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // srcStageMask
-	    VK_PIPELINE_STAGE_TRANSFER_BIT,                // dstStageMask
-	    range);                                        // subresourceRange
+	// Barriers to make sources sources
+	for (size_t i = 0; i < src_count; i++) {
+		vk_cmd_image_barrier_locked(                       //
+		    vk,                                            // vk_bundle
+		    w->cmd,                                        // cmdbuffer
+		    src[i],                                        // image
+		    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,          // srcAccessMask
+		    VK_ACCESS_TRANSFER_READ_BIT,                   // dstAccessMask
+		    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,      // oldImageLayout
+		    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,          // newImageLayout
+		    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // srcStageMask
+		    VK_PIPELINE_STAGE_TRANSFER_BIT,                // dstStageMask
+		    range);                                        // subresourceRange
+	}
 
 	// Barrier to make destination a destination
 	vk_cmd_image_barrier_locked(              //
@@ -369,24 +382,27 @@ comp_window_peek_blit(struct comp_window_peek *w, VkImage src, int32_t width, in
 	        },
 	};
 
-	blit.srcOffsets[1].x = width;
-	blit.srcOffsets[1].y = height;
-	blit.srcOffsets[1].z = 1;
+	for (size_t i = 0; i < src_count; i++) {
+		blit.srcOffsets[1].x = widths[i];
+		blit.srcOffsets[1].y = heights[i];
+		blit.srcOffsets[1].z = 1;
 
-	blit.dstOffsets[1].x = w->width;
-	blit.dstOffsets[1].y = w->height;
-	blit.dstOffsets[1].z = 1;
+		blit.dstOffsets[0].x = w->width * i / src_count;
+		blit.dstOffsets[1].x = w->width * (i + 1) / src_count;
+		blit.dstOffsets[1].y = w->height;
+		blit.dstOffsets[1].z = 1;
 
-	vk->vkCmdBlitImage(                       //
-	    w->cmd,                               // commandBuffer
-	    src,                                  // srcImage
-	    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, // srcImageLayout
-	    dst,                                  // dstImage
-	    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // dstImageLayout
-	    1,                                    // regionCount
-	    &blit,                                // pRegions
-	    VK_FILTER_LINEAR                      // filter
-	);
+		vk->vkCmdBlitImage(                       //
+		    w->cmd,                               // commandBuffer
+		    src[i],                               // srcImage
+		    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, // srcImageLayout
+		    dst,                                  // dstImage
+		    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // dstImageLayout
+		    1,                                    // regionCount
+		    &blit,                                // pRegions
+		    VK_FILTER_LINEAR                      // filter
+		);
+	}
 
 	// Reset destination
 	vk_cmd_image_barrier_locked(              //
@@ -401,18 +417,20 @@ comp_window_peek_blit(struct comp_window_peek *w, VkImage src, int32_t width, in
 	    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, // dstStageMask
 	    range);                               // subresourceRange
 
-	// Reset src
-	vk_cmd_image_barrier_locked(                  //
-	    vk,                                       // vk_bundle
-	    w->cmd,                                   // cmdbuffer
-	    src,                                      // image
-	    VK_ACCESS_TRANSFER_READ_BIT,              // srcAccessMask
-	    0,                                        // dstAccessMask
-	    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,     // oldImageLayout
-	    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, // newImageLayout
-	    VK_PIPELINE_STAGE_TRANSFER_BIT,           // srcStageMask
-	    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,        // dstStageMask
-	    range);                                   // subresourceRange
+	// Reset srcs
+	for (size_t i = 0; i < src_count; i++) {
+		vk_cmd_image_barrier_locked(                  //
+		    vk,                                       // vk_bundle
+		    w->cmd,                                   // cmdbuffer
+		    src[i],                                   // image
+		    VK_ACCESS_TRANSFER_READ_BIT,              // srcAccessMask
+		    0,                                        // dstAccessMask
+		    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,     // oldImageLayout
+		    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, // newImageLayout
+		    VK_PIPELINE_STAGE_TRANSFER_BIT,           // srcStageMask
+		    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,        // dstStageMask
+		    range);                                   // subresourceRange
+	}
 
 	ret = vk->vkEndCommandBuffer(w->cmd);
 	if (ret != VK_SUCCESS) {
