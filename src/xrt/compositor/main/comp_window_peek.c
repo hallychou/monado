@@ -13,6 +13,8 @@
 #include "main/comp_target_swapchain.h"
 #include "main/comp_window_peek.h"
 
+#include "math/m_api.h"
+
 #include "util/u_debug.h"
 #include "util/u_extension_list.h"
 
@@ -137,10 +139,14 @@ comp_window_peek_create(struct comp_compositor *c)
 	enum comp_window_peek_eye eye = -1;
 
 	int32_t width, height;
-	if (strcmp(option, "both") == 0 || strcmp(option, "BOTH") == 0 || strcmp(option, "") == 0) {
-		eye = COMP_WINDOW_PEEK_EYE_BOTH;
+	if (strcmp(option, "distorted") == 0 || strcmp(option, "DISTORTED") == 0 || strcmp(option, "") == 0) {
+		eye = COMP_WINDOW_PEEK_EYE_DISTORTED;
 		width = xdev->hmd->screens[0].w_pixels;
 		height = xdev->hmd->screens[0].h_pixels;
+	} else if (strcmp(option, "both") == 0 || strcmp(option, "BOTH") == 0) {
+		eye = COMP_WINDOW_PEEK_EYE_BOTH;
+		width = MAX(xdev->hmd->views[0].display.w_pixels, xdev->hmd->views[1].display.w_pixels) * 2;
+		height = MAX(xdev->hmd->views[0].display.h_pixels, xdev->hmd->views[1].display.h_pixels);
 	} else if (strcmp(option, "left") == 0 || strcmp(option, "LEFT") == 0) {
 		eye = COMP_WINDOW_PEEK_EYE_LEFT;
 		width = xdev->hmd->views[0].display.w_pixels;
@@ -307,7 +313,8 @@ comp_window_peek_blit(struct comp_window_peek *w,
 	switch (w->eye) {
 	case COMP_WINDOW_PEEK_EYE_LEFT:
 	case COMP_WINDOW_PEEK_EYE_RIGHT:
-	case COMP_WINDOW_PEEK_EYE_BOTH: src_count = 1; break;
+	case COMP_WINDOW_PEEK_EYE_DISTORTED: src_count = 1; break;
+	case COMP_WINDOW_PEEK_EYE_BOTH: src_count = 2; break;
 	default: COMP_ERROR(w->c, "comp_window_peek_blit: Invalid eye: %d", w->eye); return;
 	}
 

@@ -1117,8 +1117,31 @@ comp_renderer_draw(struct comp_renderer *r)
 			    &view->info.width,                  //
 			    &view->info.height);                //
 		} break;
-		case COMP_WINDOW_PEEK_EYE_BOTH:
-			/* TODO: display the undistorted image */
+		case COMP_WINDOW_PEEK_EYE_BOTH: {
+			uint32_t scratch_index_left = frame_state.scratch_state.views[0].index;
+			uint32_t scratch_index_right = frame_state.scratch_state.views[1].index;
+			struct comp_scratch_single_images *view_left = &c->scratch.views[0].cssi;
+			struct comp_scratch_single_images *view_right = &c->scratch.views[1].cssi;
+			VkImage images[2] = {
+			    view_left->images[scratch_index_left].image,
+			    view_right->images[scratch_index_right].image,
+			};
+			uint32_t widths[2] = {
+			    view_left->info.width,
+			    view_right->info.width,
+			};
+			uint32_t heights[2] = {
+			    view_left->info.height,
+			    view_right->info.height,
+			};
+
+			comp_window_peek_blit( //
+			    c->peek,           //
+			    images,            //
+			    widths,            //
+			    heights);          //
+		} break;
+		case COMP_WINDOW_PEEK_EYE_DISTORTED:
 			comp_window_peek_blit(c->peek, &c->target->images[r->acquired_buffer].handle, &c->target->width,
 			                      &c->target->height);
 			break;

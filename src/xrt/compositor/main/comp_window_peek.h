@@ -29,6 +29,7 @@ enum comp_window_peek_eye
 	COMP_WINDOW_PEEK_EYE_LEFT = 0,
 	COMP_WINDOW_PEEK_EYE_RIGHT = 1,
 	COMP_WINDOW_PEEK_EYE_BOTH = 2,
+	COMP_WINDOW_PEEK_EYE_DISTORTED = 3,
 };
 
 struct comp_window_peek;
