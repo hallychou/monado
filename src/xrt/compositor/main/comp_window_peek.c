@@ -25,6 +25,7 @@
 
 
 DEBUG_GET_ONCE_OPTION(window_peek, "XRT_WINDOW_PEEK", NULL)
+DEBUG_GET_ONCE_BOOL_OPTION(compute, "XRT_COMPOSITOR_COMPUTE", USE_COMPUTE_DEFAULT)
 
 #define PEEK_IMAGE_USAGE (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
 
@@ -122,8 +123,7 @@ window_peek_run_thread(void *ptr)
 struct comp_window_peek *
 comp_window_peek_create(struct comp_compositor *c)
 {
-	const char *compute = getenv("XRT_COMPOSITOR_COMPUTE");
-	if (compute) {
+	if (debug_get_bool_option_compute()) {
 		COMP_WARN(c, "Peek window cannot be enabled on compute compositor");
 		return NULL;
 	}

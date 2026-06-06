@@ -39,6 +39,12 @@ XRT_MAYBE_UNUSED static const char *NV_DIRECT_ALLOWLIST[] = {
     "PNP",                         // NorthStar (Generic)
 };
 
+#ifdef XRT_OS_ANDROID
+#define USE_COMPUTE_DEFAULT false
+#else
+#define USE_COMPUTE_DEFAULT true
+#endif
+
 /*!
  * Settings for the compositor.
  *
