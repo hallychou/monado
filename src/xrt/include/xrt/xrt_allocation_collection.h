@@ -181,6 +181,97 @@ enum xrt_allocation_type
 	 *   call may create new handles (implementation dependent).
 	 */
 	XRT_ALLOCATION_TYPE_NATIVE_IMAGE,
+
+	/*!
+	 * CPU-accessible host pointer (as void pointer).
+	 *
+	 * The @p ptr parameter is an array of @p image_count void pointers; each
+	 * element receives the host-visible mapped address of one image. Like:
+	 * ```c
+	 * ((void **)ptr)[i] = <mapped host pointer for image i>;
+	 * ```
+	 *
+	 * Lifetime note:
+	 *
+	 * The allocation collection owns the mapping. The returned pointers are
+	 * only valid as long as the allocation collection exists.
+	 *
+	 * Callers:
+	 * - MUST NOT free, munmap or unmap these pointers.
+	 * - MUST ensure the allocation collection outlives their use of
+	 *   the pointers.
+	 */
+	XRT_ALLOCATION_TYPE_CPU_POINTER,
+
+	/*!
+	 * VkBuffer handle.
+	 *
+	 * Lifetime note:
+	 *
+	 * VkBuffer handles do not have reference counting, the allocation
+	 * collection owns the VkBuffer objects. The returned handles are only
+	 * valid as long as the allocation collection exists.
+	 *
+	 * Callers:
+	 * - MUST NOT call vkDestroyBuffer on these handles.
+	 * - MUST ensure the allocation collection outlives their use of
+	 *   the VkBuffer handles.
+	 */
+	XRT_ALLOCATION_TYPE_VULKAN_BUFFER,
+
+	/*!
+	 * DXGI shared resource handle (Win32 NT HANDLE).
+	 *
+	 * Ownership note:
+	 *
+	 * Like @ref XRT_ALLOCATION_TYPE_NATIVE_IMAGE, calling get_all with this
+	 * type transfers ownership of the shared handles to the caller. This is
+	 * an all-or-nothing operation. The handles are NT handles created for a
+	 * DXGI/D3D11 shared resource.
+	 *
+	 * Callers:
+	 * - MUST CloseHandle (or @ref u_graphics_buffer_unref) all handles if
+	 *   get_all succeeds.
+	 * - SHOULD NOT call get_all with this type multiple times, as each
+	 *   call may create new handles (implementation dependent).
+	 */
+	XRT_ALLOCATION_TYPE_DXGI_HANDLE,
+
+	/*!
+	 * Opaque external-memory Win32 HANDLE.
+	 *
+	 * Ownership note:
+	 *
+	 * Like @ref XRT_ALLOCATION_TYPE_NATIVE_IMAGE, calling get_all with this
+	 * type transfers ownership of the handles to the caller. This is an
+	 * all-or-nothing operation. The handles are opaque NT handles (e.g.
+	 * VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT memory).
+	 *
+	 * Callers:
+	 * - MUST CloseHandle (or @ref u_graphics_buffer_unref) all handles if
+	 *   get_all succeeds.
+	 * - SHOULD NOT call get_all with this type multiple times, as each
+	 *   call may create new handles (implementation dependent).
+	 */
+	XRT_ALLOCATION_TYPE_WIN32_HANDLE,
+
+	/*!
+	 * D3D12 texture handle (ID3D12Resource, as void pointer).
+	 *
+	 * Reference counting note:
+	 *
+	 * ID3D12Resource is COM reference counted. The allocation collection
+	 * retains ownership of the resources. The returned pointers are only
+	 * valid as long as the allocation collection exists.
+	 *
+	 * Callers:
+	 * - MUST NOT call Release on these pointers.
+	 * - MUST ensure the allocation collection outlives their use of
+	 *   the resources.
+	 * - If longer lifetime is needed, caller SHOULD call AddRef, then
+	 *   Release when done.
+	 */
+	XRT_ALLOCATION_TYPE_D3D12_TEXTURE,
 };
 
 /*!

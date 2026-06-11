@@ -81,7 +81,7 @@
 /*!
  * Max number of allocation types that an allocation collection can support.
  */
-#define XRT_MAX_ALLOCATION_TYPE_COUNT 4
+#define XRT_MAX_ALLOCATION_TYPE_COUNT 9
 
 /*!
  * Max number of supported display refresh rates, artificial limit.
