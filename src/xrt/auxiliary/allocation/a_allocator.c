@@ -86,7 +86,12 @@ a_allocator_ensure_vk_images(struct vk_bundle *vk,
 		case XRT_ALLOCATION_TYPE_VULKAN_IMAGE: supports_vk_image = true; break;
 		case XRT_ALLOCATION_TYPE_NATIVE_IMAGE: supports_native_images = true; break;
 		case XRT_ALLOCATION_TYPE_METAL_TEXTURE: supports_metal_texture = true; break;
-		case XRT_ALLOCATION_TYPE_IOSURFACE: break; // Not used.
+		case XRT_ALLOCATION_TYPE_IOSURFACE: break;     // Not used.
+		case XRT_ALLOCATION_TYPE_CPU_POINTER: break;   // Not used.
+		case XRT_ALLOCATION_TYPE_VULKAN_BUFFER: break; // Not used.
+		case XRT_ALLOCATION_TYPE_DXGI_HANDLE: break;   // Not used.
+		case XRT_ALLOCATION_TYPE_WIN32_HANDLE: break;  // Not used.
+		case XRT_ALLOCATION_TYPE_D3D12_TEXTURE: break; // Not used.
 		}
 	}
 
