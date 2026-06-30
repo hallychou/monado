@@ -650,6 +650,14 @@ filter_device_features(struct vk_bundle *vk,
 	};
 #endif
 
+#ifdef VK_KHR_separate_depth_stencil_layouts
+	VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR separate_depth_stencil_layouts_info = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR,
+	    .pNext = NULL,
+	    .separateDepthStencilLayouts = VK_FALSE,
+	};
+#endif
+
 	VkPhysicalDeviceFeatures2 physical_device_features = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
 	    .pNext = NULL,
@@ -714,6 +722,13 @@ filter_device_features(struct vk_bundle *vk,
 	}
 #endif
 
+#ifdef VK_KHR_separate_depth_stencil_layouts
+	if (vk->has_KHR_separate_depth_stencil_layouts) {
+		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
+		                         (VkBaseInStructure *)&separate_depth_stencil_layouts_info);
+	}
+#endif
+
 	vk->vkGetPhysicalDeviceFeatures2( //
 	    physical_device,              // physicalDevice
 	    &physical_device_features);   // pFeatures
@@ -765,6 +780,10 @@ filter_device_features(struct vk_bundle *vk,
 	CHECK(ext_fmt_resolve, ext_fmt_resolve_info.externalFormatResolve);
 #endif
 
+#ifdef VK_KHR_separate_depth_stencil_layouts
+	CHECK(separate_depth_stencil_layouts, separate_depth_stencil_layouts_info.separateDepthStencilLayouts);
+#endif
+
 	CHECK(shader_image_gather_extended, physical_device_features.features.shaderImageGatherExtended);
 
 	CHECK(shader_storage_image_write_without_format,
@@ -782,7 +801,8 @@ filter_device_features(struct vk_bundle *vk,
 	         "\n\tstorage_buffer_8bit_access: %i"
 	         "\n\tsynchronization_2: %i"
 	         "\n\ttimeline_semaphore: %i"
-	         "\n\tvideo_maintenance_1: %i",                              //
+	         "\n\tvideo_maintenance_1: %i"
+	         "\n\tseparate_depth_stencil_layouts: %i",                   //
 	         device_features->ext_fmt_resolve,                           //
 	         device_features->null_descriptor,                           //
 	         device_features->shader_image_gather_extended,              //
@@ -790,7 +810,8 @@ filter_device_features(struct vk_bundle *vk,
 	         device_features->storage_buffer_8bit_access,                //
 	         device_features->synchronization_2,                         //
 	         device_features->timeline_semaphore,                        //
-	         device_features->video_maintenance_1);                      //
+	         device_features->video_maintenance_1,                       //
+	         device_features->separate_depth_stencil_layouts);           //
 }
 
 static inline void
@@ -900,7 +921,7 @@ vk_create_device(struct vk_bundle *vk,
 	vk->features.present_id2 = device_features.present_id2;
 	vk->features.present_wait = device_features.present_wait;
 	vk->features.video_maintenance_1 = device_features.video_maintenance_1;
-
+	vk->features.separate_depth_stencil_layouts = device_features.separate_depth_stencil_layouts;
 
 	/*
 	 * Queue
@@ -1059,6 +1080,14 @@ vk_create_device(struct vk_bundle *vk,
 	};
 #endif
 
+#ifdef VK_KHR_separate_depth_stencil_layouts
+	VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR separate_depth_stencil_layouts_info = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR,
+	    .pNext = NULL,
+	    .separateDepthStencilLayouts = device_features.separate_depth_stencil_layouts,
+	};
+#endif
+
 	VkPhysicalDeviceFeatures enabled_features = {
 	    .shaderImageGatherExtended = device_features.shader_image_gather_extended,
 	    .shaderStorageImageWriteWithoutFormat = device_features.shader_storage_image_write_without_format,
@@ -1128,6 +1157,13 @@ vk_create_device(struct vk_bundle *vk,
 	if (vk->has_ANDROID_external_format_resolve) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info,
 		                         (VkBaseInStructure *)&ext_fmt_resolve_info);
+	}
+#endif
+
+#ifdef VK_KHR_separate_depth_stencil_layouts
+	if (vk->has_KHR_separate_depth_stencil_layouts) {
+		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info,
+		                         (VkBaseInStructure *)&separate_depth_stencil_layouts_info);
 	}
 #endif
 
@@ -1228,6 +1264,7 @@ vk_init_from_given(struct vk_bundle *vk,
                    bool external_semaphore_fd_enabled,
                    bool timeline_semaphore_enabled,
                    bool image_format_list_enabled,
+                   bool separate_depth_stencil_layouts_enabled,
                    bool debug_utils_enabled,
                    enum u_logging_level log_level)
 {
@@ -1271,6 +1308,11 @@ vk_init_from_given(struct vk_bundle *vk,
 	// Vulkan does not let us read what extensions was enabled.
 	if (image_format_list_enabled) {
 		vk->has_KHR_image_format_list = image_format_list_enabled;
+	}
+
+	// Vulkan does not let us read what extensions was enabled.
+	if (separate_depth_stencil_layouts_enabled) {
+		vk->has_KHR_separate_depth_stencil_layouts = separate_depth_stencil_layouts_enabled;
 	}
 
 #ifdef VK_KHR_timeline_semaphore
