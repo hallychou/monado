@@ -77,6 +77,19 @@ struct comp_render_view_data
 	//! New world pose of this view at the end of scanout.
 	struct xrt_pose world_pose_scanout_end;
 
+	/*!
+	 * World pose of this view at the time the layer squasher rendered
+	 * the scratch image. Used as source pose for the distortion warp
+	 * matrix, so that strip rendering can correct the squash-to-scanout
+	 * motion even when @ref world_pose_scanout_begin / @ref world_pose_scanout_end
+	 * are overwritten per-strip with boundary scanout poses.
+	 *
+	 * For the standard gfx path and the CS path, this is typically set
+	 * to @ref world_pose_scanout_begin by @ref comp_render_dispatch_add_squash_view,
+	 * making the warp identity (same source and new pose).
+	 */
+	struct xrt_pose world_pose_squash;
+
 	//! New eye pose of this view.
 	struct xrt_pose eye_pose;
 
@@ -149,6 +162,13 @@ struct comp_render_view_data
 		// Distortion target viewport data (aka target).
 		struct render_viewport_data viewport_data;
 
+		/*!
+		 * Distortion target scissor data (aka target).
+		 *
+		 * Typically the scissor rect will be equal to @ref viewport_data.
+		 */
+		render_scissor_data_t scissor_data;
+
 		struct
 		{
 			//! Distortion target vertex rotation information.
@@ -196,6 +216,28 @@ struct comp_render_dispatch_data
 		{
 			//! The resources needed for the target.
 			struct render_gfx_target_resources *rtr;
+
+			/*!
+			 * For strip rendering, current strip extents
+			 * on the scan axis in NDC:
+			 *     * strip_range.x = ndc min,
+			 *     * strip_range.y = ndc extent,
+			 *     * strip_range.zw is unused.
+			 *
+			 * Used by the mesh.vert to derive the per-vertex
+			 * strip blend factor.
+			 */
+			struct xrt_normalized_rect strip_range_ndc;
+
+			/*!
+			 * For strip rendering, picks which NDC component
+			 * mesh.vert uses for the strip blend factor.
+			 *
+			 * Valid values:
+			 *     * 0 = y (top-to-bottom scan),
+			 *     * 1 = x (left-to-right scan).
+			 */
+			uint32_t scan_axis;
 		} gfx;
 
 		//! Members used only by CS @ref comp_render_cs
@@ -206,6 +248,9 @@ struct comp_render_dispatch_data
 
 			//! Target image view for distortion.
 			VkImageView storage_view;
+
+			//! Target image layout for distortion, the final layout to transition to.
+			VkImageLayout final_layout;
 		} cs;
 	} target;
 };
@@ -232,8 +277,13 @@ comp_render_initial_init(struct comp_render_dispatch_data *data, bool fast_path,
  * Private implementation method, do not use outside of more-specific add_view calls!
  *
  * @param data Common render dispatch data, will be updated
- * @param world_pose New world pose of this view.
- *        Populates @ref comp_render_view_data::world_pose
+ * @param world_pose_scanout_begin Start world pose of this view.
+ *        Populates @ref comp_render_view_data::world_pose_scanout_begin
+ * @param world_pose_scanout_end End world pose of this view.
+ *        Populates @ref comp_render_view_data::world_pose_scanout_end
+ * @param world_pose_squash World pose of this view used for layer squashing,
+ *        maybe equal to @ref world_pose_scanout_begin for the non-strip GFX path.
+ *        Populates @ref comp_render_view_data::world_pose_squash
  * @param eye_pose New eye pose of this view
  *        Populates @ref comp_render_view_data::eye_pose
  * @param fov Assigned to fov in the view data, and used to compute @ref comp_render_view_data::target_pre_transform
@@ -255,6 +305,7 @@ static inline struct comp_render_view_data *
 comp_render_dispatch_add_squash_view(struct comp_render_dispatch_data *data,
                                      const struct xrt_pose *world_pose_scanout_begin,
                                      const struct xrt_pose *world_pose_scanout_end,
+                                     const struct xrt_pose *world_pose_squash,
                                      const struct xrt_pose *eye_pose,
                                      const struct xrt_fov *fov,
                                      VkImage squash_image,
@@ -271,6 +322,7 @@ comp_render_dispatch_add_squash_view(struct comp_render_dispatch_data *data,
 	// Common
 	view->world_pose_scanout_begin = *world_pose_scanout_begin;
 	view->world_pose_scanout_end = *world_pose_scanout_end;
+	view->world_pose_squash = *world_pose_squash;
 	view->eye_pose = *eye_pose;
 	view->fov = *fov;
 
@@ -285,7 +337,8 @@ static inline struct comp_render_view_data *
 comp_render_dispatch_add_target_view(struct comp_render_dispatch_data *data,
                                      VkImageView squash_as_src_sample_view,
                                      const struct xrt_normalized_rect *squash_as_src_norm_rect,
-                                     const struct render_viewport_data *target_viewport_data)
+                                     const struct render_viewport_data *target_viewport_data,
+                                     const render_scissor_data_t *target_scissor_data)
 {
 	uint32_t i = data->target.view_count++;
 
@@ -300,6 +353,7 @@ comp_render_dispatch_add_target_view(struct comp_render_dispatch_data *data,
 
 	// When writing into the target.
 	view->target.viewport_data = *target_viewport_data;
+	view->target.scissor_data = *target_scissor_data;
 
 	return view;
 }
@@ -329,24 +383,40 @@ comp_render_dispatch_add_target_view(struct comp_render_dispatch_data *data,
  * Initialize structure for use of the GFX renderer.
  *
  * @param[in,out] data Common render dispatch data.
- * @param target_rtr GFX-specific resources for the entire framebuffer. Must be populated before call.
+ * @param target_rtr GFX-specific resources for the entire framebuffer.
+ *        Must be populated before call.
+ * @param target_strip_range_ndc Current strip's NDC extent on the scan axis
+ *        (.x = min, .y = extent).
+ * @param target_scan_axis Picks which NDC component
+ *        the mesh vertex shader uses for its strip blend factor.
  */
 static inline void
-comp_render_gfx_add_target(struct comp_render_dispatch_data *data, struct render_gfx_target_resources *target_rtr)
+comp_render_gfx_add_target(struct comp_render_dispatch_data *data,
+                           struct render_gfx_target_resources *target_rtr,
+                           const struct xrt_normalized_rect *target_strip_range_ndc,
+                           uint32_t target_scan_axis)
 {
 	// Error tracking.
 	data->target.initialized = true;
 
 	// When writing into the target.
 	data->target.gfx.rtr = target_rtr;
+
+	data->target.gfx.strip_range_ndc = *target_strip_range_ndc;
+	data->target.gfx.scan_axis = target_scan_axis;
 }
 
 /*!
  * Add view to the common data, as required by the GFX renderer.
  *
  * @param[in,out] data Common render dispatch data, will be updated
- * @param world_pose New world pose of this view.
- *        Populates @ref comp_render_view_data::world_pose
+ * @param world_pose_scanout_begin Start world pose of this view.
+ *        Populates @ref comp_render_view_data::world_pose_scanout_begin
+ * @param world_pose_scanout_end End world pose of this view.
+ *        Populates @ref comp_render_view_data::world_pose_scanout_end
+ * @param world_pose_squash World pose of this view used for layer squashing,
+ *        maybe equal to @ref world_pose_scanout_begin for the non-strip GFX path.
+ *        Populates @ref comp_render_view_data::world_pose_squash
  * @param eye_pose New eye pose of this view
  *        Populates @ref comp_render_view_data::eye_pose
  * @param fov Assigned to fov in the view data, and used to
@@ -368,7 +438,9 @@ comp_render_gfx_add_target(struct comp_render_dispatch_data *data, struct render
  */
 static inline void
 comp_render_gfx_add_squash_view(struct comp_render_dispatch_data *data,
-                                const struct xrt_pose *world_pose,
+                                const struct xrt_pose *world_pose_scanout_begin,
+                                const struct xrt_pose *world_pose_scanout_end,
+                                const struct xrt_pose *world_pose_squash,
                                 const struct xrt_pose *eye_pose,
                                 const struct xrt_fov *fov,
                                 VkImage squash_image,
@@ -377,8 +449,9 @@ comp_render_gfx_add_squash_view(struct comp_render_dispatch_data *data,
 {
 	struct comp_render_view_data *view = comp_render_dispatch_add_squash_view( //
 	    data,                                                                  //
-	    world_pose,                                                            //
-	    world_pose,                                                            //
+	    world_pose_scanout_begin,                                              //
+	    world_pose_scanout_end,                                                //
+	    world_pose_squash,                                                     //
 	    eye_pose,                                                              //
 	    fov,                                                                   //
 	    squash_image,                                                          //
@@ -393,13 +466,15 @@ comp_render_gfx_add_target_view(struct comp_render_dispatch_data *data,
                                 VkImageView squash_as_src_sample_view,
                                 const struct xrt_normalized_rect *squash_as_src_norm_rect,
                                 const struct xrt_matrix_2x2 *target_vertex_rot,
-                                const struct render_viewport_data *target_viewport_data)
+                                const struct render_viewport_data *target_viewport_data,
+                                const render_scissor_data_t *target_scissor_data)
 {
 	struct comp_render_view_data *view = comp_render_dispatch_add_target_view( //
 	    data,                                                                  //
 	    squash_as_src_sample_view,                                             //
 	    squash_as_src_norm_rect,                                               //
-	    target_viewport_data);                                                 //
+	    target_viewport_data,                                                  //
+	    target_scissor_data);                                                  //
 
 	// When writing into the target.
 	view->target.gfx.vertex_rot = *target_vertex_rot;
@@ -478,6 +553,17 @@ comp_render_gfx_dispatch(struct render_gfx *render,
                          const uint32_t layer_count,
                          const struct comp_render_dispatch_data *d);
 
+void
+comp_render_gfx_distortion_after_squash(struct render_gfx *render, const struct comp_render_dispatch_data *d);
+
+void
+comp_render_gfx_distortion_fast_path(struct render_gfx *render,
+                                     const struct comp_layer *single_layer,
+                                     const struct comp_render_dispatch_data *d);
+
+void
+comp_render_gfx_clear(struct render_gfx *render, const struct comp_render_dispatch_data *d);
+
 /* end of comp_render_gfx group */
 
 /*! @} */
@@ -509,7 +595,10 @@ comp_render_gfx_dispatch(struct render_gfx *render,
  * @param target_storage_view Corresponding image view
  */
 static inline void
-comp_render_cs_add_target(struct comp_render_dispatch_data *data, VkImage target_image, VkImageView target_storage_view)
+comp_render_cs_add_target(struct comp_render_dispatch_data *data,
+                          VkImage target_image,
+                          VkImageView target_storage_view,
+                          VkImageLayout target_final_layout)
 {
 	// Error tracking.
 	data->target.initialized = true;
@@ -517,6 +606,7 @@ comp_render_cs_add_target(struct comp_render_dispatch_data *data, VkImage target
 	// When writing into the target.
 	data->target.cs.image = target_image;
 	data->target.cs.storage_view = target_storage_view;
+	data->target.cs.final_layout = target_final_layout;
 }
 
 /*!
@@ -557,6 +647,7 @@ comp_render_cs_add_squash_view(struct comp_render_dispatch_data *data,
 	    data,                                                                  //
 	    world_pose_scanout_begin,                                              //
 	    world_pose_scanout_end,                                                //
+	    world_pose_scanout_begin,                                              // world_pose_squash
 	    eye_pose,                                                              //
 	    fov,                                                                   //
 	    squash_image,                                                          //
@@ -570,13 +661,15 @@ static inline void
 comp_render_cs_add_target_view(struct comp_render_dispatch_data *data,
                                VkImageView squash_as_src_sample_view,
                                const struct xrt_normalized_rect *squash_as_src_norm_rect,
-                               const struct render_viewport_data *target_viewport_data)
+                               const struct render_viewport_data *target_viewport_data,
+                               const render_scissor_data_t *target_scissor_data)
 {
 	struct comp_render_view_data *view = comp_render_dispatch_add_target_view( //
 	    data,                                                                  //
 	    squash_as_src_sample_view,                                             //
 	    squash_as_src_norm_rect,                                               //
-	    target_viewport_data);                                                 //
+	    target_viewport_data,                                                  //
+	    target_scissor_data);                                                  //
 	(void)view;
 }
 
@@ -675,7 +768,7 @@ comp_render_cs_layers(struct render_compute *render,
  *
  * - Layer images: `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`
  * - Scratch images: `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`
- * - Target image: `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`
+ * - Target image: `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` or `VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR`
  *
  * @note Swapchains in the @p layers must implement @ref comp_swapchain in
  * addition to just @ref xrt_swapchain, as this function downcasts to @ref comp_swapchain !

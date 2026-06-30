@@ -32,7 +32,9 @@ namespace org::freedesktop::monado::auxiliary {
 	      getDisplayModeIdWidth(
 	          classRef().getStaticMethod("getDisplayModeIdWidth", "(Landroid/content/Context;II)I")),
 	      getDisplayModeIdHeight(
-	          classRef().getStaticMethod("getDisplayModeIdHeight", "(Landroid/content/Context;II)I"))
+	          classRef().getStaticMethod("getDisplayModeIdHeight", "(Landroid/content/Context;II)I")),
+	      getAppVsyncOffsetNanos(
+	          classRef().getStaticMethod("getAppVsyncOffsetNanos", "(Landroid/content/Context;I)J"))
 	{}
 
 	ActivityLifecycleListener::Meta::Meta(jni::jclass clazz)

@@ -86,6 +86,22 @@ struct xrt_view
  */
 struct xrt_device_compositor_info
 {
+	/*!
+	 * @brief The type of panel refresh the screen uses.
+	 *
+	 * This affects how scanout poses are queried for rolling refresh
+	 * compensation: if the mode is @ref XRT_PANEL_REFRESH_TYPE_GLOBAL,
+	 * the start and end scanout world poses will be identical; otherwise,
+	 * separate start and end poses are queried using different predicted
+	 * timestamps derived from the other members of
+	 * @ref xrt_device_compositor_info.
+	 *
+	 * The transmission direction (if known) should be specified via
+	 * @ref scanout_direction. Some features may require this information
+	 * even for global-refresh panels, e.g. beam racing.
+	 */
+	enum xrt_panel_refresh_type panel_refresh_type;
+
 	//! The direction scanout on the display occurs.
 	enum xrt_scanout_direction scanout_direction;
 	/*!
@@ -95,6 +111,53 @@ struct xrt_device_compositor_info
 	 * @note alignas for 32 bit client support, see @ref ipc-design
 	 */
 	XRT_ALIGNAS(8) int64_t scanout_time_ns;
+
+	//! single-buffer strip-rendering
+	struct
+	{
+		/*!
+		 * Number of strips to divide the display into for strip rendering.
+		 *
+		 * If strip_count is 0, strip rendering path is disabled.
+		 */
+		uint32_t strip_count;
+
+		struct
+		{
+			/*!
+			 * A small offset of time to add to the wait time
+			 * for the beam to have clearly left strip regions
+			 * before strip rendering.
+			 *
+			 * If beam_offset_ns is 0, defaults to 0.5ms.
+			 */
+			int64_t beam_offset_ns;
+		} beam_chase;
+
+		struct
+		{
+			/*!
+			 * A small offset of time to subtract to the wait time
+			 * for the beam to be clearly behind strip regions
+			 * before strip rendering.
+			 *
+			 * If beam_offset_ns is 0, defaults to 0.5ms.
+			 */
+			int64_t beam_offset_ns;
+
+			/*!
+			 * Small safety pad on top of the measured per-strip duration.
+			 *
+			 * Use this to absorb any unaccounted for time that may cause tearing,
+			 * such as Vulkan API / driver internal overheads or OS-scheduler
+			 * jitter.
+			 *
+			 * If safety_pad_ns is 0, defaults to 200us.
+			 */
+			int64_t safety_pad_ns;
+		} beam_race;
+
+	} strip_render;
 };
 
 /*!

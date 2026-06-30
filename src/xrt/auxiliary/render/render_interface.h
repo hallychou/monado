@@ -539,6 +539,23 @@ struct render_resources
 		//! Whether distortion images have been pre-rotated 90 degrees.
 		bool pre_rotated;
 	} distortion;
+
+	/*!
+	 * @brief Per-strip resources for single-buffered strip rendering.
+	 */
+	struct
+	{
+		VkQueryPool *query_pools;
+
+		VkCommandPool *cmd_pools;
+
+		VkCommandBuffer *cmds;
+
+		VkFence *fences;
+
+		uint32_t strip_count;
+
+	} strip_distortion;
 };
 
 /*!
@@ -604,14 +621,18 @@ render_resources_get_timestamps(struct render_resources *r, uint64_t *out_gpu_st
  * Returns the duration for the latest GPU work that was submitted using
  * @ref render_gfx or @ref render_compute cmd buf builders.
  *
- * Behaviour for this function is undefined if the GPU has not completed before
- * calling this function, so make sure to call vkQueueWaitIdle or wait on the
- * fence that the work was submitted with have fully completed.
+ * @param[in]  r                   The Render resources
+ * @param[in]  wait_for_results    Whether to block until results are available
+ * @param[out] out_gpu_duration_ns The resulting GPU duration.
+ *
+ * If @ref wait_for_results is set the behaviour for this function is undefined
+ * if the GPU has not completed before calling this function, so make sure to call
+ * vkQueueWaitIdle or wait on the fence that the work was submitted with have fully completed.
  *
  * @public @memberof render_resources
  */
 bool
-render_resources_get_duration(struct render_resources *r, uint64_t *out_gpu_duration_ns);
+render_resources_get_duration(struct render_resources *r, bool wait_for_results, uint64_t *out_gpu_duration_ns);
 
 
 /*
@@ -674,6 +695,7 @@ struct render_viewport_data
 	uint32_t w, h;
 };
 
+typedef struct render_viewport_data render_scissor_data_t;
 
 /*
  *
@@ -774,8 +796,8 @@ struct render_gfx_target_resources
 	//! Render pass.
 	struct render_gfx_render_pass *rgrp;
 
-	// The extent of the framebuffer.
-	VkExtent2D extent;
+	//! The offset & extents of the framebuffer.
+	VkRect2D render_area;
 
 	//! Framebuffer for this target, depends on given VkImageView.
 	VkFramebuffer framebuffer;
@@ -893,7 +915,31 @@ struct render_gfx_mesh_ubo_data
 
 	// Only used for timewarp.
 	struct xrt_normalized_rect pre_transform;
-	struct xrt_matrix_4x4 transform;
+
+	struct xrt_matrix_4x4 transform_timewarp_scanout_begin;
+	struct xrt_matrix_4x4 transform_timewarp_scanout_end;
+
+	/*!
+	 * For strip rendering, current strip extents
+	 * on the scan axis in NDC:
+	 *     * strip_range.x = ndc min,
+	 *     * strip_range.y = ndc extent,
+	 *     * strip_range.zw is unused.
+	 *
+	 * Used by the mesh.vert to derive the per-vertex
+	 * strip blend factor.
+	 */
+	struct xrt_normalized_rect strip_range_ndc;
+
+	/*!
+	 * For strip rendering, picks which NDC component the
+	 * mesh.vert uses for the strip blend factor.
+	 *
+	 * Valid values:
+	 *     * 0 = y (top-to-bottom scan),
+	 *     * 1 = x (left-to-right scan).
+	 */
+	uint32_t scan_axis;
 };
 
 /*!
@@ -1070,7 +1116,27 @@ render_gfx_end_target(struct render_gfx *render);
  * @public @memberof render_gfx
  */
 void
-render_gfx_begin_view(struct render_gfx *render, uint32_t view, const struct render_viewport_data *viewport_data);
+render_gfx_clear_color_attachment(struct render_gfx *render, const VkClearColorValue *color);
+
+/*!
+ * @pre successful @ref render_gfx_begin_target call
+ * @public @memberof render_gfx
+ */
+void
+render_gfx_begin_view_scissored(struct render_gfx *render,
+                                uint32_t view,
+                                const struct render_viewport_data *viewport_data,
+                                const render_scissor_data_t *scissor_data);
+
+/*!
+ * @pre successful @ref render_gfx_begin_target call
+ * @public @memberof render_gfx
+ */
+static inline void
+render_gfx_begin_view(struct render_gfx *render, uint32_t view, const struct render_viewport_data *viewport_data)
+{
+	render_gfx_begin_view_scissored(render, view, viewport_data, viewport_data);
+}
 
 /*!
  * @pre successful @ref render_gfx_begin_view call without a matching call to this function
@@ -1433,6 +1499,7 @@ render_compute_projection_timewarp(struct render_compute *render,
                                    const struct xrt_pose new_poses_scanout_end[XRT_MAX_VIEWS],
                                    VkImage target_image,
                                    VkImageView target_image_view,
+                                   VkImageLayout target_final_layout,
                                    const struct render_viewport_data views[XRT_MAX_VIEWS]);
 
 /*!
@@ -1448,6 +1515,7 @@ render_compute_projection_scanout_compensation(struct render_compute *render,
                                                const struct xrt_pose new_poses_scanout_end[XRT_MAX_VIEWS],
                                                VkImage target_image,
                                                VkImageView target_image_view,
+                                               VkImageLayout target_final_layout,
                                                const struct render_viewport_data views[XRT_MAX_VIEWS]);
 
 /*!
@@ -1460,6 +1528,7 @@ render_compute_projection_no_timewarp(struct render_compute *render,
                                       const struct xrt_normalized_rect src_rects[XRT_MAX_VIEWS],
                                       VkImage target_image,
                                       VkImageView target_image_view,
+                                      VkImageLayout target_final_layout,
                                       const struct render_viewport_data views[XRT_MAX_VIEWS]);
 
 /*!
@@ -1469,6 +1538,7 @@ void
 render_compute_clear(struct render_compute *render,
                      VkImage target_image,
                      VkImageView target_image_view,
+                     VkImageLayout target_final_layout,
                      const struct render_viewport_data views[XRT_MAX_VIEWS]);
 
 

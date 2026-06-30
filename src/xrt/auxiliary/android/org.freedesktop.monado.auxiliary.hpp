@@ -150,6 +150,18 @@ namespace org::freedesktop::monado::auxiliary {
 		getSupportedRefreshRates(android::content::Context const &context);
 
 		/*!
+		 * Wrapper for the getDisplayModeIdHeight static method
+		 *
+		 * Java prototype:
+		 * `public static int getAppVsyncOffsetNanos(@NonNull final Context context, int display);`
+		 *
+		 * JNI signature: (Landroid/content/Context;I)J;
+		 *
+		 */
+		static int64_t
+		getAppVsyncOffsetNanos(android::content::Context const &context, int32_t displayId);
+
+		/*!
 		 * Wrapper for the getNativePointer method
 		 *
 		 * Java prototype:
@@ -210,6 +222,7 @@ namespace org::freedesktop::monado::auxiliary {
 			jni::method_t waitGetSurfaceHolder;
 			jni::method_t getDisplayModeIdWidth;
 			jni::method_t getDisplayModeIdHeight;
+			jni::method_t getAppVsyncOffsetNanos;
 
 			/*!
 			 * Singleton accessor

@@ -15,6 +15,7 @@
 #include "xrt/xrt_defines.h"
 #include "xrt/xrt_frame.h"
 #include "xrt/xrt_compositor.h"
+#include "xrt/xrt_vsync_source.h"
 #include "xrt/xrt_results.h"
 
 #include "os/os_time.h"
@@ -84,6 +85,12 @@ DEBUG_GET_ONCE_LOG_OPTION(comp_frame_lag_level, "XRT_COMP_FRAME_LAG_LOG_AS_LEVEL
 			}                                                                                              \
 		}                                                                                                      \
 	} while (false)
+
+#define COMP_RENDERER_MAX_STRIP_POSES 16
+
+#define COMP_RENDERER_STRIP_GPU_TIME_ESTIMATE_NS (U_TIME_1MS_IN_NS / 2)
+
+#define COMP_RENDERER_STRIP_CPU_TIME_ESTIMATE_NS (U_TIME_1MS_IN_NS / 2)
 
 
 /*
@@ -162,6 +169,35 @@ struct comp_renderer
 	 */
 	uint32_t buffer_count;
 
+	/*!
+	 * Only relevant when using present modes from VK_KHR_shared_presentable_image,
+	 * tracks whether we have waited on the shared present semaphore at least once,
+	 * subsequents present waits are redundant and can be skipped.
+	 */
+	bool shared_present_semaphore_wait_once;
+
+	/*!
+	 * List of strip boundary world poses for strip rendering.
+	 *
+	 * The entries will filled as:
+	 *   @ref world_strip_boundary_poses[X] is the begin strip pose.
+	 *   @ref world_strip_boundary_poses[X+1] is the end strip pose.
+	 *
+	 * The boundary pose is shared between strip X's end and strip X+1's begin.
+	 */
+	struct xrt_pose world_strip_boundary_poses[COMP_RENDERER_MAX_STRIP_POSES][XRT_MAX_VIEWS];
+
+	//! How long each strip render took on the GPU (on the previous frame).
+	int64_t last_strip_gpu_times_ns[COMP_RENDERER_MAX_STRIP_POSES];
+
+	//! How long each strip render took on the CPU (on the previous frame).
+	int64_t last_strip_cpu_times_ns[COMP_RENDERER_MAX_STRIP_POSES];
+
+	VkResult (*dispatch_graphics)(struct comp_renderer *r,
+	                              struct render_gfx *render,
+	                              struct chl_frame_state *frame_state,
+	                              enum comp_target_fov_source fov_source);
+
 	//! @}
 };
 
@@ -172,6 +208,27 @@ struct comp_renderer
  *
  */
 
+static XRT_CHECK_RESULT VkResult
+dispatch_gfx(struct comp_renderer *r,
+             struct render_gfx *render,
+             struct chl_frame_state *frame_state,
+             enum comp_target_fov_source fov_source);
+
+static XRT_CHECK_RESULT VkResult
+dispatch_gfx_strip_render(struct comp_renderer *r,
+                          struct render_gfx *render,
+                          struct chl_frame_state *frame_state,
+                          enum comp_target_fov_source fov_source);
+
+static inline XRT_CHECK_RESULT VkResult
+dispatch_graphics(struct comp_renderer *r,
+                  struct render_gfx *render,
+                  struct chl_frame_state *frame_state,
+                  enum comp_target_fov_source fov_source)
+{
+	return (*r->dispatch_graphics)(r, render, frame_state, fov_source);
+}
+
 static void
 renderer_wait_queue_idle(struct comp_renderer *r)
 {
@@ -181,6 +238,22 @@ renderer_wait_queue_idle(struct comp_renderer *r)
 	vk_queue_lock(vk->main_queue);
 	vk->vkQueueWaitIdle(vk->main_queue->queue);
 	vk_queue_unlock(vk->main_queue);
+}
+
+static inline void
+precise_sleep_until(int64_t target_ns, int64_t max_spin_ns)
+{
+	const int64_t now_ns = os_monotonic_get_ns();
+	if (target_ns <= now_ns) {
+		return;
+	}
+	const int64_t remaining_ns = target_ns - now_ns;
+	if (remaining_ns > max_spin_ns) {
+		os_nanosleep(remaining_ns - max_spin_ns);
+	}
+	while (os_monotonic_get_ns() < target_ns) {
+		// tight spin...
+	}
 }
 
 static void
@@ -223,6 +296,93 @@ calc_viewport_data(struct comp_renderer *r,
 	}
 }
 
+static inline void
+calc_strip_render_area(struct comp_renderer *r,
+                       uint32_t strip,
+                       uint32_t strip_count,
+                       const struct xrt_device_compositor_info *scanout_info,
+                       VkRect2D *out_render_area)
+{
+	assert(strip_count > 0 && strip < strip_count);
+
+	const uint32_t target_w = r->c->target->width;
+	const uint32_t target_h = r->c->target->height;
+
+	switch (scanout_info->scanout_direction) {
+	case XRT_SCANOUT_DIRECTION_LEFT_TO_RIGHT: {
+		const uint32_t sx = (strip * target_w) / strip_count;
+		const uint32_t ex = ((strip + 1) * target_w) / strip_count;
+		*out_render_area = (VkRect2D){
+		    .offset = {.x = (int32_t)sx, .y = 0},
+		    .extent = {.width = ex - sx, .height = target_h},
+		};
+		break;
+	}
+	case XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM: {
+		const uint32_t sy = (strip * target_h) / strip_count;
+		const uint32_t ey = ((strip + 1) * target_h) / strip_count;
+		*out_render_area = (VkRect2D){
+		    .offset = {.x = 0, .y = (int32_t)sy},
+		    .extent = {.width = target_w, .height = ey - sy},
+		};
+		break;
+	}
+	default: {
+		*out_render_area = (VkRect2D){
+		    .offset = {.x = 0, .y = 0},
+		    .extent = {.width = target_w, .height = target_h},
+		};
+		break;
+	}
+	}
+}
+
+static inline void
+calc_strip_view_scissors(uint32_t view_count,
+                         const VkRect2D *strip_render_area,
+                         const struct render_viewport_data view_viewports[XRT_MAX_VIEWS],
+                         render_scissor_data_t out_scissor_data[XRT_MAX_VIEWS])
+{
+	const uint32_t b_x0 = (uint32_t)strip_render_area->offset.x;
+	const uint32_t b_y0 = (uint32_t)strip_render_area->offset.y;
+	const uint32_t b_x1 = b_x0 + strip_render_area->extent.width;
+	const uint32_t b_y1 = b_y0 + strip_render_area->extent.height;
+
+	for (uint32_t i = 0; i < view_count; ++i) {
+		const struct render_viewport_data *v = &view_viewports[i];
+		const uint32_t v_x1 = v->x + v->w;
+		const uint32_t v_y1 = v->y + v->h;
+
+		const uint32_t x0 = MAX(v->x, b_x0);
+		const uint32_t y0 = MAX(v->y, b_y0);
+		const uint32_t x1 = MIN(v_x1, b_x1);
+		const uint32_t y1 = MIN(v_y1, b_y1);
+
+		out_scissor_data[i] = (render_scissor_data_t){
+		    .x = x0,
+		    .y = y0,
+		    .w = x1 > x0 ? x1 - x0 : 0,
+		    .h = y1 > y0 ? y1 - y0 : 0,
+		};
+	}
+}
+
+static inline void
+calc_strip_ndc_range(const VkRect2D *strip_render_area,
+                     const VkExtent2D *target_extent,
+                     uint32_t scan_axis,
+                     struct xrt_normalized_rect *out_strip_range)
+{
+	*out_strip_range = (struct xrt_normalized_rect)XRT_STRUCT_INIT;
+	if (scan_axis == 0u) {
+		out_strip_range->x = 2.0f * (float)strip_render_area->offset.y / (float)target_extent->height - 1.0f;
+		out_strip_range->y = 2.0f * (float)strip_render_area->extent.height / (float)target_extent->height;
+	} else {
+		out_strip_range->x = 2.0f * (float)strip_render_area->offset.x / (float)target_extent->width - 1.0f;
+		out_strip_range->y = 2.0f * (float)strip_render_area->extent.width / (float)target_extent->width;
+	}
+}
+
 static void
 calc_vertex_rot_data(struct comp_renderer *r, struct xrt_matrix_2x2 out_vertex_rots[XRT_MAX_VIEWS], size_t view_count)
 {
@@ -258,17 +418,21 @@ calc_vertex_rot_data(struct comp_renderer *r, struct xrt_matrix_2x2 out_vertex_r
 }
 
 static void
-calc_pose_data(struct comp_renderer *r,
-               enum comp_target_fov_source fov_source,
-               struct xrt_fov out_fovs[XRT_MAX_VIEWS],
-               struct xrt_pose out_world_scanout_begin[XRT_MAX_VIEWS],
-               struct xrt_pose out_world_scanout_end[XRT_MAX_VIEWS],
-               struct xrt_pose out_eye[XRT_MAX_VIEWS],
-               uint32_t view_count)
+calc_pose_data_at_time_window(struct comp_renderer *r,
+                              int64_t begin_timestamp_ns,
+                              int64_t end_timestamp_ns,
+                              enum comp_target_fov_source fov_source,
+                              struct xrt_fov out_fovs[XRT_MAX_VIEWS],
+                              struct xrt_pose out_world_scanout_begin[XRT_MAX_VIEWS],
+                              struct xrt_pose out_world_scanout_end[XRT_MAX_VIEWS],
+                              struct xrt_pose out_eye[XRT_MAX_VIEWS],
+                              uint32_t view_count)
 {
 	COMP_TRACE_MARKER();
 
-	struct xrt_vec3 default_eye_relation = {
+	assert(begin_timestamp_ns != 0 && end_timestamp_ns != 0);
+
+	const struct xrt_vec3 default_eye_relation = {
 	    0.063000f, /*! @todo get actual ipd_meters */
 	    0.0f,
 	    0.0f,
@@ -280,30 +444,6 @@ calc_pose_data(struct comp_renderer *r,
 
 	// Determine view type based on view count
 	enum xrt_view_type view_type = (view_count == 1) ? XRT_VIEW_TYPE_MONO : XRT_VIEW_TYPE_STEREO;
-
-	int64_t scanout_time_ns = 0;
-	if (r->c->xdev->supported.compositor_info) {
-		struct xrt_device_compositor_mode compositor_mode = {
-		    .frame_interval_ns = r->c->frame_interval_ns,
-		};
-		struct xrt_device_compositor_info device_compositor_info;
-		xrt_result_t xret = xrt_device_get_compositor_info( //
-		    r->c->xdev,                                     //
-		    &compositor_mode,                               //
-		    &device_compositor_info);                       //
-
-		if (xret != XRT_SUCCESS) {
-			COMP_WARN(r->c, "xrt_device_get_compositor_info failed, assuming 0 scanout time");
-		} else if (device_compositor_info.scanout_direction == XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM) {
-			scanout_time_ns = device_compositor_info.scanout_time_ns;
-		} else {
-			COMP_SPEW(r->c,
-			          "Unable to apply scanout compensation as only DIRECTION_TOP_TO_BOTTOM is supported");
-		}
-	}
-
-	int64_t begin_timestamp_ns = r->c->frame.rendering.predicted_display_time_ns;
-	int64_t end_timestamp_ns = begin_timestamp_ns + scanout_time_ns;
 
 	// Pose at beginning of scanout
 	xrt_result_t xret = xrt_device_get_view_poses( //
@@ -324,7 +464,7 @@ calc_pose_data(struct comp_renderer *r,
 	}
 
 	// Pose at end of scanout
-	if (scanout_time_ns != 0) {
+	if (end_timestamp_ns != begin_timestamp_ns) {
 		xret = xrt_device_get_view_poses( //
 		    r->c->xdev,                   //
 		    &default_eye_relation,        //
@@ -391,6 +531,144 @@ calc_pose_data(struct comp_renderer *r,
 	}
 }
 
+static inline void
+calc_pose_data_at_time(struct comp_renderer *r,
+                       int64_t timestamp_ns,
+                       enum comp_target_fov_source fov_source,
+                       struct xrt_fov out_fovs[XRT_MAX_VIEWS],
+                       struct xrt_pose out_world_scanout_begin[XRT_MAX_VIEWS],
+                       struct xrt_pose out_eye[XRT_MAX_VIEWS],
+                       uint32_t view_count)
+{
+	struct xrt_pose unused_world_scanout_end[XRT_MAX_VIEWS];
+	calc_pose_data_at_time_window(r,                        //
+	                              timestamp_ns,             //
+	                              timestamp_ns,             //
+	                              fov_source,               //
+	                              out_fovs,                 //
+	                              out_world_scanout_begin,  //
+	                              unused_world_scanout_end, //
+	                              out_eye,                  //
+	                              view_count);              //
+}
+
+static inline void
+calc_pose_data(struct comp_renderer *r,
+               enum comp_target_fov_source fov_source,
+               struct xrt_fov out_fovs[XRT_MAX_VIEWS],
+               struct xrt_pose out_world_scanout_begin[XRT_MAX_VIEWS],
+               struct xrt_pose out_world_scanout_end[XRT_MAX_VIEWS],
+               struct xrt_pose out_eye[XRT_MAX_VIEWS],
+               uint32_t view_count)
+{
+	int64_t scanout_time_ns = 0;
+	if (r->c->xdev->supported.compositor_info) {
+		struct xrt_device_compositor_mode compositor_mode = {
+		    .frame_interval_ns = r->c->frame_interval_ns,
+		};
+		struct xrt_device_compositor_info device_compositor_info = {0};
+		xrt_result_t xret = xrt_device_get_compositor_info( //
+		    r->c->xdev,                                     //
+		    &compositor_mode,                               //
+		    &device_compositor_info);                       //
+
+		if (xret != XRT_SUCCESS) {
+			COMP_WARN(r->c, "xrt_device_get_compositor_info failed, assuming 0 scanout time");
+		} else if (device_compositor_info.panel_refresh_type == XRT_PANEL_REFRESH_TYPE_ROLLING &&
+		           device_compositor_info.scanout_direction == XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM) {
+			scanout_time_ns = device_compositor_info.scanout_time_ns;
+		} else {
+			COMP_SPEW(r->c,
+			          "Unable to apply scanout compensation as only DIRECTION_TOP_TO_BOTTOM is "
+			          "supported");
+		}
+	}
+
+	const int64_t begin_timestamp_ns = r->c->frame.rendering.predicted_display_time_ns;
+	const int64_t end_timestamp_ns = begin_timestamp_ns + scanout_time_ns;
+
+	calc_pose_data_at_time_window(r,                       //
+	                              begin_timestamp_ns,      //
+	                              end_timestamp_ns,        //
+	                              fov_source,              //
+	                              out_fovs,                //
+	                              out_world_scanout_begin, //
+	                              out_world_scanout_end,   //
+	                              out_eye,                 //
+	                              view_count);             //
+}
+
+/*!
+ * @brief Per-strip boundary poses for blended intra-strip timewarping.
+ *
+ * @param[out] out_world_strip_boundary_poses is expected to be of size [strip_count + 1][XRT_MAX_VIEWS],
+ *             where the entries will filled as:
+ *               @ref out_world_strip_boundary_poses[X] is the begin strip pose.
+ *               @ref out_world_strip_boundary_poses[X+1] is the end strip pose.
+ *
+ *              The boundary pose is shared between strip X's end and strip X+1's begin.
+ *
+ * When @param pose_query_per_strip is true:
+ *
+ *     Samples @param strip_count + 1 world poses at strip-boundaries,
+ *     at scanout times, starting from @param target_vsync_ns.
+ *
+ * When @param pose_query_per_strip is false:
+ *
+ *     Only a single pose is sampled at the mid-point of scanout and copied to
+ *     all entries of @param out_world_strip_boundary_poses,
+ *     use when hmd pose queries are expensive or debugging purposes.
+ */
+static inline void
+calc_poses_for_strips(struct comp_renderer *r,
+                      int64_t target_vsync_ns,
+                      int64_t scanout_time_ns,
+                      int64_t strip_duration_ns,
+                      enum comp_target_fov_source fov_source,
+                      uint32_t view_count,
+                      uint32_t strip_count,
+                      bool pose_query_per_strip,
+                      struct xrt_fov out_fovs[XRT_MAX_VIEWS],
+                      struct xrt_pose out_eye[XRT_MAX_VIEWS],
+                      struct xrt_pose out_world_strip_boundary_poses[COMP_RENDERER_MAX_STRIP_POSES][XRT_MAX_VIEWS])
+{
+	assert((strip_count + 1) <= COMP_RENDERER_MAX_STRIP_POSES);
+
+	if (pose_query_per_strip) {
+		const uint32_t mid_strip = strip_count / 2;
+		struct xrt_fov unused_fov[XRT_MAX_VIEWS];
+		struct xrt_pose unused_eye[XRT_MAX_VIEWS];
+
+		for (uint32_t x = 0; x <= strip_count; ++x) {
+			const bool is_mid_strip = (x == mid_strip);
+			const int64_t scanout_timestamp_ns = target_vsync_ns + (int64_t)x * strip_duration_ns;
+			calc_pose_data_at_time(                   //
+			    r,                                    //
+			    scanout_timestamp_ns,                 //
+			    fov_source,                           //
+			    is_mid_strip ? out_fovs : unused_fov, //
+			    out_world_strip_boundary_poses[x],    //
+			    is_mid_strip ? out_eye : unused_eye,  //
+			    view_count);                          //
+		}
+	} else {
+		const int64_t mid_scanout_ns = target_vsync_ns + scanout_time_ns / 2;
+		calc_pose_data_at_time(                //
+		    r,                                 //
+		    mid_scanout_ns,                    //
+		    fov_source,                        //
+		    out_fovs,                          //
+		    out_world_strip_boundary_poses[0], //
+		    out_eye,                           //
+		    view_count);                       //
+		for (uint32_t x = 1; x <= strip_count; ++x) {
+			memcpy(out_world_strip_boundary_poses[x],          //
+			       out_world_strip_boundary_poses[0],          //
+			       sizeof(out_world_strip_boundary_poses[0])); //
+		}
+	}
+}
+
 //! @pre comp_target_has_images(r->c->target)
 static void
 renderer_build_rendering_target_resources(struct comp_renderer *r,
@@ -433,12 +711,12 @@ renderer_create_renderings_and_fences(struct comp_renderer *r)
 	if (!use_compute) {
 		r->rtr_array = U_TYPED_ARRAY_CALLOC(struct render_gfx_target_resources, r->buffer_count);
 
-		render_gfx_render_pass_init(     //
-		    &r->target_render_pass,      // rgrp
-		    &r->c->nr,                   // struct render_resources
-		    r->c->target->format,        //
-		    VK_ATTACHMENT_LOAD_OP_CLEAR, // load_op
-		    r->c->target->final_layout); // final_layout
+		render_gfx_render_pass_init(       //
+		    &r->target_render_pass,        // rgrp
+		    &r->c->nr,                     // struct render_resources
+		    r->c->target->format,          //
+		    r->c->target->present_load_op, // load_op
+		    r->c->target->final_layout);   // final_layout
 
 		for (uint32_t i = 0; i < r->buffer_count; ++i) {
 			renderer_build_rendering_target_resources(r, &r->rtr_array[i], i);
@@ -586,6 +864,26 @@ renderer_ensure_images_and_renderings(struct comp_renderer *r, bool force_recrea
 
 	assert(r->buffer_count != 0);
 
+	r->dispatch_graphics = dispatch_gfx;
+
+	if (!c->settings.gfx_strip_render.disable && //
+	    comp_target_is_shared_presentable_image(target)) {
+
+		struct xrt_device_compositor_mode compositor_mode = {
+		    .frame_interval_ns = r->c->frame_interval_ns,
+		};
+		struct xrt_device_compositor_info device_compositor_info = {0};
+		const xrt_result_t xres = xrt_device_get_compositor_info(r->c->xdev,                   //
+		                                                         &compositor_mode,             //
+		                                                         &device_compositor_info);     //
+		if (xres == XRT_SUCCESS &&                                                             //
+		    device_compositor_info.scanout_direction == XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM && //
+		    device_compositor_info.strip_render.strip_count > 0) {
+			r->dispatch_graphics = dispatch_gfx_strip_render;
+			COMP_DEBUG(r->c, "using single-buffered strip render path");
+		}
+	}
+
 	return true;
 }
 
@@ -601,6 +899,13 @@ renderer_init(struct comp_renderer *r, struct comp_compositor *c, VkExtent2D scr
 	r->acquired_buffer = -1;
 	r->fenced_buffer = -1;
 	r->rtr_array = NULL;
+	//! default to standard dispatch_graphics function
+	r->dispatch_graphics = dispatch_gfx;
+
+	for (uint32_t i = 0; i < COMP_RENDERER_MAX_STRIP_POSES; ++i) {
+		r->last_strip_cpu_times_ns[i] = COMP_RENDERER_STRIP_CPU_TIME_ESTIMATE_NS;
+		r->last_strip_gpu_times_ns[i] = COMP_RENDERER_STRIP_GPU_TIME_ESTIMATE_NS;
+	}
 
 	// Setup the scratch images.
 	bool bret = chl_scratch_ensure( //
@@ -650,6 +955,26 @@ renderer_wait_for_last_fence(struct comp_renderer *r)
 	r->fenced_buffer = -1;
 }
 
+static inline bool
+requires_present_acquire_wait(struct comp_renderer *r)
+{
+	/*!
+	 * With shared presentable images there is only one image
+	 * shared between the presentation layer and the compositor,
+	 *
+	 * We only need to wait on the first "acquire image",
+	 * subsueqent frames waiting is redundant.
+	 */
+	if (comp_target_is_shared_presentable_image(r->c->target)) {
+		if (r->shared_present_semaphore_wait_once) {
+			return false;
+		}
+		r->shared_present_semaphore_wait_once = true;
+	}
+
+	return true;
+}
+
 static XRT_CHECK_RESULT VkResult
 renderer_submit_queue(struct comp_renderer *r, VkCommandBuffer cmd, VkPipelineStageFlags pipeline_stage_flag)
 {
@@ -684,8 +1009,9 @@ renderer_submit_queue(struct comp_renderer *r, VkCommandBuffer cmd, VkPipelineSt
 	struct vk_semaphore_list_signal signal_sems = XRT_STRUCT_INIT;
 	struct vk_submit_info_builder builder = XRT_STRUCT_INIT;
 
-	// Add wait semaphore (present_complete from target).
-	ADD_WAIT(wait_sems, ct->semaphores.present_complete, pipeline_stage_flag, false);
+	if (requires_present_acquire_wait(r)) {
+		ADD_WAIT(wait_sems, ct->semaphores.present_complete, pipeline_stage_flag, false);
+	}
 
 	// Add signal semaphore (render_complete to target).
 	ADD_SIGNAL(signal_sems, ct->semaphores.render_complete, ct->semaphores.render_complete_is_timeline);
@@ -881,10 +1207,10 @@ renderer_fini(struct comp_renderer *r)
  * @pre render_gfx_init(render, &c->nr)
  */
 static XRT_CHECK_RESULT VkResult
-dispatch_graphics(struct comp_renderer *r,
-                  struct render_gfx *render,
-                  struct chl_frame_state *frame_state,
-                  enum comp_target_fov_source fov_source)
+dispatch_gfx(struct comp_renderer *r,
+             struct render_gfx *render,
+             struct chl_frame_state *frame_state,
+             enum comp_target_fov_source fov_source)
 {
 	COMP_TRACE_MARKER();
 
@@ -941,6 +1267,617 @@ dispatch_graphics(struct comp_renderer *r,
 	return ret;
 }
 
+static inline XRT_CHECK_RESULT VkResult
+gfx_strip_render_clear(struct comp_renderer *r,
+                       struct render_gfx *render,
+                       struct chl_frame_state *frame_state,
+                       const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS],
+                       const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
+                       const struct xrt_pose world_poses[XRT_MAX_VIEWS],
+                       const struct xrt_pose eye_poses[XRT_MAX_VIEWS],
+                       const struct xrt_fov fovs[XRT_MAX_VIEWS])
+{
+	COMP_TRACE_MARKER();
+	assert(r->acquired_buffer >= 0);
+
+	struct render_gfx_target_resources *target_rtr = &r->rtr_array[r->acquired_buffer];
+
+	chl_frame_state_gfx_set_views( //
+	    frame_state,               //
+	    world_poses,               //
+	    eye_poses,                 //
+	    fovs,                      //
+	    0);                        //
+
+	chl_frame_state_gfx_set_target( //
+	    frame_state,                //
+	    target_rtr,                 //
+	    target_viewport_datas,      //
+	    vertex_rots);               //
+
+	// Start the compute pipeline.
+	render_gfx_begin(render);
+
+	// Build the command buffer.
+	comp_render_gfx_clear(render, &frame_state->data);
+
+	// Make the command buffer submittable.
+	render_gfx_end(render);
+
+	struct vk_bundle *vk = &r->c->base.vk;
+	// Everything is ready, submit to the queue.
+	const VkResult ret = renderer_submit_queue(r, render->r->cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+	VK_CHK_AND_RET(ret, "renderer_submit_queue");
+
+	return ret;
+}
+
+static inline XRT_CHECK_RESULT VkResult
+gfx_strip_render_squash_layers_submit(struct comp_renderer *r, VkCommandBuffer cmd)
+{
+	COMP_TRACE_MARKER();
+
+	const VkPipelineStageFlags pipeline_stage_flag = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+	VkResult ret = VK_SUCCESS;
+	struct vk_bundle *vk = &r->c->base.vk;
+
+	const int64_t frame_id = r->c->frame.rendering.id;
+	assert(frame_id >= 0);
+
+	/*
+	 * Wait for previous frame's work to complete.
+	 */
+
+	// Wait for the last fence, if any.
+	renderer_wait_for_last_fence(r);
+	assert(r->fenced_buffer < 0);
+
+	assert(r->acquired_buffer >= 0);
+	ret = vk->vkResetFences(vk->device, 1, &r->fences[r->acquired_buffer]);
+	VK_CHK_AND_RET(ret, "vkResetFences");
+
+
+	/*
+	 * Semaphore and queue submit info setup.
+	 */
+
+	struct comp_target *ct = r->c->target;
+	struct vk_semaphore_list_wait wait_sems = XRT_STRUCT_INIT;
+	struct vk_semaphore_list_signal signal_sems = XRT_STRUCT_INIT;
+	struct vk_submit_info_builder builder = XRT_STRUCT_INIT;
+
+	if (requires_present_acquire_wait(r)) {
+		ADD_WAIT(wait_sems, ct->semaphores.present_complete, pipeline_stage_flag, false);
+	}
+
+	// Add signal semaphore (layer_squash_complete to target).
+	ADD_SIGNAL(signal_sems, ct->semaphores.layer_squash_complete, ct->semaphores.render_complete_is_timeline);
+
+	// Build the submit info struct, handles all of the semaphores for us.
+	vk_submit_info_builder_prepare( //
+	    &builder,                   //
+	    &wait_sems,                 //
+	    &cmd,                       //
+	    1,                          //
+	    &signal_sems,               //
+	    NULL);                      //
+
+	// Everything prepared, now we are submitting.
+	comp_target_mark_submit_begin(ct, frame_id, os_monotonic_get_ns());
+
+	/*
+	 * The renderer command buffer pool is only accessed from one thread,
+	 * this satisfies the `_locked` requirement of the function. This lets
+	 * us avoid taking a lot of locks. The queue lock will be taken by
+	 * @ref vk_cmd_submit_locked tho.
+	 */
+	ret = vk_cmd_submit_locked(vk, vk->main_queue, 1, &builder.submit_info, r->fences[r->acquired_buffer]);
+
+	// We have now completed the submit, even if we failed.
+	comp_target_mark_submit_end(ct, frame_id, os_monotonic_get_ns());
+
+	// Check after marking as submit complete.
+	VK_CHK_AND_RET(ret, "vk_cmd_submit_locked");
+
+	// This buffer now have a pending fence.
+	r->fenced_buffer = r->acquired_buffer;
+
+	return ret;
+}
+
+static inline XRT_CHECK_RESULT VkResult
+gfx_strip_render_squash_layers(struct comp_renderer *r,
+                               struct render_gfx *render,
+                               struct chl_frame_state *frame_state,
+                               const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS],
+                               const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
+                               const struct xrt_pose world_poses[XRT_MAX_VIEWS],
+                               const struct xrt_pose eye_poses[XRT_MAX_VIEWS],
+                               const struct xrt_fov fovs[XRT_MAX_VIEWS])
+{
+	COMP_TRACE_MARKER();
+
+	const struct comp_layer *layers = r->c->base.layer_accum.layers;
+	const uint32_t layer_count = r->c->base.layer_accum.layer_count;
+
+	assert(r->acquired_buffer >= 0);
+	struct render_gfx_target_resources *target_rtr = &r->rtr_array[r->acquired_buffer];
+
+	const VkImageLayout transition_to = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	chl_frame_state_gfx_set_views( //
+	    frame_state,               //
+	    world_poses,               //
+	    eye_poses,                 //
+	    fovs,                      //
+	    layer_count);              //
+
+	chl_frame_state_gfx_set_target( //
+	    frame_state,                //
+	    target_rtr,                 //
+	    target_viewport_datas,      //
+	    vertex_rots);               //
+
+	// Start the compute pipeline.
+	render_gfx_begin(render);
+
+	comp_render_gfx_layers( //
+	    render,             //
+	    layers,             //
+	    layer_count,        //
+	    &frame_state->data, //
+	    transition_to);     //
+
+	// Make the command buffer submittable.
+	render_gfx_end(render);
+
+	VkResult ret = VK_SUCCESS;
+	struct vk_bundle *vk = &r->c->base.vk;
+	// Everything is ready, submit to the queue.
+	ret = gfx_strip_render_squash_layers_submit(r,               //
+	                                            render->r->cmd); //
+	VK_CHK_AND_RET(ret, "gfx_strip_render_squash_layers_submit");
+
+	return ret;
+}
+
+/*!
+ * @brief Implements single-buffered strip rendering
+ *
+ * As described by:
+ * @link https://blog.imaginationtech.com/reducing-latency-in-vr-by-using-single-buffered-strip-rendering/
+ *
+ * @pre render_gfx_init(render, &c->nr), r->acquired_buffer >= 0,
+ *      scanout_info->strip_count > 0, layer_accum.layer_count > 0.
+ */
+static inline XRT_CHECK_RESULT VkResult
+gfx_strip_render_strip_distortion(struct comp_renderer *r,
+                                  struct render_gfx *render,
+                                  struct chl_frame_state *frame_state,
+                                  struct xrt_device_compositor_info *scanout_info,
+                                  enum comp_target_fov_source fov_source,
+                                  const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS],
+                                  const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
+                                  struct xrt_pose world_pose_layer_squash[XRT_MAX_VIEWS],
+                                  struct xrt_pose eye_poses[XRT_MAX_VIEWS],
+                                  struct xrt_fov fovs[XRT_MAX_VIEWS])
+{
+	COMP_TRACE_MARKER();
+
+	/*!
+	 * Currently only top to bottom scanout directions are supported. If this changes, make sure
+	 * to update the runtime check in @ref renderer_ensure_images_and_renderings
+	 */
+	assert(scanout_info != NULL && //
+	       scanout_info->scanout_direction == XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM);
+
+	VkResult ret = VK_SUCCESS;
+
+	// Basics
+	struct vk_bundle *vk = &r->c->base.vk;
+	struct comp_target *ct = r->c->target;
+	const struct comp_settings *settings = &r->c->settings;
+
+	assert(r->acquired_buffer >= 0);
+	struct render_gfx_target_resources *target_rtr = &r->rtr_array[r->acquired_buffer];
+
+	render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS];
+
+	const int64_t frame_id = r->c->frame.rendering.id;
+	assert(frame_id >= 0);
+
+	const uint32_t layer_count = r->c->base.layer_accum.layer_count;
+	//! should not get here with zero layer submissions
+	assert(layer_count > 0);
+
+	const uint32_t target_scan_axis =
+	    (scanout_info->scanout_direction == XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM) ? 0u : 1u;
+
+	int64_t scanout_time_ns = scanout_info->scanout_time_ns;
+	//! If unknown (0), estimate at 95% of nominal_period/frame_interval.
+	if (scanout_time_ns == 0) {
+		scanout_time_ns = (int64_t)(r->c->frame_interval_ns * 0.95);
+	}
+	assert(scanout_time_ns != 0);
+
+	const uint32_t strip_count = scanout_info->strip_render.strip_count;
+	//! clang-tidy complains about dvidie by zero despite the earlier checks and asserts.
+	if (strip_count == 0) {
+		COMP_ERROR(r->c, "strip_count is 0, can't do strip rendering.");
+		return VK_ERROR_UNKNOWN;
+	}
+
+	assert(strip_count > 0);
+	assert(strip_count <= render->r->strip_distortion.strip_count);
+	const int64_t strip_duration_ns = scanout_time_ns / (int64_t)strip_count;
+
+	const bool fast_path = frame_state->data.fast_path;
+	const bool do_timewarp = frame_state->data.do_timewarp;
+	const bool using_layer_squasher = !fast_path;
+
+	const bool sem_wait_for_present_acquire = requires_present_acquire_wait(r);
+
+	const bool pose_query_per_strip = !settings->gfx_strip_render.single_pose_for_all_strips;
+	const bool use_beam_racing = settings->gfx_strip_render.use_beam_racing;
+
+	/*!
+	 * Race + per-strip-pose mode samples each strip's boundary poses
+	 * just before submission. Chase and single-pose modes pre-sample
+	 * upfront via calc_poses_for_strips.
+	 */
+	const bool beam_race_latch_pose_per_strip = use_beam_racing && pose_query_per_strip;
+
+	// Save render_gfx scratch state; restored at cleanup.
+	const VkQueryPool main_query_pool = render->r->query_pool;
+	const VkCommandPool main_cmd_pool = render->r->cmd_pool;
+	const VkCommandBuffer main_cmd = render->r->cmd;
+	const VkRect2D main_render_area = target_rtr->render_area;
+
+	// Pad so the beam has clearly left a head or behind a strip before we start writing it.
+	int64_t safety_margin_ns = use_beam_racing ? scanout_info->strip_render.beam_race.beam_offset_ns
+	                                           : scanout_info->strip_render.beam_chase.beam_offset_ns;
+	if (safety_margin_ns == 0) {
+		safety_margin_ns = U_TIME_1MS_IN_NS / 2;
+	}
+
+	/*!
+	 * Small safety pad on top of the measured per-strip duration.
+	 *
+	 * Used to absorb any unaccounted for time that may cause tearing,
+	 * such as Vulkan API / driver internal overheads or OS-scheduler
+	 * jitter.
+	 */
+	const int64_t race_safety_pad_ns = scanout_info->strip_render.beam_race.safety_pad_ns != 0
+	                                       ? scanout_info->strip_render.beam_race.safety_pad_ns
+	                                       : (200 * U_TIME_1US_IN_NS);
+
+	const int64_t max_spin_ns =
+#ifdef XRT_OS_ANDROID
+	    1500 * U_TIME_1US_IN_NS;
+#else
+	    250 * U_TIME_1US_IN_NS;
+#endif
+
+	/*!
+	 * Wait for layer squasher to finish before the vsync wait, so strip 0 can't
+	 * queue behind a late squash and tear on the next refresh.
+	 *
+	 * I don't particularly like this but short of time for more
+	 * sophisticated solutions that eliminates tearing on high
+	 * layer squasher loads should be fine for now.
+	 */
+	if (using_layer_squasher) {
+		renderer_wait_for_last_fence(r);
+	}
+
+	struct xrt_vsync_event vs = {0};
+	const xrt_result_t xres = comp_target_wait_next_vsync(ct, &vs);
+	if (xres != XRT_SUCCESS) {
+		COMP_WARN(r->c, "comp_target_wait_next_vsync failed: %d", xres);
+		return VK_ERROR_UNKNOWN;
+	}
+
+	const int64_t period_ns = vs.period_ns;
+	const int64_t current_vsync_ns = vs.timestamp_ns;
+	const int64_t target_vsync_ns = current_vsync_ns + period_ns;
+
+	if (!beam_race_latch_pose_per_strip) {
+		calc_poses_for_strips(r,                              //
+		                      target_vsync_ns,                //
+		                      scanout_time_ns,                //
+		                      strip_duration_ns,              //
+		                      fov_source,                     //
+		                      render->r->view_count,          //
+		                      strip_count,                    //
+		                      pose_query_per_strip,           //
+		                      fovs,                           //
+		                      eye_poses,                      //
+		                      r->world_strip_boundary_poses); //
+	}
+
+	for (uint32_t strip = 0; strip < strip_count; ++strip) {
+		const VkFence strip_fence = render->r->strip_distortion.fences[strip];
+		/*!
+		 *  Wait for this strip's previous frame execution to finish,
+		 *  before any timing calculations.
+		 */
+		ret = vk->vkWaitForFences(vk->device, 1, &strip_fence, VK_TRUE, UINT64_MAX);
+		VK_CHK_WITH_GOTO(ret, "vkWaitForFences", restore_cleanup);
+
+		// Point render_gfx at this strip's resources.
+		const VkCommandBuffer strip_cmd = render->r->strip_distortion.cmds[strip];
+		render->r->query_pool = render->r->strip_distortion.query_pools[strip];
+		render->r->cmd_pool = render->r->strip_distortion.cmd_pools[strip];
+		render->r->cmd = strip_cmd;
+
+		uint64_t gpu_duration_ns = 0;
+		if (render_resources_get_duration(render->r, //
+		                                  false,     // wait_for_results
+		                                  &gpu_duration_ns)) {
+			r->last_strip_gpu_times_ns[strip] = (int64_t)gpu_duration_ns;
+		}
+
+		const int64_t strip_gpu_estimate_ns = r->last_strip_gpu_times_ns[strip];
+		const int64_t strip_cpu_estimate_ns = r->last_strip_cpu_times_ns[strip];
+		const int64_t pipeline_estimate_ns = strip_cpu_estimate_ns + strip_gpu_estimate_ns + race_safety_pad_ns;
+
+		const int64_t wake_at_ns =
+		    use_beam_racing ? (target_vsync_ns + (int64_t)strip * strip_duration_ns - safety_margin_ns -
+		                       pipeline_estimate_ns)
+		                    : (current_vsync_ns + (int64_t)(strip + 1) * strip_duration_ns + safety_margin_ns);
+		precise_sleep_until(wake_at_ns, max_spin_ns);
+
+		const int64_t strip_cpu_start = os_monotonic_get_ns();
+
+		if (beam_race_latch_pose_per_strip) {
+			if (strip == 0) {
+				const int64_t top_time_ns = target_vsync_ns + (int64_t)strip * strip_duration_ns;
+				calc_pose_data_at_time(r,                                    //
+				                       top_time_ns,                          //
+				                       fov_source,                           //
+				                       fovs,                                 //
+				                       r->world_strip_boundary_poses[strip], //
+				                       eye_poses, render->r->view_count);    //
+			}
+
+			const int64_t bottom_time_ns = target_vsync_ns + (int64_t)(strip + 1) * strip_duration_ns;
+			calc_pose_data_at_time(r,                                        //
+			                       bottom_time_ns,                           //
+			                       fov_source,                               //
+			                       fovs,                                     //
+			                       r->world_strip_boundary_poses[strip + 1], //
+			                       eye_poses,                                //
+			                       render->r->view_count);                   //
+		}
+
+		comp_render_initial_init( //
+		    &frame_state->data,   //
+		    fast_path,            //
+		    do_timewarp);         //
+
+		calc_strip_render_area(r,                         //
+		                       strip,                     //
+		                       strip_count,               //
+		                       scanout_info,              //
+		                       &target_rtr->render_area); //
+
+		calc_strip_view_scissors(render->r->view_count,    //
+		                         &target_rtr->render_area, //
+		                         target_viewport_datas,    //
+		                         target_scissor_datas);    //
+
+		struct xrt_normalized_rect target_strip_range_ndc;
+		calc_strip_ndc_range(&target_rtr->render_area, //
+		                     &main_render_area.extent, //
+		                     target_scan_axis,         //
+		                     &target_strip_range_ndc); //
+
+		chl_frame_state_gfx_set_views_scanout_range(  //
+		    frame_state,                              //
+		    r->world_strip_boundary_poses[strip],     // begin = top of strip
+		    r->world_strip_boundary_poses[strip + 1], // end   = bottom of strip
+		    world_pose_layer_squash,                  // squash pose (unused on fast path)
+		    eye_poses,                                //
+		    fovs,                                     //
+		    layer_count);                             //
+
+		chl_frame_state_gfx_set_target_stripped( //
+		    frame_state,                         //
+		    target_rtr,                          //
+		    target_scan_axis,                    //
+		    &target_strip_range_ndc,             //
+		    vertex_rots,                         //
+		    target_viewport_datas,               //
+		    target_scissor_datas);               //
+
+		// Start the graphics pipeline.
+		render_gfx_begin(render);
+
+		if (using_layer_squasher) {
+			comp_render_gfx_distortion_after_squash( //
+			    render,                              //
+			    &frame_state->data);                 //
+		} else {
+			comp_render_gfx_distortion_fast_path(  //
+			    render,                            //
+			    &r->c->base.layer_accum.layers[0], //
+			    &frame_state->data);               //
+		}
+
+		// Make the command buffer submittable.
+		render_gfx_end(render);
+
+		/*!
+		 * Only strip 0 waits (squash or present-acquire); only the last
+		 * strip signals render_complete. Middle strips are ordered by the
+		 * queue (same queue, disjoint pixels so non-overlapping).
+		 */
+		struct vk_semaphore_list_wait wait_sems = XRT_STRUCT_INIT;
+		struct vk_semaphore_list_signal signal_sems = XRT_STRUCT_INIT;
+		struct vk_submit_info_builder builder = XRT_STRUCT_INIT;
+
+		if (strip == 0) {
+			if (using_layer_squasher) {
+				assert(!sem_wait_for_present_acquire);
+				ADD_WAIT(wait_sems, ct->semaphores.layer_squash_complete,
+				         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+				         ct->semaphores.render_complete_is_timeline);
+
+			} else if (sem_wait_for_present_acquire) {
+				ADD_WAIT(wait_sems, ct->semaphores.present_complete,
+				         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, false);
+			}
+		}
+		if ((strip + 1) == strip_count) {
+			// Add signal semaphore (render_complete to target).
+			ADD_SIGNAL(signal_sems, ct->semaphores.render_complete,
+			           ct->semaphores.render_complete_is_timeline);
+		}
+
+		// Build the submit info struct, handles all of the semaphores for us.
+		vk_submit_info_builder_prepare( //
+		    &builder,                   //
+		    &wait_sems,                 //
+		    &strip_cmd,                 //
+		    1,                          //
+		    &signal_sems,               //
+		    NULL);                      //
+
+		ret = vk->vkResetFences(vk->device, 1, &strip_fence);
+		VK_CHK_WITH_GOTO(ret, "vkResetFences", restore_cleanup);
+
+		ret = vk_cmd_submit_locked(vk, vk->main_queue, 1, &builder.submit_info, strip_fence);
+		VK_CHK_WITH_GOTO(ret, "vk_cmd_submit_locked", restore_cleanup);
+
+		const int64_t strip_cpu_end = os_monotonic_get_ns();
+		r->last_strip_cpu_times_ns[strip] = strip_cpu_end - strip_cpu_start;
+	}
+
+restore_cleanup:
+
+	target_rtr->render_area = main_render_area;
+	render->r->cmd = main_cmd;
+	render->r->cmd_pool = main_cmd_pool;
+	render->r->query_pool = main_query_pool;
+
+	return ret;
+}
+
+/*!
+ * @brief A specialized variant of @ref dispatch_gfx for front-buffer rendering
+ *
+ * Aims to reduce / eliminate screen tearing when using present modes from the
+ * VK_KHR_shared_presentable_image extension
+ *
+ * Compared to @ref dispatch_gfx, @ref dispatch_gfx_strip_render strips the single
+ * combined command buffer containing the commands of layer squashing and distortion passes into
+ * multiple command buffers:
+ *    * Fast-path:   N distortion strips
+ * 	  * Normal-path: 1 + N distortion strips
+ * where
+ *    N = @xrt_device_compositor_info::strip_count
+ *
+ * @see gfx_strip_render_strip_distortion for details.
+ *
+ * @pre render_gfx_init(render, &c->nr)
+ */
+static XRT_CHECK_RESULT VkResult
+dispatch_gfx_strip_render(struct comp_renderer *r,
+                          struct render_gfx *render,
+                          struct chl_frame_state *frame_state,
+                          enum comp_target_fov_source fov_source)
+{
+	COMP_TRACE_MARKER();
+
+	VkResult ret = VK_SUCCESS;
+
+	// Basics
+	struct comp_compositor *c = r->c;
+	struct vk_bundle *vk = &c->base.vk;
+
+	// Viewport information.
+	struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS];
+	calc_viewport_data(r, target_viewport_datas, render->r->view_count);
+
+	// Vertex rotation information.
+	struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS];
+	calc_vertex_rot_data(r, vertex_rots, render->r->view_count);
+
+	// Device view information.
+	struct xrt_fov fovs[XRT_MAX_VIEWS];
+	struct xrt_pose eye_poses[XRT_MAX_VIEWS];
+	struct xrt_pose world_poses_scanout_begin[XRT_MAX_VIEWS] = {
+	    XRT_POSE_IDENTITY,
+	    XRT_POSE_IDENTITY,
+	};
+
+	//! Only clear screen and return if no layers.
+	if (c->base.layer_accum.layer_count == 0) {
+		return gfx_strip_render_clear(r,                         //
+		                              render,                    //
+		                              frame_state,               //
+		                              vertex_rots,               //
+		                              target_viewport_datas,     //
+		                              world_poses_scanout_begin, //
+		                              eye_poses,                 //
+		                              fovs);                     //
+	}
+
+	struct xrt_device_compositor_info scanout_info = {
+	    .scanout_direction = XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM,
+	    .scanout_time_ns = 0,
+	};
+	if (r->c->xdev->supported.compositor_info) {
+		const struct xrt_device_compositor_mode compositor_mode = {
+		    .frame_interval_ns = r->c->frame_interval_ns,
+		};
+		xrt_result_t xret = xrt_device_get_compositor_info( //
+		    r->c->xdev,                                     //
+		    &compositor_mode,                               //
+		    &scanout_info);                                 //
+		if (xret != XRT_SUCCESS) {
+			scanout_info.scanout_time_ns = 0;
+		}
+	}
+
+	const bool using_layer_squasher = !frame_state->data.fast_path;
+
+	if (using_layer_squasher) {
+		calc_pose_data_at_time(                              //
+		    r,                                               //
+		    r->c->frame.rendering.predicted_display_time_ns, //
+		    fov_source,                                      //
+		    fovs,                                            //
+		    world_poses_scanout_begin,                       //
+		    eye_poses,                                       //
+		    render->r->view_count);                          //
+
+		ret = gfx_strip_render_squash_layers(r,                         //
+		                                     render,                    //
+		                                     frame_state,               //
+		                                     vertex_rots,               //
+		                                     target_viewport_datas,     //
+		                                     world_poses_scanout_begin, //
+		                                     eye_poses,                 //
+		                                     fovs);                     //
+		VK_CHK_AND_RET(ret, "gfx_strip_render_squash_layers");
+	}
+
+	ret = gfx_strip_render_strip_distortion(r,                         //
+	                                        render,                    //
+	                                        frame_state,               //
+	                                        &scanout_info,             //
+	                                        fov_source,                //
+	                                        vertex_rots,               //
+	                                        target_viewport_datas,     //
+	                                        world_poses_scanout_begin, //
+	                                        eye_poses,                 //
+	                                        fovs);                     //
+	VK_CHK_AND_RET(ret, "gfx_strip_render_strip_distortion");
+	return ret;
+}
+
 
 /*
  *
@@ -984,6 +1921,7 @@ dispatch_compute(struct comp_renderer *r,
 	// Target Vulkan resources..
 	VkImage target_image = r->c->target->images[r->acquired_buffer].handle;
 	VkImageView target_storage_view = r->c->target->images[r->acquired_buffer].view;
+	VkImageLayout target_final_layout = r->c->target->final_layout;
 
 	// Target view information.
 	struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS];
@@ -1001,6 +1939,7 @@ dispatch_compute(struct comp_renderer *r,
 	    fovs,                            //
 	    target_image,                    //
 	    target_storage_view,             //
+	    target_final_layout,             //
 	    target_viewport_datas);          //
 
 	// Everything is ready, submit to the queue.

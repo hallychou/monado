@@ -22,6 +22,7 @@
 extern "C" {
 #endif
 
+struct xrt_vsync_event;
 
 /*!
  * For marking timepoints on a frame's lifetime, not a async event.
@@ -105,6 +106,16 @@ struct comp_target_semaphores
 	VkSemaphore present_complete;
 
 	/*!
+	 * Optional Semaphore the renderer (consuming this target)
+	 *
+	 * Only used in cases where the compositor stages are split up
+	 * such as with single-buffer strip rendering
+	 *
+	 * When used, should signal when layer squashing is complete.
+	 */
+	VkSemaphore layer_squash_complete;
+
+	/*!
 	 * Semaphore the renderer (consuming this target)
 	 * should signal when rendering is complete.
 	 */
@@ -146,6 +157,9 @@ struct comp_target
 	//! The final layout that the renderpass should leave this target in.
 	VkImageLayout final_layout;
 
+	//! Load ops required for present
+	VkAttachmentLoadOp present_load_op;
+
 	//! Number of images that this target has.
 	uint32_t image_count;
 	//! Array of images and image views for rendering.
@@ -184,6 +198,13 @@ struct comp_target
 	 * Call before calling @ref create_images
 	 */
 	bool (*check_ready)(struct comp_target *ct);
+
+	/*!
+	 * Is this target shared presentable image?
+	 *
+	 * Call before after @ref create_images
+	 */
+	bool (*is_shared_presentable_image)(struct comp_target *ct);
 
 	/*!
 	 * Create or recreate the image(s) of the target, for swapchain based
@@ -354,6 +375,19 @@ struct comp_target
 	                                   VkBool32 *out_supported);
 
 	/*!
+	 * Blocking wait until the next vsync event.
+	 *
+	 * @param ct              The compositor target.
+	 * @param out_vsync_event The vsync event result.
+	 *
+	 * @return
+	 * - @p XRT_SUCCESS when a new event was produced.
+	 * - @p XRT_OPERATION_CANCELLED when the source is being torn down.
+	 * - @p XRT_ERROR_NOT_IMPLEMENTED when this target doesn't support this function.
+	 */
+	xrt_result_t (*wait_next_vsync)(struct comp_target *ct, struct xrt_vsync_event *out_vsync_event);
+
+	/*!
 	 * Destroys this target.
 	 */
 	void (*destroy)(struct comp_target *ct);
@@ -399,6 +433,20 @@ comp_target_check_ready(struct comp_target *ct)
 	COMP_TRACE_MARKER();
 
 	return ct->check_ready(ct);
+}
+
+/*!
+ * @copydoc comp_target::is_shared_presentable_image
+ *
+ * @public @memberof comp_target
+ * @ingroup comp_main
+ */
+static inline bool
+comp_target_is_shared_presentable_image(struct comp_target *ct)
+{
+	COMP_TRACE_MARKER();
+
+	return ct->is_shared_presentable_image(ct);
 }
 
 /*!
@@ -682,6 +730,19 @@ comp_target_queue_supports_present(struct comp_target *ct, struct vk_bundle_queu
 {
 	COMP_TRACE_MARKER();
 	return ct->queue_supports_present(ct, queue, out_supported);
+}
+
+/*!
+ * @copydoc comp_target::wait_next_vsync
+ *
+ * @public @memberof comp_target
+ * @ingroup comp_main
+ */
+static inline xrt_result_t
+comp_target_wait_next_vsync(struct comp_target *ct, struct xrt_vsync_event *ve)
+{
+	COMP_TRACE_MARKER();
+	return ct->wait_next_vsync(ct, ve);
 }
 
 /*!

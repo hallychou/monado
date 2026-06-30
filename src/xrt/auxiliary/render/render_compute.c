@@ -285,12 +285,12 @@ dispatch_project_pipeline(struct render_compute *render,
                           const struct xrt_normalized_rect src_norm_rects[XRT_MAX_VIEWS],
                           VkImage target_image,
                           VkImageView target_image_view,
+                          VkImageLayout target_final_layout,
                           const struct render_viewport_data views[XRT_MAX_VIEWS],
                           VkPipeline pipeline)
 {
 	struct vk_bundle *vk = vk_from_render(render);
 	struct render_resources *r = render->r;
-
 
 	/*
 	 * UBO
@@ -381,7 +381,7 @@ dispatch_project_pipeline(struct render_compute *render,
 	    .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
 	    .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
 	    .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
-	    .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+	    .newLayout = target_final_layout,
 	    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 	    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 	    .image = target_image,
@@ -584,6 +584,7 @@ render_compute_projection_timewarp(struct render_compute *render,
                                    const struct xrt_pose new_poses_scanout_end[XRT_MAX_VIEWS],
                                    VkImage target_image,
                                    VkImageView target_image_view,
+                                   VkImageLayout target_final_layout,
                                    const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
 	assert(render->r != NULL);
@@ -621,7 +622,8 @@ render_compute_projection_timewarp(struct render_compute *render,
 	}
 
 	dispatch_project_pipeline(render, src_samplers, src_image_views, src_norm_rects, target_image,
-	                          target_image_view, views, r->compute.distortion.timewarp_pipeline);
+	                          target_image_view, target_final_layout, views,
+	                          r->compute.distortion.timewarp_pipeline);
 }
 
 
@@ -640,6 +642,7 @@ render_compute_projection_scanout_compensation(struct render_compute *render,
                                                const struct xrt_pose new_poses_scanout_end[XRT_MAX_VIEWS],
                                                VkImage target_image,
                                                VkImageView target_image_view,
+                                               VkImageLayout target_final_layout,
                                                const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
 	assert(render->r != NULL);
@@ -673,7 +676,7 @@ render_compute_projection_scanout_compensation(struct render_compute *render,
 	}
 
 	dispatch_project_pipeline(render, src_samplers, src_image_views, src_rects, target_image, target_image_view,
-	                          views, r->compute.distortion.timewarp_pipeline);
+	                          target_final_layout, views, r->compute.distortion.timewarp_pipeline);
 }
 
 void
@@ -683,26 +686,27 @@ render_compute_projection_no_timewarp(struct render_compute *render,
                                       const struct xrt_normalized_rect src_rects[XRT_MAX_VIEWS],
                                       VkImage target_image,
                                       VkImageView target_image_view,
+                                      VkImageLayout target_final_layout,
                                       const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
 	assert(render->r != NULL);
 	struct render_resources *r = render->r;
 
 	dispatch_project_pipeline(render, src_samplers, src_image_views, src_rects, target_image, target_image_view,
-	                          views, r->compute.distortion.pipeline);
+	                          target_final_layout, views, r->compute.distortion.pipeline);
 }
 
 void
 render_compute_clear(struct render_compute *render,
                      VkImage target_image,
                      VkImageView target_image_view,
+                     VkImageLayout target_final_layout,
                      const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
 	assert(render->r != NULL);
 
 	struct vk_bundle *vk = vk_from_render(render);
 	struct render_resources *r = render->r;
-
 
 	/*
 	 * UBO
@@ -801,7 +805,7 @@ render_compute_clear(struct render_compute *render,
 	    .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
 	    .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
 	    .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
-	    .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+	    .newLayout = target_final_layout,
 	    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 	    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 	    .image = target_image,

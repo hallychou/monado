@@ -13,6 +13,8 @@ add_library(
 	aux_android STATIC
 	android_ahardwarebuffer_allocator.c
 	android_ahardwarebuffer_allocator.h
+	android_choreographer_vsync_source.c
+	android_choreographer_vsync_source.h
 	android_content.cpp
 	android_content.h
 	android_custom_surface.cpp

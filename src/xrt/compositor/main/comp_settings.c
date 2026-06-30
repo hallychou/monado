@@ -36,6 +36,9 @@ DEBUG_GET_ONCE_BOOL_OPTION(xcb_fullscreen, "XRT_COMPOSITOR_XCB_FULLSCREEN", fals
 DEBUG_GET_ONCE_NUM_OPTION(xcb_display, "XRT_COMPOSITOR_XCB_DISPLAY", -1)
 DEBUG_GET_ONCE_NUM_OPTION(default_framerate, "XRT_COMPOSITOR_DEFAULT_FRAMERATE", 60)
 DEBUG_GET_ONCE_BOOL_OPTION(compute, "XRT_COMPOSITOR_COMPUTE", USE_COMPUTE_DEFAULT)
+DEBUG_GET_ONCE_BOOL_OPTION(disable_gfx_strip_render, "XRT_COMPOSITOR_DISABLE_GFX_STRIP_RENDERING", false)
+DEBUG_GET_ONCE_BOOL_OPTION(single_pose_for_all_strips, "XRT_COMPOSITOR_SINGLE_POSE_FOR_ALL_STRIPS", false)
+DEBUG_GET_ONCE_BOOL_OPTION(use_beam_racing, "XRT_COMPOSITOR_USE_BEAM_RACING", false)
 // clang-format on
 
 static inline void
@@ -68,6 +71,17 @@ get_desired_present_mode(void)
 	} else if (strcmp(present_mode_str, "mailbox") == 0 || strcmp(present_mode_str, "MAILBOX") == 0) {
 		return VK_PRESENT_MODE_MAILBOX_KHR;
 	}
+
+#ifdef VK_KHR_shared_presentable_image
+	if (strcmp(present_mode_str, "shared_continuous_refresh") == 0 ||
+	    strcmp(present_mode_str, "SHARED_CONTINUOUS_REFRESH") == 0) {
+		return VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR;
+	}
+	if (strcmp(present_mode_str, "shared_demand_refresh") == 0 ||
+	    strcmp(present_mode_str, "SHARED_DEMAND_REFRESH") == 0) {
+		return VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR;
+	}
+#endif
 
 	U_LOG_E("Unrecognized present mode: %s", present_mode_str);
 	return VK_PRESENT_MODE_FIFO_KHR;
@@ -162,8 +176,9 @@ comp_settings_init(struct comp_settings *s, struct xrt_device *xdev)
 	s->client_gpu_index = debug_get_num_option_force_client_gpu_index();
 	s->desired_mode = debug_get_num_option_desired_mode();
 	s->viewport_scale = debug_get_num_option_scale_percentage() / 100.0;
-
-
+	s->gfx_strip_render.disable = debug_get_bool_option_disable_gfx_strip_render();
+	s->gfx_strip_render.single_pose_for_all_strips = debug_get_bool_option_single_pose_for_all_strips();
+	s->gfx_strip_render.use_beam_racing = debug_get_bool_option_use_beam_racing();
 	s->nvidia_display = debug_get_option_nvidia_display();
 	if (debug_get_bool_option_force_nvidia()) {
 		s->target_identifier = "x11_direct_nvidia";

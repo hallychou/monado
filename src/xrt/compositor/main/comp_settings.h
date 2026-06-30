@@ -77,6 +77,37 @@ struct comp_settings
 	//! Not used with direct mode.
 	bool fullscreen;
 
+	//! Strip-rendering related settings.
+	struct
+	{
+		//! Disables screen-tear prevention with front-buffer rendering.
+		bool disable;
+
+		/*!
+		 * Whether to use a single pose for all strips
+		 *
+		 * If enabled, will use a cheaper single pose query for all strips
+		 * at the expense of a slight increase in input latency.
+		 *
+		 * otherwise there will be pose queries for each strip.
+		 */
+		bool single_pose_for_all_strips;
+
+		/*!
+		 * Whether to use beam racing or chasing.
+		 *
+		 * Beam-racing has lower input latency however
+		 * it has strict timing requirements and ideal conditions
+		 * to achieve consistent tear-free output.
+		 *
+		 * Beam-chasing is more forgiving in terms of timing but
+		 * slightly higher input latency than beam-racing.
+		 *
+		 * Default is beam-chasing.
+		 */
+		bool use_beam_racing;
+	} gfx_strip_render;
+
 	//! Logging level.
 	enum u_logging_level log_level;
 
