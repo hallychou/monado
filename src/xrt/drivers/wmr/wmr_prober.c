@@ -224,13 +224,7 @@ wmr_find_companion_device(struct xrt_prober *xp,
                           struct wmr_companion_search_results *out_wcsr)
 {
 	struct xrt_prober_device *xpdev_companion = NULL;
-<<<<<<< HEAD
-	// TODO REMOVER
-	// enum wmr_headset_type type = WMR_HEADSET_GENERIC;
-	const struct wmr_headset_descriptor *hmd_descriptor = NULL;
-=======
 	enum wmr_headset_type type = WMR_HEADSET_GENERIC;
->>>>>>> 8688a0479 (reverted changes made on wmr builder)
 
 	if (!find_companion_device(xp, xpdevs, xpdev_count, log_level, &type, &xpdev_companion)) {
 		U_LOG_IFL_E(log_level, "Did not find HoloLens Sensors' companion device");
