@@ -1,4 +1,4 @@
-// Copyright 2023-2025, Tobias Frisch
+// Copyright 2023-2025, Tobias Frisch; 2026, Gavin John
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -59,6 +59,9 @@ struct xreal_air_hmd
 
 	//! Used to read sensor packets.
 	struct os_thread_helper oth;
+
+	//! Used to control access to most struct fields
+	struct os_mutex global_mutex;
 
 	//! Only touched from the sensor thread.
 	timepoint_ns last_sensor_time;
@@ -267,9 +270,12 @@ read_sample_and_apply_calibration(struct xreal_air_hmd *hmd,
 	// Apply misalignment via quaternions.
 
 	struct xrt_quat accel_q_mag;
-	math_quat_rotate(&hmd->calibration.accel_q_gyro, &hmd->calibration.gyro_q_mag, &accel_q_mag);
 
+	os_mutex_lock(&hmd->global_mutex);
+	math_quat_rotate(&hmd->calibration.accel_q_gyro, &hmd->calibration.gyro_q_mag, &accel_q_mag);
 	math_quat_rotate_vec3(&hmd->calibration.accel_q_gyro, &gyro, &gyro);
+	os_mutex_unlock(&hmd->global_mutex);
+
 	math_quat_rotate_vec3(&accel_q_mag, &mag, &mag);
 
 	// Go from Gs to m/s2.
@@ -283,6 +289,8 @@ read_sample_and_apply_calibration(struct xreal_air_hmd *hmd,
 	pre_biased_coordinate_system(&accel);
 	pre_biased_coordinate_system(&gyro);
 	pre_biased_coordinate_system(&mag);
+
+	os_mutex_lock(&hmd->global_mutex);
 
 	math_vec3_subtract(&hmd->calibration.accel_bias, &accel);
 	math_vec3_subtract(&hmd->calibration.gyro_bias, &gyro);
@@ -300,16 +308,11 @@ read_sample_and_apply_calibration(struct xreal_air_hmd *hmd,
 	mag.y *= hmd->calibration.scale_mag.y;
 	mag.z *= hmd->calibration.scale_mag.z;
 
+	os_mutex_unlock(&hmd->global_mutex);
+
 	post_biased_coordinate_system(&accel, out_accel);
 	post_biased_coordinate_system(&gyro, out_gyro);
 	post_biased_coordinate_system(&mag, out_mag);
-}
-
-static void
-update_fusion_locked(struct xreal_air_hmd *hmd, struct xreal_air_parsed_sample *sample, uint64_t timestamp_ns)
-{
-	read_sample_and_apply_calibration(hmd, sample, &hmd->read.accel, &hmd->read.gyro, &hmd->read.mag);
-	m_imu_3dof_update(&hmd->fusion, timestamp_ns, &hmd->read.accel, &hmd->read.gyro);
 }
 
 static void
@@ -320,12 +323,15 @@ update_fusion(struct xreal_air_hmd *hmd, struct xreal_air_parsed_sample *sample,
 	rel.relation_flags = (enum xrt_space_relation_flags)(XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
 	                                                     XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT);
 
-	os_mutex_lock(&hmd->device_mutex);
-	update_fusion_locked(hmd, sample, timestamp_ns);
+	os_mutex_lock(&hmd->global_mutex);
+
+	read_sample_and_apply_calibration(hmd, sample, &hmd->read.accel, &hmd->read.gyro, &hmd->read.mag);
+	m_imu_3dof_update(&hmd->fusion, timestamp_ns, &hmd->read.accel, &hmd->read.gyro);
 	rel.pose.orientation = hmd->fusion.rot; // We have no tracking, don't return a position.
-	os_mutex_unlock(&hmd->device_mutex);
 
 	m_relation_history_push(hmd->relation_hist, &rel, timestamp_ns);
+
+	os_mutex_unlock(&hmd->global_mutex);
 }
 
 static uint32_t
@@ -347,6 +353,8 @@ ensure_forward_progress_timestamps(struct xreal_air_hmd *hmd, timepoint_ns times
 {
 	timepoint_ns t = timestamp_ns;
 
+	os_mutex_lock(&hmd->global_mutex);
+
 	/*
 	 * This make sure the timestamp is after the last we sent to the fusion,
 	 * but it effectively drops the sample.
@@ -356,6 +364,9 @@ ensure_forward_progress_timestamps(struct xreal_air_hmd *hmd, timepoint_ns times
 	}
 
 	hmd->last_sensor_time = t;
+
+	os_mutex_unlock(&hmd->global_mutex);
+
 	return t;
 }
 
@@ -408,6 +419,8 @@ handle_sensor_control_get_cal_data_length(struct xreal_air_hmd *hmd,
 	const uint32_t calibration_data_length =
 	    ((data->data[0] << 0u) | (data->data[1] << 8u) | (data->data[2] << 16u) | (data->data[3] << 24u));
 
+	os_mutex_lock(&hmd->global_mutex);
+
 	hmd->calibration_buffer_len = calibration_data_length;
 	hmd->calibration_valid = false;
 
@@ -421,7 +434,11 @@ handle_sensor_control_get_cal_data_length(struct xreal_air_hmd *hmd,
 		hmd->calibration_buffer_pos = 0;
 	}
 
-	if (hmd->calibration_buffer) {
+	bool has_buffer = hmd->calibration_buffer != NULL;
+
+	os_mutex_unlock(&hmd->global_mutex);
+
+	if (has_buffer) {
 		request_sensor_control_cal_data_get_next_segment(hmd);
 	}
 }
@@ -430,9 +447,11 @@ static void
 handle_sensor_control_cal_data_get_next_segment(struct xreal_air_hmd *hmd,
                                                 const struct xreal_air_parsed_sensor_control_data *data)
 {
+	os_mutex_lock(&hmd->global_mutex);
 	if (hmd->calibration_valid) {
-		return;
+		goto cleanup;
 	} else if (hmd->calibration_buffer_len == 0) {
+		os_mutex_unlock(&hmd->global_mutex);
 		request_sensor_control_get_cal_data_length(hmd);
 		return;
 	}
@@ -440,7 +459,7 @@ handle_sensor_control_cal_data_get_next_segment(struct xreal_air_hmd *hmd,
 	if (hmd->calibration_buffer_len <= hmd->calibration_buffer_pos) {
 		XREAL_AIR_ERROR(hmd, "Failed to receive next calibration data segment! %d / %d",
 		                hmd->calibration_buffer_pos, hmd->calibration_buffer_len);
-		return;
+		goto cleanup;
 	}
 
 	uint16_t data_buffer_size = SENSOR_BUFFER_SIZE;
@@ -451,7 +470,7 @@ handle_sensor_control_cal_data_get_next_segment(struct xreal_air_hmd *hmd,
 
 	if (data_buffer_size <= 8) {
 		XREAL_AIR_ERROR(hmd, "Failed to receive next calibration data from buffer!");
-		return;
+		goto cleanup;
 	}
 
 	data_buffer_size -= 8;
@@ -462,6 +481,7 @@ handle_sensor_control_cal_data_get_next_segment(struct xreal_air_hmd *hmd,
 	if (hmd->calibration_buffer) {
 		memcpy(hmd->calibration_buffer + hmd->calibration_buffer_pos, data->data, next);
 	} else {
+		os_mutex_unlock(&hmd->global_mutex);
 		request_sensor_control_get_cal_data_length(hmd);
 		return;
 	}
@@ -479,7 +499,9 @@ handle_sensor_control_cal_data_get_next_segment(struct xreal_air_hmd *hmd,
 			hmd->calibration_valid = true;
 
 			// Switch to imu sensor data stream
+			os_mutex_unlock(&hmd->global_mutex);
 			request_sensor_control_start_imu_data(hmd, 0x01);
+			os_mutex_lock(&hmd->global_mutex);
 		}
 
 		// Free calibration buffer.
@@ -488,8 +510,31 @@ handle_sensor_control_cal_data_get_next_segment(struct xreal_air_hmd *hmd,
 		hmd->calibration_buffer_len = 0;
 		hmd->calibration_buffer_pos = 0;
 	} else {
+		os_mutex_unlock(&hmd->global_mutex);
 		request_sensor_control_cal_data_get_next_segment(hmd);
+		return;
 	}
+
+cleanup:
+	os_mutex_unlock(&hmd->global_mutex);
+}
+
+static inline bool
+static_id_known(struct xreal_air_hmd *hmd)
+{
+	os_mutex_lock(&hmd->global_mutex);
+	bool retval = hmd->static_id;
+	os_mutex_unlock(&hmd->global_mutex);
+	return retval;
+}
+
+static inline bool
+calibration_data_known(struct xreal_air_hmd *hmd)
+{
+	os_mutex_lock(&hmd->global_mutex);
+	bool retval = hmd->calibration_valid || hmd->calibration_buffer_len;
+	os_mutex_unlock(&hmd->global_mutex);
+	return retval;
 }
 
 static void
@@ -498,11 +543,9 @@ handle_sensor_control_start_imu_data(struct xreal_air_hmd *hmd, const struct xre
 	// Read the imu stream state.
 	const uint8_t imu_stream_state = data->data[0];
 
-	hmd->imu_stream_state = imu_stream_state;
-
-	if (hmd->static_id == 0) {
+	if (!static_id_known(hmd)) {
 		request_sensor_control_get_static_id(hmd);
-	} else if ((!hmd->calibration_valid) && (!hmd->calibration_buffer_len)) {
+	} else if (!calibration_data_known(hmd)) {
 		request_sensor_control_get_cal_data_length(hmd);
 	}
 }
@@ -514,9 +557,11 @@ handle_sensor_control_get_static_id(struct xreal_air_hmd *hmd, const struct xrea
 	const uint32_t static_id =
 	    ((data->data[0] << 0u) | (data->data[1] << 8u) | (data->data[2] << 16u) | (data->data[3] << 24u));
 
+	os_mutex_lock(&hmd->global_mutex);
 	hmd->static_id = static_id;
+	os_mutex_unlock(&hmd->global_mutex);
 
-	if ((!hmd->calibration_valid) && (!hmd->calibration_buffer_len)) {
+	if (!calibration_data_known(hmd)) {
 		request_sensor_control_get_cal_data_length(hmd);
 	}
 }
@@ -530,7 +575,9 @@ handle_sensor_control_data_msg(struct xreal_air_hmd *hmd, unsigned char *buffer,
 		XREAL_AIR_ERROR(hmd, "Could not decode sensor control data packet");
 	}
 
+	os_mutex_lock(&hmd->global_mutex);
 	hmd->imu_stream_state = 0xAA;
+	os_mutex_unlock(&hmd->global_mutex);
 
 	switch (data.msgid) {
 	case XREAL_AIR_MSG_GET_CAL_DATA_LENGTH: handle_sensor_control_get_cal_data_length(hmd, &data); break;
@@ -555,6 +602,8 @@ handle_sensor_msg(struct xreal_air_hmd *hmd, unsigned char *buffer, size_t size)
 	}
 
 	timepoint_ns now_ns = (timepoint_ns)os_monotonic_get_ns();
+
+	os_mutex_lock(&hmd->global_mutex);
 	uint64_t last_timestamp = hmd->last.timestamp;
 
 	if (!xreal_air_parse_sensor_packet(&hmd->last, buffer, size, hmd->max_sensor_buffer_size)) {
@@ -564,7 +613,9 @@ handle_sensor_msg(struct xreal_air_hmd *hmd, unsigned char *buffer, size_t size)
 	}
 
 	if (!hmd->calibration_valid) {
+		os_mutex_unlock(&hmd->global_mutex);
 		request_sensor_control_start_imu_data(hmd, 0xAA);
+		os_mutex_lock(&hmd->global_mutex);
 	}
 
 	struct xreal_air_parsed_sensor *s = &hmd->last;
@@ -577,8 +628,11 @@ handle_sensor_msg(struct xreal_air_hmd *hmd, unsigned char *buffer, size_t size)
 	time_duration_ns inter_sample_duration_ns = delta;
 
 	// If this is larger then one second something bad is going on.
-	if (hmd->fusion.state != M_IMU_3DOF_STATE_START &&
-	    inter_sample_duration_ns >= (time_duration_ns)U_TIME_1S_IN_NS) {
+	bool probable_dropped_packet = hmd->fusion.state != M_IMU_3DOF_STATE_START &&
+	                               inter_sample_duration_ns >= (time_duration_ns)U_TIME_1S_IN_NS;
+	os_mutex_unlock(&hmd->global_mutex);
+
+	if (probable_dropped_packet) {
 		XREAL_AIR_ERROR(hmd, "Drop packet (sensor too slow): %" PRId64, inter_sample_duration_ns);
 		return;
 	}
@@ -599,9 +653,11 @@ sensor_clear_queue(struct xreal_air_hmd *hmd)
 	uint8_t buffer[SENSOR_BUFFER_SIZE];
 	size_t buffer_size = SENSOR_BUFFER_SIZE;
 
+	os_mutex_lock(&hmd->global_mutex);
 	if (buffer_size > hmd->max_sensor_buffer_size) {
 		buffer_size = hmd->max_sensor_buffer_size;
 	}
+	os_mutex_unlock(&hmd->global_mutex);
 
 	while (os_hid_read(hmd->hid_sensor, buffer, buffer_size, 0) > 0) {
 		// Just drop the packets.
@@ -614,9 +670,11 @@ sensor_read_one_packet(struct xreal_air_hmd *hmd)
 	uint8_t buffer[SENSOR_BUFFER_SIZE];
 	size_t buffer_size = SENSOR_BUFFER_SIZE;
 
+	os_mutex_lock(&hmd->global_mutex);
 	if (buffer_size > hmd->max_sensor_buffer_size) {
 		buffer_size = hmd->max_sensor_buffer_size;
 	}
+	os_mutex_unlock(&hmd->global_mutex);
 
 	int size = os_hid_read(hmd->hid_sensor, buffer, buffer_size, 0);
 	if (size <= 0) {
@@ -654,6 +712,7 @@ read_thread(void *ptr)
 		os_thread_helper_lock(&hmd->oth);
 	}
 
+	os_mutex_lock(&hmd->global_mutex);
 	if (hmd->calibration_buffer) {
 		// Free calibration buffer
 		free(hmd->calibration_buffer);
@@ -661,6 +720,7 @@ read_thread(void *ptr)
 		hmd->calibration_buffer_len = 0;
 		hmd->calibration_buffer_pos = 0;
 	}
+	os_mutex_unlock(&hmd->global_mutex);
 
 	os_thread_helper_unlock(&hmd->oth);
 
@@ -702,7 +762,11 @@ send_payload_to_control(struct xreal_air_hmd *hmd, uint16_t msgid, const uint8_t
 	payload[3] = ((checksum >> 16u) & 0xFFu);
 	payload[4] = ((checksum >> 24u) & 0xFFu);
 
-	return os_hid_write(hmd->hid_control, payload, payload_len);
+	os_mutex_lock(&hmd->device_mutex);
+	bool retval = os_hid_write(hmd->hid_control, payload, payload_len);
+	os_mutex_unlock(&hmd->device_mutex);
+
+	return retval;
 }
 
 static void
@@ -716,8 +780,10 @@ handle_control_brightness(struct xreal_air_hmd *hmd, const struct xreal_air_pars
 	// Brightness
 	const uint8_t brightness = scale_brightness(control->data[1]);
 
+	os_mutex_lock(&hmd->global_mutex);
 	hmd->state.brightness = brightness;
 	hmd->wants.brightness = brightness;
+	os_mutex_unlock(&hmd->global_mutex);
 }
 
 static void
@@ -731,8 +797,10 @@ handle_control_display_mode(struct xreal_air_hmd *hmd, const struct xreal_air_pa
 	// Display mode
 	const uint8_t display_mode = control->data[1];
 
+	os_mutex_lock(&hmd->global_mutex);
 	hmd->state.display_mode = display_mode;
 	hmd->wants.display_mode = display_mode;
+	os_mutex_unlock(&hmd->global_mutex);
 }
 
 static void
@@ -747,7 +815,9 @@ handle_control_display_toggled(struct xreal_air_hmd *hmd, const struct xreal_air
 	// State of display
 	const uint8_t display_state = control->data[0];
 
+	os_mutex_lock(&hmd->global_mutex);
 	hmd->display_on = (display_state != 0);
+	os_mutex_unlock(&hmd->global_mutex);
 }
 
 static void
@@ -762,6 +832,7 @@ handle_control_button(struct xreal_air_hmd *hmd, const struct xreal_air_parsed_c
 	// Brightness if the button changes it (or display state)
 	const uint8_t value = control->data[8];
 
+	os_mutex_lock(&hmd->global_mutex);
 	switch (virt_button) {
 	case XREAL_AIR_BUTTON_VIRT_DISPLAY_TOGGLE: {
 		hmd->display_on = value;
@@ -831,13 +902,16 @@ handle_control_button(struct xreal_air_hmd *hmd, const struct xreal_air_parsed_c
 		break;
 	}
 	}
+	os_mutex_unlock(&hmd->global_mutex);
 }
 
 static void
 handle_control_async_text(struct xreal_air_hmd *hmd, const struct xreal_air_parsed_control *control)
 {
 	// Event only appears if the display is active!
+	os_mutex_lock(&hmd->global_mutex);
 	hmd->display_on = true;
+	os_mutex_unlock(&hmd->global_mutex);
 
 	XREAL_AIR_DEBUG(hmd, "Control message: %s", (const char *)control->data);
 }
@@ -849,7 +923,7 @@ handle_control_heartbeat_end(struct xreal_air_hmd *hmd, const struct xreal_air_p
 }
 
 static void
-handle_control_action_locked(struct xreal_air_hmd *hmd, const struct xreal_air_parsed_control *control)
+handle_control_action(struct xreal_air_hmd *hmd, const struct xreal_air_parsed_control *control)
 {
 	switch (control->action) {
 	case XREAL_AIR_MSG_R_BRIGHTNESS: handle_control_brightness(hmd, control); break;
@@ -874,9 +948,7 @@ handle_control_msg(struct xreal_air_hmd *hmd, unsigned char *buffer, int size)
 		XREAL_AIR_ERROR(hmd, "Could not decode control packet");
 	}
 
-	os_mutex_lock(&hmd->device_mutex);
-	handle_control_action_locked(hmd, &control);
-	os_mutex_unlock(&hmd->device_mutex);
+	handle_control_action(hmd, &control);
 }
 
 static void
@@ -884,9 +956,11 @@ control_clear_queue(struct xreal_air_hmd *hmd)
 {
 	uint8_t buffer[CONTROL_BUFFER_SIZE];
 
+	os_mutex_lock(&hmd->device_mutex);
 	while (os_hid_read(hmd->hid_control, buffer, CONTROL_BUFFER_SIZE, 0) > 0) {
 		// Just drop the packets.
 	}
+	os_mutex_unlock(&hmd->device_mutex);
 }
 
 static int
@@ -895,16 +969,15 @@ read_one_control_packet(struct xreal_air_hmd *hmd)
 	static uint8_t buffer[CONTROL_BUFFER_SIZE];
 	int size = 0;
 
+	os_mutex_lock(&hmd->device_mutex);
 	size = os_hid_read(hmd->hid_control, buffer, CONTROL_BUFFER_SIZE, 0);
-	if (size == 0) {
-		return 0;
-	}
-	if (size < 0) {
-		return -1;
+	os_mutex_unlock(&hmd->device_mutex);
+
+	if (size > 0) {
+		handle_control_msg(hmd, buffer, size);
 	}
 
-	handle_control_msg(hmd, buffer, size);
-	return size;
+	return size < 0 ? -1 : size;
 }
 
 static bool
@@ -913,7 +986,11 @@ wait_for_brightness(struct xreal_air_hmd *hmd)
 	for (int i = 0; i < 5000; i++) {
 		read_one_control_packet(hmd);
 
-		if (hmd->state.brightness <= 100) {
+		os_mutex_lock(&hmd->global_mutex);
+		bool bightness_found = hmd->state.brightness <= 100;
+		os_mutex_unlock(&hmd->global_mutex);
+
+		if (bightness_found) {
 			return true;
 		}
 
@@ -929,8 +1006,12 @@ wait_for_display_mode(struct xreal_air_hmd *hmd)
 	for (int i = 0; i < 5000; i++) {
 		read_one_control_packet(hmd);
 
-		if ((hmd->state.display_mode == XREAL_AIR_DISPLAY_MODE_2D) ||
-		    (hmd->state.display_mode == XREAL_AIR_DISPLAY_MODE_3D)) {
+		os_mutex_lock(&hmd->global_mutex);
+		bool display_found = (hmd->state.display_mode == XREAL_AIR_DISPLAY_MODE_2D) ||
+		                     (hmd->state.display_mode == XREAL_AIR_DISPLAY_MODE_3D);
+		os_mutex_unlock(&hmd->global_mutex);
+
+		if (display_found) {
 			return true;
 		}
 
@@ -1048,54 +1129,65 @@ teardown(struct xreal_air_hmd *hmd)
 
 	os_thread_helper_destroy(&hmd->oth);
 	os_mutex_destroy(&hmd->device_mutex);
+	os_mutex_destroy(&hmd->global_mutex);
 }
 
 static void
 adjust_brightness(struct xreal_air_hmd *hmd)
 {
+	os_mutex_lock(&hmd->global_mutex);
 	if (hmd->wants.brightness > 100) {
-		return;
+		goto cleanup;
 	}
 
 	if (hmd->wants.brightness == hmd->state.brightness) {
-		return;
+		goto cleanup;
 	}
 
 	const uint8_t raw_brightness = unscale_brightness(hmd->wants.brightness);
 	const uint8_t brightness = scale_brightness(raw_brightness);
 
 	if (brightness == hmd->state.brightness) {
-		return;
+		goto cleanup;
 	}
+	os_mutex_unlock(&hmd->global_mutex);
 
 	if (!send_payload_to_control(hmd, XREAL_AIR_MSG_W_BRIGHTNESS, &raw_brightness, 1)) {
 		XREAL_AIR_ERROR(hmd, "Failed to send payload setting custom brightness value!");
 		return;
 	}
 
+	os_mutex_lock(&hmd->global_mutex);
 	hmd->state.brightness = brightness;
+cleanup:
+	os_mutex_unlock(&hmd->global_mutex);
 }
 
 static void
 adjust_display_mode(struct xreal_air_hmd *hmd)
 {
+	os_mutex_lock(&hmd->global_mutex);
 	if ((hmd->wants.display_mode != XREAL_AIR_DISPLAY_MODE_2D) &&
 	    (hmd->wants.display_mode != XREAL_AIR_DISPLAY_MODE_3D)) {
-		return;
+		goto cleanup;
 	}
 
 	if (hmd->wants.display_mode == hmd->state.display_mode) {
-		return;
+		goto cleanup;
 	}
 
 	const uint8_t display_mode = hmd->wants.display_mode;
+	os_mutex_unlock(&hmd->global_mutex);
 
 	if (!send_payload_to_control(hmd, XREAL_AIR_MSG_W_DISP_MODE, &display_mode, 1)) {
 		XREAL_AIR_ERROR(hmd, "Failed to send payload setting custom display mode!");
 		return;
 	}
 
+	os_mutex_lock(&hmd->global_mutex);
 	hmd->state.display_mode = display_mode;
+cleanup:
+	os_mutex_unlock(&hmd->global_mutex);
 }
 
 /*
@@ -1109,15 +1201,11 @@ xreal_air_hmd_update_inputs(struct xrt_device *xdev)
 {
 	struct xreal_air_hmd *hmd = xreal_air_hmd(xdev);
 
-	os_mutex_lock(&hmd->device_mutex);
-
 	// Adjust brightness
 	adjust_brightness(hmd);
 
 	// Adjust display mode
 	adjust_display_mode(hmd);
-
-	os_mutex_unlock(&hmd->device_mutex);
 
 	return XRT_SUCCESS;
 }
@@ -1141,7 +1229,9 @@ xreal_air_hmd_get_tracked_pose(struct xrt_device *xdev,
 	struct xrt_space_relation relation = XRT_SPACE_RELATION_ZERO;
 	relation.relation_flags = flags;
 
+	os_mutex_lock(&hmd->global_mutex);
 	m_relation_history_get(hmd->relation_hist, at_timestamp_ns, &relation);
+	os_mutex_unlock(&hmd->global_mutex);
 	relation.relation_flags = flags; // Needed after history_get
 
 	*out_relation = relation;
@@ -1231,6 +1321,7 @@ xreal_air_hmd_create_device(struct os_hid_device *sensor_device,
 	// Do mutex and thread init before any call to teardown happens.
 	os_mutex_init(&hmd->device_mutex);
 	os_thread_helper_init(&hmd->oth);
+	os_mutex_init(&hmd->global_mutex);
 
 	if (!sensor_device) {
 		goto cleanup;
