@@ -248,6 +248,11 @@ def get_instance_cmds():
         ),
         None,
         Cmd(
+            "vkGetPhysicalDeviceCalibrateableTimeDomainsKHR",
+            requires=("VK_KHR_calibrated_timestamps",),
+        ),
+        None,
+        Cmd(
             "vkCreateDisplayPlaneSurfaceKHR", requires=("VK_USE_PLATFORM_DISPLAY_KHR",)
         ),
         Cmd(

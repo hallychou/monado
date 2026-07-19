@@ -49,9 +49,28 @@ from_host_ticks_to_host_ns(uint64_t ticks)
 }
 
 static VkResult
+get_calibrateable_time_domains(struct vk_bundle *vk, uint32_t *out_count, VkTimeDomainEXT *out_domains)
+{
+#ifdef VK_KHR_calibrated_timestamps
+	if (vk->has_KHR_calibrated_timestamps) {
+		return vk->vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(vk->physical_device, out_count, out_domains);
+	} else
+#endif
+#ifdef VK_EXT_calibrated_timestamps
+	    if (vk->has_EXT_calibrated_timestamps) {
+		return vk->vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(vk->physical_device, out_count, out_domains);
+	} else
+#endif
+	{
+		VK_ERROR(vk, "VK_{EXT,KHR}_calibrated_timestamps not enabled");
+		return VK_ERROR_EXTENSION_NOT_PRESENT;
+	}
+}
+
+static VkResult
 get_calibrated_timestamps(struct vk_bundle *vk,
                           uint32_t timestamp_count,
-                          const VkCalibratedTimestampInfoKHR *timestamp_infos,
+                          const VkCalibratedTimestampInfoEXT *timestamp_infos,
                           uint64_t *timestamps)
 {
 	uint64_t max_deviation;
@@ -120,6 +139,40 @@ convert_timestamps(struct vk_bundle *vk,
  * 'Exported' function(s).
  *
  */
+
+XRT_CHECK_RESULT VkResult
+vk_get_calibrateable_time_domains(struct vk_bundle *vk, uint32_t *out_count, VkTimeDomainEXT **out_domains)
+{
+	uint32_t count = 0;
+	VkResult ret;
+
+	ret = get_calibrateable_time_domains(vk, &count, NULL);
+	if (ret != VK_SUCCESS) {
+		VK_ERROR(vk, "get_calibrateable_time_domains: %s", vk_result_string(ret));
+		return ret;
+	}
+
+	if (count == 0) {
+		return VK_SUCCESS;
+	}
+
+	VkTimeDomainEXT *domains = U_TYPED_ARRAY_CALLOC(VkTimeDomainEXT, count);
+	if (!domains) {
+		VK_ERROR(vk, "Out of memory!");
+		return VK_ERROR_OUT_OF_HOST_MEMORY;
+	}
+
+	ret = get_calibrateable_time_domains(vk, &count, domains);
+	if (ret != VK_SUCCESS) {
+		VK_ERROR(vk, "get_calibrateable_time_domains: %s", vk_result_string(ret));
+		free(domains);
+		return ret;
+	}
+
+	*out_count = count;
+	*out_domains = domains;
+	return VK_SUCCESS;
+}
 
 XRT_CHECK_RESULT VkResult
 vk_convert_device_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, uint64_t *in_out_timestamps)

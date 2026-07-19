@@ -1376,6 +1376,18 @@ vk_create_timeline_semaphore_from_native(struct vk_bundle *vk, xrt_graphics_sync
 #if defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps) || defined(XRT_DOXYGEN)
 
 /*!
+ * Get the list of calibrateable time domains from the physical device.
+ *
+ * @param vk                The Vulkan bundle.
+ * @param[out] out_count    Receives the number of calibrateable time domains.
+ * @param[out] out_domains  Populated with the list of calibrateable time domains on successful return.
+ *
+ * @ingroup aux_vk
+ */
+XRT_CHECK_RESULT VkResult
+vk_get_calibrateable_time_domains(struct vk_bundle *vk, uint32_t *out_count, VkTimeDomainEXT **out_domains);
+
+/*!
  * Convert timestamps in GPU ticks (as return by VkQueryPool timestamp queries)
  * into host CPU nanoseconds, same time domain as @ref os_monotonic_get_ns.
  *
