@@ -122,6 +122,16 @@ vk_surface_info_fill_in(struct vk_bundle *vk, struct vk_surface_info *info, VkSu
 			surf_caps2.pNext = &present_wait2_caps;
 		}
 #endif
+#ifdef VK_EXT_present_timing
+		VkPresentTimingSurfaceCapabilitiesEXT present_timing_surface_caps = {
+		    .sType = VK_STRUCTURE_TYPE_PRESENT_TIMING_SURFACE_CAPABILITIES_EXT,
+		    .pNext = NULL,
+		};
+		if (vk->has_EXT_present_timing) {
+			present_timing_surface_caps.pNext = surf_caps2.pNext;
+			surf_caps2.pNext = &present_timing_surface_caps;
+		}
+#endif
 #ifdef VK_KHR_shared_presentable_image
 		VkSharedPresentSurfaceCapabilitiesKHR shared_present_caps = {
 		    .sType = VK_STRUCTURE_TYPE_SHARED_PRESENT_SURFACE_CAPABILITIES_KHR,
@@ -144,6 +154,9 @@ vk_surface_info_fill_in(struct vk_bundle *vk, struct vk_surface_info *info, VkSu
 #endif
 #ifdef VK_KHR_present_wait2
 		info->present_wait2_caps = present_wait2_caps;
+#endif
+#ifdef VK_EXT_present_timing
+		info->present_timing_surface_caps = present_timing_surface_caps;
 #endif
 #ifdef VK_KHR_shared_presentable_image
 		info->shared_present_caps = shared_present_caps;
@@ -206,6 +219,17 @@ vk_print_surface_info(struct vk_bundle *vk, struct vk_surface_info *info, enum u
 
 #if defined(VK_KHR_get_surface_capabilities2) && defined(VK_KHR_present_wait2)
 	PNT("present_wait2_caps.presentWait2Supported: %u", info->present_wait2_caps.presentWait2Supported);
+#endif
+
+#if defined(VK_KHR_get_surface_capabilities2) && defined(VK_EXT_present_timing)
+	PNT("present_timing_surface_caps.presentTimingSupported: %u",
+	    info->present_timing_surface_caps.presentTimingSupported);
+	PNT("present_timing_surface_caps.presentAtAbsoluteTimeSupported: %u",
+	    info->present_timing_surface_caps.presentAtAbsoluteTimeSupported);
+	PNT("present_timing_surface_caps.presentAtRelativeTimeSupported: %u",
+	    info->present_timing_surface_caps.presentAtRelativeTimeSupported);
+	PNT("present_timing_surface_caps.presentStageQueries:");
+	PRINT_BITS(info->present_timing_surface_caps.presentStageQueries, vk_present_stage_flag_string);
 #endif
 
 #if defined(VK_KHR_get_surface_capabilities2) && defined(VK_KHR_shared_presentable_image)
