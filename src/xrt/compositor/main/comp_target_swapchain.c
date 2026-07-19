@@ -705,16 +705,9 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 
 	assert(present_queue != NULL);
 
-	int64_t now_ns = os_monotonic_get_ns();
 	// Some platforms really don't like the pacing_compositor code.
 	bool use_display_timing_if_available =
 	    debug_get_bool_option_use_display_timing() && cts->timing_usage == COMP_TARGET_USE_DISPLAY_IF_AVAILABLE;
-	if (cts->upc == NULL && use_display_timing_if_available && vk->has_GOOGLE_display_timing) {
-		struct u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
-		u_pc_display_timing_create(ct->c->frame_interval_ns, &config, &cts->upc);
-	} else if (cts->upc == NULL) {
-		u_pc_fake_create(ct->c->frame_interval_ns, now_ns, &cts->upc);
-	}
 
 	// Free old image views.
 	destroy_image_views(cts);
@@ -926,6 +919,14 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 		COMP_INFO(ct->c, "Not using vblank event thread!");
 	}
 #endif
+
+	int64_t now_ns = os_monotonic_get_ns();
+	if (cts->upc == NULL && use_display_timing_if_available && vk->has_GOOGLE_display_timing) {
+		struct u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
+		u_pc_display_timing_create(ct->c->frame_interval_ns, &config, &cts->upc);
+	} else if (cts->upc == NULL) {
+		u_pc_fake_create(ct->c->frame_interval_ns, now_ns, &cts->upc);
+	}
 
 	// Done now.
 	return;
