@@ -458,6 +458,15 @@ XRT_CHECK_RESULT const char *
 vk_display_plane_alpha_flag_string(VkDisplayPlaneAlphaFlagBitsKHR bits, bool null_on_unknown);
 #endif
 
+#ifdef VK_EXT_present_timing
+/*!
+ * Returns the present stage flag if one valid bit is set,
+ * if multiple bits are set, will return 'MULTIPLE BIT SET'.
+ */
+XRT_CHECK_RESULT const char *
+vk_present_stage_flag_string(VkPresentStageFlagsEXT bits, bool null_on_unknown);
+#endif
+
 
 /*
  *

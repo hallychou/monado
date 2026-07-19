@@ -1071,6 +1071,27 @@ vk_display_plane_alpha_flag_string(VkDisplayPlaneAlphaFlagBitsKHR bits, bool nul
 }
 #endif
 
+#ifdef VK_EXT_present_timing
+XRT_CHECK_RESULT const char *
+vk_present_stage_flag_string(VkPresentStageFlagsEXT bits, bool null_on_unknown)
+{
+	switch (bits) {
+		ENUM_TO_STR(VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT);
+		ENUM_TO_STR(VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT);
+		ENUM_TO_STR(VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT);
+		ENUM_TO_STR(VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT);
+	default:
+		if (bits == 0) {
+			return "PRESENT STAGE: NO BITS SET";
+		} else if (bits & (bits - 1)) {
+			return "PRESENT STAGE: MULTIPLE BITS SET";
+		} else {
+			return null_on_unknown ? NULL : "PRESENT STAGE: UNKNOWN BIT";
+		}
+	}
+}
+#endif
+
 XRT_CHECK_RESULT const char *
 xrt_swapchain_usage_flag_string(enum xrt_swapchain_usage_bits bits, bool null_on_unknown)
 {
