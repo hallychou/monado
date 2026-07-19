@@ -17,6 +17,9 @@
 
 #if defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps)
 
+#define CPU_DOMAIN_EQUIVALENCE_MAX_DEVIATION_NS 2000
+
+
 /*
  *
  * Helper(s)
@@ -63,10 +66,15 @@ static VkResult
 get_calibrated_timestamps(struct vk_bundle *vk,
                           uint32_t timestamp_count,
                           const VkCalibratedTimestampInfoEXT *timestamp_infos,
-                          uint64_t *timestamps)
+                          uint64_t *timestamps,
+                          uint64_t *max_deviation)
 {
-	uint64_t max_deviation;
 	VkResult ret = VK_ERROR_EXTENSION_NOT_PRESENT;
+	uint64_t dummy;
+
+	if (max_deviation == NULL) {
+		max_deviation = &dummy;
+	}
 
 #ifdef VK_KHR_calibrated_timestamps
 	if (vk->has_KHR_calibrated_timestamps) {
@@ -76,7 +84,7 @@ get_calibrated_timestamps(struct vk_bundle *vk,
 		    timestamp_count,                    // timestampCount
 		    timestamp_infos,                    // pTimestampInfos
 		    timestamps,                         // pTimestamps
-		    &max_deviation);                    // pMaxDeviation
+		    max_deviation);                     // pMaxDeviation
 		if (ret != VK_SUCCESS) {
 			VK_ERROR(vk, "vkGetCalibratedTimestampsKHR: %s", vk_result_string(ret));
 			return ret;
@@ -91,7 +99,7 @@ get_calibrated_timestamps(struct vk_bundle *vk,
 		    timestamp_count,                    // timestampCount
 		    timestamp_infos,                    // pTimestampInfos
 		    timestamps,                         // pTimestamps
-		    &max_deviation);                    // pMaxDeviation
+		    max_deviation);                     // pMaxDeviation
 		if (ret != VK_SUCCESS) {
 			VK_ERROR(vk, "vkGetCalibratedTimestampsEXT: %s", vk_result_string(ret));
 			return ret;
@@ -104,6 +112,13 @@ get_calibrated_timestamps(struct vk_bundle *vk,
 	}
 
 	return ret;
+}
+
+static inline bool
+is_cpu_time_equivalent(uint64_t device_ns, uint64_t host_ns, uint64_t max_deviation)
+{
+	return max_deviation <= CPU_DOMAIN_EQUIVALENCE_MAX_DEVIATION_NS &&
+	       (uint64_t)imaxabs((int64_t)(device_ns - host_ns)) <= max_deviation;
 }
 
 static void
@@ -186,7 +201,7 @@ vk_convert_device_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, ui
 	};
 
 	uint64_t timestamps[2];
-	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps);
+	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps, NULL);
 	if (ret != VK_SUCCESS) {
 		return ret;
 	}
@@ -256,14 +271,17 @@ vk_convert_timestamps_to_host(struct vk_bundle *vk,
 	};
 
 	uint64_t timestamps[2];
-	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps);
+	uint64_t max_deviation;
+	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps, &max_deviation);
 	if (ret != VK_SUCCESS) {
 		return ret;
 	}
 
 	uint64_t other_ns = timestamps[0];
 	uint64_t host_ns = from_host_ticks_to_host_ns(timestamps[1]);
-	convert_timestamps(vk, other_ns, host_ns, count, in_out_timestamps);
+	if (!is_cpu_time_equivalent(other_ns, host_ns, max_deviation)) {
+		convert_timestamps(vk, other_ns, host_ns, count, in_out_timestamps);
+	}
 
 	return VK_SUCCESS;
 }
@@ -290,14 +308,17 @@ vk_convert_timestamps_from_host(struct vk_bundle *vk,
 	};
 
 	uint64_t timestamps[2];
-	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps);
+	uint64_t max_deviation;
+	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps, &max_deviation);
 	if (ret != VK_SUCCESS) {
 		return ret;
 	}
 
 	uint64_t other_ns = timestamps[0];
 	uint64_t host_ns = from_host_ticks_to_host_ns(timestamps[1]);
-	convert_timestamps(vk, host_ns, other_ns, count, in_out_timestamps);
+	if (!is_cpu_time_equivalent(other_ns, host_ns, max_deviation)) {
+		convert_timestamps(vk, host_ns, other_ns, count, in_out_timestamps);
+	}
 
 	return VK_SUCCESS;
 }
@@ -326,14 +347,17 @@ vk_convert_present_stage_timestamps_to_host(struct vk_bundle *vk,
 	};
 
 	uint64_t timestamps[2];
-	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps);
+	uint64_t max_deviation;
+	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps, &max_deviation);
 	if (ret != VK_SUCCESS) {
 		return ret;
 	}
 
 	uint64_t present_stage_ns = timestamps[0];
 	uint64_t host_ns = from_host_ticks_to_host_ns(timestamps[1]);
-	convert_timestamps(vk, present_stage_ns, host_ns, count, in_out_timestamps);
+	if (!is_cpu_time_equivalent(present_stage_ns, host_ns, max_deviation)) {
+		convert_timestamps(vk, present_stage_ns, host_ns, count, in_out_timestamps);
+	}
 
 	return VK_SUCCESS;
 }
@@ -360,14 +384,17 @@ vk_convert_host_timestamps_to_present_stage(struct vk_bundle *vk,
 	};
 
 	uint64_t timestamps[2];
-	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps);
+	uint64_t max_deviation;
+	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps, &max_deviation);
 	if (ret != VK_SUCCESS) {
 		return ret;
 	}
 
 	uint64_t present_stage_ns = timestamps[0];
 	uint64_t host_ns = from_host_ticks_to_host_ns(timestamps[1]);
-	convert_timestamps(vk, host_ns, present_stage_ns, count, in_out_timestamps);
+	if (!is_cpu_time_equivalent(present_stage_ns, host_ns, max_deviation)) {
+		convert_timestamps(vk, host_ns, present_stage_ns, count, in_out_timestamps);
+	}
 
 	return VK_SUCCESS;
 }
