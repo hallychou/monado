@@ -17,6 +17,14 @@
 
 #if defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps)
 
+#if defined(XRT_OS_LINUX) || defined(XRT_OS_OSX)
+#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT
+#elif defined(XRT_OS_WINDOWS)
+#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT
+#else
+#error "Vulkan timestamp domain needs porting"
+#endif
+
 /*
  *
  * Helper(s)
@@ -87,6 +95,25 @@ get_calibrated_timestamps(struct vk_bundle *vk,
 	return ret;
 }
 
+static void
+convert_timestamps(struct vk_bundle *vk,
+                   uint64_t source_calib_ns,
+                   uint64_t target_calib_ns,
+                   uint32_t count,
+                   uint64_t *in_out_timestamps)
+{
+	for (uint32_t i = 0; i < count; i++) {
+		// Read the source domain timestamp.
+		uint64_t timestamp_source_ns = in_out_timestamps[i];
+
+		// Calculate the target domain timestamp.
+		uint64_t timestamp_target_ns = timestamp_source_ns + target_calib_ns - source_calib_ns;
+
+		// Write out the result.
+		in_out_timestamps[i] = timestamp_target_ns;
+	}
+}
+
 
 /*
  *
@@ -95,17 +122,9 @@ get_calibrated_timestamps(struct vk_bundle *vk,
  */
 
 XRT_CHECK_RESULT VkResult
-vk_convert_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, uint64_t *in_out_timestamps)
+vk_convert_device_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, uint64_t *in_out_timestamps)
 {
 	VkResult ret;
-
-#if defined(XRT_OS_LINUX) || defined(XRT_OS_OSX)
-#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT
-#elif defined(XRT_OS_WINDOWS)
-#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT
-#else
-#error "Vulkan timestamp domain needs porting"
-#endif
 
 	// Will always be the same, can be static.
 	static const VkCalibratedTimestampInfoEXT timestamp_info[2] = {
@@ -169,5 +188,145 @@ vk_convert_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, uint64_t 
 
 	return VK_SUCCESS;
 }
+
+XRT_CHECK_RESULT VkResult
+vk_convert_timestamps_to_host(struct vk_bundle *vk,
+                              VkTimeDomainEXT source_domain,
+                              uint32_t count,
+                              uint64_t *in_out_timestamps)
+{
+	VkResult ret;
+
+	const VkCalibratedTimestampInfoEXT timestamp_info[2] = {
+	    {
+	        .sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT,
+	        .pNext = NULL,
+	        .timeDomain = source_domain,
+	    },
+	    {
+	        .sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT,
+	        .pNext = NULL,
+	        .timeDomain = CPU_TIME_DOMAIN,
+	    },
+	};
+
+	uint64_t timestamps[2];
+	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps);
+	if (ret != VK_SUCCESS) {
+		return ret;
+	}
+
+	uint64_t other_ns = timestamps[0];
+	uint64_t host_ns = from_host_ticks_to_host_ns(timestamps[1]);
+	convert_timestamps(vk, other_ns, host_ns, count, in_out_timestamps);
+
+	return VK_SUCCESS;
+}
+
+XRT_CHECK_RESULT VkResult
+vk_convert_timestamps_from_host(struct vk_bundle *vk,
+                                VkTimeDomainEXT target_domain,
+                                uint32_t count,
+                                uint64_t *in_out_timestamps)
+{
+	VkResult ret;
+
+	const VkCalibratedTimestampInfoEXT timestamp_info[2] = {
+	    {
+	        .sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT,
+	        .pNext = NULL,
+	        .timeDomain = target_domain,
+	    },
+	    {
+	        .sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT,
+	        .pNext = NULL,
+	        .timeDomain = CPU_TIME_DOMAIN,
+	    },
+	};
+
+	uint64_t timestamps[2];
+	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps);
+	if (ret != VK_SUCCESS) {
+		return ret;
+	}
+
+	uint64_t other_ns = timestamps[0];
+	uint64_t host_ns = from_host_ticks_to_host_ns(timestamps[1]);
+	convert_timestamps(vk, host_ns, other_ns, count, in_out_timestamps);
+
+	return VK_SUCCESS;
+}
+
+#ifdef VK_EXT_present_timing
+
+XRT_CHECK_RESULT VkResult
+vk_convert_present_stage_timestamps_to_host(struct vk_bundle *vk,
+                                            const VkSwapchainCalibratedTimestampInfoEXT *swapchain,
+                                            uint32_t count,
+                                            uint64_t *in_out_timestamps)
+{
+	VkResult ret;
+
+	const VkCalibratedTimestampInfoEXT timestamp_info[2] = {
+	    {
+	        .sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT,
+	        .pNext = (const void *)swapchain,
+	        .timeDomain = VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT,
+	    },
+	    {
+	        .sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT,
+	        .pNext = NULL,
+	        .timeDomain = CPU_TIME_DOMAIN,
+	    },
+	};
+
+	uint64_t timestamps[2];
+	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps);
+	if (ret != VK_SUCCESS) {
+		return ret;
+	}
+
+	uint64_t present_stage_ns = timestamps[0];
+	uint64_t host_ns = from_host_ticks_to_host_ns(timestamps[1]);
+	convert_timestamps(vk, present_stage_ns, host_ns, count, in_out_timestamps);
+
+	return VK_SUCCESS;
+}
+
+XRT_CHECK_RESULT VkResult
+vk_convert_host_timestamps_to_present_stage(struct vk_bundle *vk,
+                                            const VkSwapchainCalibratedTimestampInfoEXT *swapchain,
+                                            uint32_t count,
+                                            uint64_t *in_out_timestamps)
+{
+	VkResult ret;
+
+	const VkCalibratedTimestampInfoEXT timestamp_info[2] = {
+	    {
+	        .sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT,
+	        .pNext = (const void *)swapchain,
+	        .timeDomain = VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT,
+	    },
+	    {
+	        .sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT,
+	        .pNext = NULL,
+	        .timeDomain = CPU_TIME_DOMAIN,
+	    },
+	};
+
+	uint64_t timestamps[2];
+	ret = get_calibrated_timestamps(vk, 2, timestamp_info, timestamps);
+	if (ret != VK_SUCCESS) {
+		return ret;
+	}
+
+	uint64_t present_stage_ns = timestamps[0];
+	uint64_t host_ns = from_host_ticks_to_host_ns(timestamps[1]);
+	convert_timestamps(vk, host_ns, present_stage_ns, count, in_out_timestamps);
+
+	return VK_SUCCESS;
+}
+
+#endif // defined(VK_EXT_present_timing)
 
 #endif /* defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps) */
