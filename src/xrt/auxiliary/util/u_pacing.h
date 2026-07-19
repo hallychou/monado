@@ -724,7 +724,7 @@ u_pc_display_timing_get_default_config(void);
 /*!
  * Creates a new composition pacing helper that uses real display timing information.
  *
- * Meant to be used with `VK_GOOGLE_display_timing`.
+ * Meant to be used with `VK_GOOGLE_display_timing` or `VK_EXT_present_timing`.
  *
  * @ingroup aux_pacing
  * @see u_pacing_compositor

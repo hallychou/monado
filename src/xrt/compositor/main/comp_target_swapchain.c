@@ -1442,7 +1442,8 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 #endif
 
 	int64_t now_ns = os_monotonic_get_ns();
-	if (cts->upc == NULL && use_display_timing_if_available && vk->has_GOOGLE_display_timing) {
+	if (cts->upc == NULL && use_display_timing_if_available &&
+	    (vk->has_GOOGLE_display_timing || cts->present_timing.use_for_info)) {
 		struct u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
 		u_pc_display_timing_create(ct->c->frame_interval_ns, &config, &cts->upc);
 	} else if (cts->upc == NULL) {
