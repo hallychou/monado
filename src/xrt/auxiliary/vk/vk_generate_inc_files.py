@@ -198,6 +198,11 @@ def get_device_cmds():
         Cmd("vkWaitForPresent2KHR", requires=("VK_KHR_present_wait2",)),
         None,
         Cmd("vkGetSwapchainStatusKHR", requires=("VK_KHR_shared_presentable_image",)),
+        None,
+        Cmd("vkGetPastPresentationTimingEXT", requires=("VK_EXT_present_timing",)),
+        Cmd("vkGetSwapchainTimeDomainPropertiesEXT", requires=("VK_EXT_present_timing",)),
+        Cmd("vkGetSwapchainTimingPropertiesEXT", requires=("VK_EXT_present_timing",)),
+        Cmd("vkSetSwapchainPresentTimingQueueSizeEXT", requires=("VK_EXT_present_timing",)),
     ]
 
 

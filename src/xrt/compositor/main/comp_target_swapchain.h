@@ -28,6 +28,18 @@ extern "C" {
 
 struct u_pacing_compositor;
 
+#define COMP_TARGET_SWAPCHAIN_NUM_PAST_FRAMES 16
+
+struct comp_target_swapchain_frame_info
+{
+	uint64_t frame_id;
+	int64_t desired_present_time_ns;
+	int64_t queue_present_time_ns;
+	int64_t actual_present_time_ns;
+	int64_t gpu_end_ns;
+	bool processed;
+};
+
 /*!
  * Wraps and manage VkSwapchainKHR and VkSurfaceKHR, used by @ref comp code.
  *
@@ -75,12 +87,18 @@ struct comp_target_swapchain
 #ifdef VK_EXT_display_surface_counter
 		VkSurfaceCounterFlagsEXT surface_counter_flags;
 #endif
+#ifdef VK_EXT_present_timing
+		VkPresentTimingSurfaceCapabilitiesEXT present_timing_caps;
+#endif
 
 		//! Whether VK_KHR_present_id2 is supported for the surface.
 		bool present_id2_supported;
 
 		//! Whether VK_KHR_present_wait2 is supported for the surface.
 		bool present_wait2_supported;
+
+		//! Whether VK_EXT_present_timing is supported for the surface.
+		bool present_timing_supported;
 	} surface;
 
 	struct
@@ -112,6 +130,25 @@ struct comp_target_swapchain
 		//! Skipping the event on the first vblank avoids a spurious VK_ERROR_OUT_OF_HOST_MEMORY error.
 		bool event_active;
 	} vblank;
+
+	struct
+	{
+#ifdef VK_EXT_present_timing
+		int64_t frame_interval_ns;
+
+		bool has_usable_time_domain;
+		VkTimeDomainEXT time_domain;
+		uint64_t time_domain_id;
+		bool relative;
+#endif
+
+		bool use_for_target_time;
+		bool use_for_info;
+	} present_timing;
+
+#ifdef VK_EXT_present_timing
+	struct comp_target_swapchain_frame_info past_frames[COMP_TARGET_SWAPCHAIN_NUM_PAST_FRAMES];
+#endif
 
 	/*!
 	 * We print swapchain info as INFO the first time we create a

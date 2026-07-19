@@ -589,6 +589,10 @@ static const char *optional_device_extensions[] = {
     VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME, //
     VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME,   //
 
+#ifdef VK_EXT_present_timing
+    VK_EXT_PRESENT_TIMING_EXTENSION_NAME,
+#endif
+
 // Platform version of "external_fence" and "external_semaphore"
 #if defined(XRT_GRAPHICS_SYNC_HANDLE_IS_FD)
     VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME, //

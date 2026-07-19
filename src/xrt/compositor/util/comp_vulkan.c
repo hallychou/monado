@@ -280,6 +280,12 @@ create_device(struct vk_bundle *vk, const struct comp_vulkan_arguments *vk_args)
 	    .present_id2 = true,
 	    .present_wait = true,
 	    .present_wait2 = true,
+	    .present_timing =
+	        {
+	            .get_present_timing = true,
+	            .at_absolute_time = true,
+	            .at_relative_time = true,
+	        },
 	    .video_maintenance_1 = true,
 	};
 
