@@ -211,6 +211,19 @@ struct vk_bundle
 		//! Was KHR_present_wait2 requested, available, and enabled?
 		bool present_wait2;
 
+		//! What EXT_present_timing features are available?
+		struct
+		{
+			//! Is the vkGetPastPresentationTimingEXT function supported?
+			bool get_present_timing;
+
+			//! Is specifying absolute target present times supported?
+			bool at_absolute_time;
+
+			//! Is specifying relative target present times supported?
+			bool at_relative_time;
+		} present_timing;
+
 		//! Was KHR_video_maintenance1 requested, available, and enabled?
 		bool video_maintenance_1;
 	} features;
@@ -777,6 +790,12 @@ struct vk_device_features
 	bool present_id2;
 	bool present_wait;
 	bool present_wait2;
+	struct
+	{
+		bool get_present_timing;
+		bool at_absolute_time;
+		bool at_relative_time;
+	} present_timing;
 	bool video_maintenance_1;
 };
 

@@ -579,6 +579,10 @@ filter_device_features(struct vk_bundle *vk,
 		return;
 	}
 
+#if defined(VK_KHR_present_wait2) || defined(VK_EXT_present_timing)
+#define HAS_PRESENT_WAIT2_OR_TIMING_EXTENSION
+#endif
+
 	/*
 	 * The structs
 	 */
@@ -616,14 +620,23 @@ filter_device_features(struct vk_bundle *vk,
 	};
 #endif
 
-#if defined(VK_KHR_present_id2) && defined(VK_KHR_present_wait2)
+#if defined(VK_KHR_present_id2) && defined(HAS_PRESENT_WAIT2_OR_TIMING_EXTENSION)
 	VkPhysicalDevicePresentId2FeaturesKHR present_id2_info = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR,
 	    .pNext = NULL,
 	};
 
+#ifdef VK_KHR_present_wait2
 	VkPhysicalDevicePresentWait2FeaturesKHR present_wait2_info = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_2_FEATURES_KHR,
+	    .pNext = NULL,
+	};
+#endif
+#endif
+
+#ifdef VK_EXT_present_timing
+	VkPhysicalDevicePresentTimingFeaturesEXT present_timing_info = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_TIMING_FEATURES_EXT,
 	    .pNext = NULL,
 	};
 #endif
@@ -685,13 +698,24 @@ filter_device_features(struct vk_bundle *vk,
 	}
 #endif
 
-#if defined(VK_KHR_present_id2) && defined(VK_KHR_present_wait2)
-	if (vk->has_KHR_present_id2 && vk->has_KHR_present_wait2) {
+#if defined(VK_KHR_present_id2) && defined(HAS_PRESENT_WAIT2_OR_TIMING_EXTENSION)
+	if (vk->has_KHR_present_id2 && (vk->has_KHR_present_wait2 || vk->has_EXT_present_timing)) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
 		                         (VkBaseInStructure *)&present_id2_info);
 
+#ifdef VK_KHR_present_wait2
+		if (vk->has_KHR_present_wait2) {
+			vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
+			                         (VkBaseInStructure *)&present_wait2_info);
+		}
+#endif
+	}
+#endif
+
+#ifdef VK_EXT_present_timing
+	if (vk->has_EXT_present_timing) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
-		                         (VkBaseInStructure *)&present_wait2_info);
+		                         (VkBaseInStructure *)&present_timing_info);
 	}
 #endif
 
@@ -754,6 +778,16 @@ filter_device_features(struct vk_bundle *vk,
 
 #if defined(VK_KHR_present_id2) && defined(VK_KHR_present_wait2)
 	CHECK(present_wait2, device_features->present_id2 && present_wait2_info.presentWait2);
+#endif
+
+#ifdef VK_EXT_present_timing
+	device_features->present_timing.get_present_timing =
+	    optional_device_features->present_timing.get_present_timing && device_features->present_id2 &&
+	    present_timing_info.presentTiming;
+	device_features->present_timing.at_absolute_time =
+	    optional_device_features->present_timing.at_absolute_time && present_timing_info.presentAtAbsoluteTime;
+	device_features->present_timing.at_relative_time =
+	    optional_device_features->present_timing.at_relative_time && present_timing_info.presentAtRelativeTime;
 #endif
 
 #ifdef VK_KHR_synchronization2
@@ -907,6 +941,9 @@ vk_create_device(struct vk_bundle *vk,
 	vk->features.present_id2 = device_features.present_id2;
 	vk->features.present_wait = device_features.present_wait;
 	vk->features.present_wait2 = device_features.present_wait2;
+	vk->features.present_timing.get_present_timing = device_features.present_timing.get_present_timing;
+	vk->features.present_timing.at_absolute_time = device_features.present_timing.at_absolute_time;
+	vk->features.present_timing.at_relative_time = device_features.present_timing.at_relative_time;
 	vk->features.video_maintenance_1 = device_features.video_maintenance_1;
 
 
@@ -1039,7 +1076,18 @@ vk_create_device(struct vk_bundle *vk,
 	VkPhysicalDevicePresentId2FeaturesKHR present_id2 = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR,
 	    .pNext = NULL,
-	    .presentId2 = device_features.present_id2 && device_features.present_wait2,
+	    .presentId2 = device_features.present_id2 &&
+	                  (device_features.present_wait2 || device_features.present_timing.get_present_timing),
+	};
+#endif
+
+#if VK_EXT_present_timing
+	VkPhysicalDevicePresentTimingFeaturesEXT present_timing = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_TIMING_FEATURES_EXT,
+	    .pNext = NULL,
+	    .presentTiming = device_features.present_timing.get_present_timing,
+	    .presentAtAbsoluteTime = device_features.present_timing.at_absolute_time,
+	    .presentAtRelativeTime = device_features.present_timing.at_relative_time,
 	};
 #endif
 
@@ -1108,7 +1156,8 @@ vk_create_device(struct vk_bundle *vk,
 #endif
 
 #ifdef VK_KHR_present_id2
-	if (vk->has_KHR_present_id2 && device_features.present_wait2) {
+	if (vk->has_KHR_present_id2 &&
+	    (device_features.present_wait2 || device_features.present_timing.get_present_timing)) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info, (VkBaseInStructure *)&present_id2);
 	}
 #endif
@@ -1122,6 +1171,13 @@ vk_create_device(struct vk_bundle *vk,
 #ifdef VK_KHR_present_wait2
 	if (vk->has_KHR_present_wait2) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info, (VkBaseInStructure *)&present_wait2);
+	}
+#endif
+
+#ifdef VK_EXT_present_timing
+	if (vk->has_EXT_present_timing) {
+		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info,
+		                         (VkBaseInStructure *)&present_timing);
 	}
 #endif
 
