@@ -265,6 +265,10 @@ struct vk_bundle
 	PFN_vkCreateInstance vkCreateInstance;
 	PFN_vkEnumerateInstanceExtensionProperties vkEnumerateInstanceExtensionProperties;
 
+	VkTimeDomainEXT *calibrated_time_domains;
+	uint32_t calibrated_time_domain_count;
+	bool has_calibrated_cpu_time;
+
 	// Include the generated function pointers fields.
 #include "vk_helpers_h_funcs.h.inc"
 };
@@ -1374,6 +1378,14 @@ vk_create_timeline_semaphore_from_native(struct vk_bundle *vk, xrt_graphics_sync
  */
 
 #if defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps) || defined(XRT_DOXYGEN)
+
+#if defined(XRT_OS_LINUX) || defined(XRT_OS_OSX)
+#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT
+#elif defined(XRT_OS_WINDOWS)
+#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT
+#else
+#error "Vulkan timestamp domain needs porting"
+#endif
 
 /*!
  * Get the list of calibrateable time domains from the physical device.

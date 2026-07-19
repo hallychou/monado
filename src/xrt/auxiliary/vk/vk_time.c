@@ -17,14 +17,6 @@
 
 #if defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps)
 
-#if defined(XRT_OS_LINUX) || defined(XRT_OS_OSX)
-#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT
-#elif defined(XRT_OS_WINDOWS)
-#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT
-#else
-#error "Vulkan timestamp domain needs porting"
-#endif
-
 /*
  *
  * Helper(s)

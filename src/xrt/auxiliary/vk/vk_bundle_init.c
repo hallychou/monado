@@ -928,6 +928,23 @@ vk_create_device(struct vk_bundle *vk,
 	// Fill in has_* fields based on the extension list.
 	fill_in_has_device_extensions(vk, device_ext_list);
 
+	// Get and cache calibrateable time domains.
+	vk->calibrated_time_domain_count = 0;
+	if (vk->has_EXT_calibrated_timestamps || vk->has_KHR_calibrated_timestamps) {
+		ret = vk_get_calibrateable_time_domains(vk, &vk->calibrated_time_domain_count,
+		                                        &vk->calibrated_time_domains);
+		VK_CHK_WITH_GOTO(ret, "vk_get_calibrateable_time_domains", err_destroy);
+	}
+
+	// Check if CPU time domain is calibrateable.
+	vk->has_calibrated_cpu_time = false;
+	for (uint32_t i = 0; i < vk->calibrated_time_domain_count; i++) {
+		if (vk->calibrated_time_domains[i] == CPU_TIME_DOMAIN) {
+			vk->has_calibrated_cpu_time = true;
+			break;
+		}
+	}
+
 
 	/*
 	 * Features
