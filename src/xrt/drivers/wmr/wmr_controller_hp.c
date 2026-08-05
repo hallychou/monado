@@ -397,7 +397,7 @@ wmr_controller_hp_create(struct wmr_controller_connection *conn,
 
 	ctrl->last_inputs.imu.timestamp_ticks = 0;
 
-	wcb->base.outputs[0].name = XRT_OUTPUT_NAME_WMR_HAPTIC;
+	wcb->base.outputs[0].name = XRT_OUTPUT_NAME_G2_CONTROLLER_HAPTIC;
 
 	wcb->base.binding_profiles = binding_profiles;
 	wcb->base.binding_profile_count = ARRAY_SIZE(binding_profiles);
