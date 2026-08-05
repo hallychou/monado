@@ -148,6 +148,15 @@ wmr_controller_base_handle_imu_sample(struct wmr_controller_base *wcb,
                                       const struct xrt_vec3 *acc,
                                       const struct xrt_vec3 *gyro);
 
+/*!
+ * Apply the optional radial thumbstick deadzone (WMR_STICK_DEADZONE, default 0 =
+ * off) to a raw-scaled stick vector, rescaling so full deflection still reaches
+ * magnitude 1. WMR controller configs carry no stick centre calibration, so
+ * per-unit centre offset otherwise shows up as constant drift in apps.
+ */
+void
+wmr_controller_base_apply_stick_deadzone(struct xrt_vec2 *stick);
+
 static inline void
 wmr_controller_connection_receive_bytes(struct wmr_controller_connection *wcc,
                                         uint64_t time_ns,
