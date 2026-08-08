@@ -19,27 +19,26 @@ survive_cosmos_init(struct survive_device *survive, struct survive_system *sys)
 	size_t device_count = 0;
 	xrt_result_t result = xrt_prober_lock_list(sys->xp, &devices, &device_count);
 	if (result != XRT_SUCCESS) {
-		SURVIVE_ERROR(survive, "Failed to lock prober devices, cannot check for Cosmos Elite, got err %d",
-		              result);
+		SURVIVE_ERROR(survive, "Failed to lock prober devices, cannot check for Cosmos, got err %d", result);
 		return false;
 	}
 
 	for (size_t i = 0; i < device_count; i++) {
 		struct xrt_prober_device *d = devices[i];
 		if (d->vendor_id == COSMOS_VID && d->product_id == COSMOS_PID) {
-			SURVIVE_DEBUG(survive, "Found Cosmos Elite device in USB list");
+			SURVIVE_DEBUG(survive, "Found Cosmos device in USB list");
 			struct os_hid_device *hid;
 
 			result = xrt_prober_open_hid_interface(sys->xp, d, 0, &hid);
 			if (result != XRT_SUCCESS) {
-				SURVIVE_ERROR(survive, "Failed to open Cosmos Elite HID interface, got err %d", result);
+				SURVIVE_ERROR(survive, "Failed to open Cosmos HID interface, got err %d", result);
 				survive->hmd.cosmos_hid = NULL;
 				continue;
 			}
 
 			int ret = cosmos_hid_open(hid, &survive->hmd.cosmos_hid);
 			if (ret < 0) {
-				SURVIVE_ERROR(survive, "Failed to create Cosmos Elite HID interface, got err %d", ret);
+				SURVIVE_ERROR(survive, "Failed to create Cosmos HID interface, got err %d", ret);
 				continue;
 			}
 
@@ -49,14 +48,12 @@ survive_cosmos_init(struct survive_device *survive, struct survive_system *sys)
 
 	result = xrt_prober_unlock_list(sys->xp, &devices);
 	if (result != XRT_SUCCESS) {
-		SURVIVE_ERROR(survive, "Failed to unlock prober devices after checking for Cosmos Elite, got err %d",
-		              result);
+		SURVIVE_ERROR(survive, "Failed to unlock prober devices after checking for Cosmos, got err %d", result);
 		return false;
 	}
 
 	if (survive->hmd.cosmos_hid == NULL) {
-		SURVIVE_WARN(survive,
-		             "No Cosmos Elite device found. This is non-fatal, but some features may not work.");
+		SURVIVE_WARN(survive, "No Cosmos device found. This is non-fatal, but some features may not work.");
 	} else {
 		SURVIVE_DEBUG(survive, "Sent display power-on command.");
 	}

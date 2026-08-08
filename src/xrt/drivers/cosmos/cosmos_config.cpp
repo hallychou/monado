@@ -16,13 +16,15 @@
 
 #include <string.h>
 
+#include "util/u_misc.h"
+
 
 using xrt::auxiliary::util::json::JSONNode;
 
 bool
 cosmos_config_parse(const char *config_data, size_t config_size, cosmos_config *out_config)
 {
-	memset(out_config, 0, sizeof(*out_config));
+	U_ZERO(out_config);
 
 	JSONNode root{std::string{config_data, config_size}};
 	if (root.isInvalid()) {

@@ -8,11 +8,13 @@
  */
 
 #include "os/os_hid.h"
+#include "os/os_time.h"
 
 #include "util/u_logging.h"
 #include "util/u_debug.h"
 #include "util/u_misc.h"
 #include "util/u_file.h"
+#include "util/u_time.h"
 
 #include "math/m_api.h"
 
@@ -33,6 +35,10 @@ DEBUG_GET_ONCE_LOG_OPTION(cosmos_log, "COSMOS_LOG", U_LOGGING_WARN)
 #define COSMOS_WARN(cosmos, ...) U_LOG_IFL_W(cosmos->log_level, __VA_ARGS__)
 #define COSMOS_ERROR(cosmos, ...) U_LOG_IFL_E(cosmos->log_level, __VA_ARGS__)
 
+#define COSMOS_HID_BUF_SIZE 65
+#define COSMOS_CONFIG_FOLDER "vive_cosmos"
+#define COSMOS_CONFIG_CHUNK_SIZE 56
+
 struct cosmos_hid
 {
 	enum u_logging_level log_level;
@@ -41,11 +47,13 @@ struct cosmos_hid
 
 	struct cosmos_config config;
 
-	char serial[65];
+	char serial[COSMOS_HID_BUF_SIZE];
 };
 
-#define COSMOS_DATA_SIZE 65
-#define COSMOS_CONFIG_FOLDER "vive_cosmos"
+// The Cosmos mainboard stalls (EPIPE) when feature-report transactions are issued
+// back-to-back; a short pause between each SET/GET_FEATURE is required for the config
+// read to complete reliably. 5 ms is comfortably robust (verified down to ~1 ms).
+#define COSMOS_HID_XFER_DELAY_NS (5 * U_TIME_1MS_IN_NS)
 
 #pragma pack(push, 1)
 
@@ -61,9 +69,11 @@ struct cosmos_feature_header
 static bool
 cosmos_hid_set_display_power(struct cosmos_hid *cosmos, bool power_on)
 {
-	uint8_t buffer[65] = {0x00, 0x78, 0x29, 0x38, 0x00, 0x80};
+	uint8_t buffer[COSMOS_HID_BUF_SIZE] = {0x00, 0x78, 0x29, 0x38, 0x00, 0x80};
 
 	buffer[47] = power_on ? 0x01 : 0x00;
+
+	os_nanosleep(COSMOS_HID_XFER_DELAY_NS);
 
 	int ret = os_hid_set_feature(cosmos->hid, buffer, sizeof(buffer));
 	if (ret < 0) {
@@ -77,7 +87,9 @@ cosmos_hid_set_display_power(struct cosmos_hid *cosmos, bool power_on)
 static int
 cosmos_get_config_size(struct cosmos_hid *cosmos, uint32_t *out_size)
 {
-	uint8_t buf[65] = {0};
+	uint8_t buf[COSMOS_HID_BUF_SIZE] = {0};
+
+	os_nanosleep(COSMOS_HID_XFER_DELAY_NS);
 
 	int ret = os_hid_get_feature(cosmos->hid, 0x10, buf, sizeof(buf));
 	if (ret < 0) {
@@ -85,12 +97,13 @@ cosmos_get_config_size(struct cosmos_hid *cosmos, uint32_t *out_size)
 		return ret;
 	}
 
-	uint32_t size;
+	__le32 size;
 	memcpy(&size, &buf[4], sizeof(uint32_t));
 	*out_size = __le32_to_cpu(size);
 
 	if (*out_size == 0) {
-		*out_size = 3163;
+		COSMOS_ERROR(cosmos, "Headset reported a config size of 0 bytes.");
+		return -1;
 	}
 
 	return 0;
@@ -99,6 +112,16 @@ cosmos_get_config_size(struct cosmos_hid *cosmos, uint32_t *out_size)
 static int
 cosmos_read_config(struct cosmos_hid *cosmos, char **out_config, size_t *out_size)
 {
+	uint8_t prep_req[COSMOS_HID_BUF_SIZE] = {0x00, 0x10, 0x00, 0x0b, 0xff};
+	snprintf((char *)&prep_req[5], sizeof(prep_req) - 5, "HMD_JSON.gz");
+
+	os_nanosleep(COSMOS_HID_XFER_DELAY_NS);
+
+	if (os_hid_set_feature(cosmos->hid, prep_req, sizeof(prep_req)) < 0) {
+		COSMOS_ERROR(cosmos, "Failed to send JSON prep payload.");
+		return -1;
+	}
+
 	uint32_t file_size = 0;
 	int ret = cosmos_get_config_size(cosmos, &file_size);
 	if (ret < 0) {
@@ -111,19 +134,16 @@ cosmos_read_config(struct cosmos_hid *cosmos, char **out_config, size_t *out_siz
 	uint32_t offset = 0;
 
 	while (offset < file_size) {
-		uint32_t chunk_size = MIN(56, file_size - offset);
+		uint32_t chunk_size = MIN(COSMOS_CONFIG_CHUNK_SIZE, file_size - offset);
 
-		uint8_t req[65] = {0};
-		req[0] = 0x00;
-		req[1] = 0x11;
-		req[2] = 0x00;
-		req[3] = 0x08;
-		req[4] = 0x80;
+		uint8_t req[COSMOS_HID_BUF_SIZE] = {0x00, 0x11, 0x00, 0x08, 0x80};
 
-		uint32_t le_offset = __cpu_to_le32(offset);
-		uint32_t le_chunk = __cpu_to_le32(chunk_size);
-		memcpy(&req[5], &le_offset, sizeof(uint32_t));
-		memcpy(&req[9], &le_chunk, sizeof(uint32_t));
+		__le32 le_offset = __cpu_to_le32(offset);
+		__le32 le_chunk = __cpu_to_le32(chunk_size);
+		memcpy(&req[5], &le_offset, sizeof(__le32));
+		memcpy(&req[9], &le_chunk, sizeof(__le32));
+
+		os_nanosleep(COSMOS_HID_XFER_DELAY_NS);
 
 		ret = os_hid_set_feature(cosmos->hid, req, sizeof(req));
 		if (ret < 0) {
@@ -132,8 +152,7 @@ cosmos_read_config(struct cosmos_hid *cosmos, char **out_config, size_t *out_siz
 			return -1;
 		}
 
-		uint8_t resp[65] = {0};
-		resp[0] = 0x11;
+		uint8_t resp[COSMOS_HID_BUF_SIZE] = {0x11};
 		ret = os_hid_get_feature(cosmos->hid, 0x11, resp, sizeof(resp));
 		if (ret < 0) {
 			COSMOS_ERROR(cosmos, "Failed to read chunk at offset %u", offset);
@@ -141,40 +160,32 @@ cosmos_read_config(struct cosmos_hid *cosmos, char **out_config, size_t *out_siz
 			return -1;
 		}
 
+		os_nanosleep(COSMOS_HID_XFER_DELAY_NS);
+
 		memcpy(compressed_data + offset, &resp[4], chunk_size);
 		offset += chunk_size;
 	}
 
 	COSMOS_DEBUG(cosmos, "Finished downloading %u bytes. Decompressing...", file_size);
 
-	int magic_idx = -1;
-	for (uint32_t i = 0; i < file_size - 2; i++) {
-		if (compressed_data[i] == 0x1F && compressed_data[i + 1] == 0x8B && compressed_data[i + 2] == 0x08) {
-			magic_idx = i;
-			break;
-		}
-	}
-
-	if (magic_idx == -1) {
-		COSMOS_ERROR(cosmos, "Could not find GZIP header in downloaded stream.");
+	if (file_size < 3 || compressed_data[0] != 0x1F || compressed_data[1] != 0x8B || compressed_data[2] != 0x08) {
+		COSMOS_ERROR(cosmos, "Invalid or missing GZIP header in downloaded stream.");
 		free(compressed_data);
 		return -1;
 	}
 
-	uint32_t gz_size = file_size - magic_idx;
-	uint8_t *gz_payload = compressed_data + magic_idx;
-
 	size_t uncompressed_max = 32768;
 	char *uncompressed_data = U_TYPED_ARRAY_CALLOC(char, uncompressed_max);
 
-	z_stream zs = {0};
-	zs.zalloc = Z_NULL;
-	zs.zfree = Z_NULL;
-	zs.opaque = Z_NULL;
-	zs.avail_in = gz_size;
-	zs.next_in = gz_payload;
-	zs.avail_out = uncompressed_max - 1;
-	zs.next_out = (Bytef *)uncompressed_data;
+	z_stream zs = {
+	    .next_in = compressed_data,
+	    .avail_in = file_size,
+	    .next_out = (Bytef *)uncompressed_data,
+	    .avail_out = uncompressed_max - 1,
+	    .zalloc = Z_NULL,
+	    .zfree = Z_NULL,
+	    .opaque = Z_NULL,
+	};
 
 	if (inflateInit2(&zs, 15 + 16) != Z_OK) {
 		COSMOS_ERROR(cosmos, "Failed to initialize zlib for decompression.");
@@ -184,10 +195,10 @@ cosmos_read_config(struct cosmos_hid *cosmos, char **out_config, size_t *out_siz
 	}
 
 	int zret = inflate(&zs, Z_FINISH);
-	inflateEnd(&zs);
+	(void)inflateEnd(&zs); // ignore errors, we're closing the stream anyway
 
 	if (zret != Z_STREAM_END && zret != Z_OK) {
-		COSMOS_ERROR(cosmos, "Failed to decompress JSON payload.");
+		COSMOS_ERROR(cosmos, "Failed to decompress JSON payload (zret: %d).", zret);
 		free(compressed_data);
 		free(uncompressed_data);
 		return -1;
@@ -220,11 +231,9 @@ cosmos_load_config(struct cosmos_hid *cosmos)
 				COSMOS_DEBUG(cosmos, "Loaded Cosmos config from cache: %s", config_filename);
 				free(contents);
 				return 0;
-			} else {
-				COSMOS_ERROR(cosmos,
-				             "Failed to parse cached config file contents. Falling back to device.");
-				free(contents);
 			}
+			COSMOS_ERROR(cosmos, "Failed to parse cached config file contents. Falling back to device.");
+			free(contents);
 		} else {
 			COSMOS_ERROR(cosmos, "Failed to read cached config file contents.");
 		}
@@ -233,16 +242,8 @@ cosmos_load_config(struct cosmos_hid *cosmos)
 	char *config = NULL;
 	size_t config_size = 0;
 
-	uint8_t req[65] = {0x00, 0x10, 0x00, 0x0b, 0xff};
-	snprintf((char *)&req[5], sizeof(req) - 5, "HMD_JSON.gz");
-
 	for (int attempt = 0; attempt < 3; attempt++) {
 		COSMOS_TRACE(cosmos, "Reading config from device, attempt %d...", attempt + 1);
-
-		if (os_hid_set_feature(cosmos->hid, req, sizeof(req)) < 0) {
-			COSMOS_WARN(cosmos, "Failed to send JSON prep payload on attempt %d.", attempt + 1);
-			continue;
-		}
 
 		int ret = cosmos_read_config(cosmos, &config, &config_size);
 		if (ret >= 0 && config != NULL) {
@@ -338,7 +339,7 @@ void
 cosmos_hid_destroy(struct cosmos_hid *cosmos)
 {
 	if (cosmos->hid != NULL) {
-		cosmos_hid_set_display_power(cosmos, false);
+		(void)cosmos_hid_set_display_power(cosmos, false); // Ignoring error, we're exiting
 
 		os_hid_destroy(cosmos->hid);
 		cosmos->hid = NULL;
