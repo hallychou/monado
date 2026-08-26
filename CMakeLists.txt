@@ -450,7 +450,7 @@ option(XRT_FEATURE_OPENXR_LAYER_EQUIRECT2 "Enable XR_KHR_composition_layer_equir
 option(XRT_FEATURE_OPENXR_LAYER_EQUIRECT1 "Enable XR_KHR_composition_layer_equirect" OFF)
 option(XRT_FEATURE_OPENXR_LAYER_FB_ALPHA_BLEND "Enable XR_FB_composition_layer_alpha_blend" OFF)
 option(XRT_FEATURE_OPENXR_LAYER_FB_IMAGE_LAYOUT "Enable XR_FB_composition_layer_image_layout" OFF)
-option(XRT_FEATURE_OPENXR_LAYER_FB_SETTINGS "Enable XR_FB_composition_layer_settings" OFF)
+option(XRT_FEATURE_OPENXR_LAYER_FB_SETTINGS "Enable XR_FB_composition_layer_settings" ON)
 option(XRT_FEATURE_OPENXR_LAYER_FB_DEPTH_TEST "Enable XR_FB_composition_layer_depth_test" OFF)
 option(XRT_FEATURE_OPENXR_LAYER_FB_PASSTHROUGH "Enable XR_FB_passthrough" OFF)
 

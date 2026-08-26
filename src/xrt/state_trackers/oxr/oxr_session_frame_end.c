@@ -183,19 +183,19 @@ convert_layer_settings_flags(XrCompositionLayerSettingsFlagsFB xr_layer_settings
 	enum xrt_layer_composition_flags layer_settings_flags = 0;
 
 	if ((xr_layer_settings_flags & XR_COMPOSITION_LAYER_SETTINGS_NORMAL_SUPER_SAMPLING_BIT_FB) != 0) {
-		layer_settings_flags |= XRT_COMPOSITION_LAYER_PROCESSING_NORMAL_SUPER_SAMPLING_BIT_FB;
+		layer_settings_flags |= XRT_LAYER_COMPOSITION_PROCESSING_NORMAL_SUPER_SAMPLING_BIT_FB;
 	}
 
 	if ((xr_layer_settings_flags & XR_COMPOSITION_LAYER_SETTINGS_QUALITY_SUPER_SAMPLING_BIT_FB) != 0) {
-		layer_settings_flags |= XRT_COMPOSITION_LAYER_PROCESSING_QUALITY_SUPER_SAMPLING_BIT_FB;
+		layer_settings_flags |= XRT_LAYER_COMPOSITION_PROCESSING_QUALITY_SUPER_SAMPLING_BIT_FB;
 	}
 
 	if ((xr_layer_settings_flags & XR_COMPOSITION_LAYER_SETTINGS_NORMAL_SHARPENING_BIT_FB) != 0) {
-		layer_settings_flags |= XRT_COMPOSITION_LAYER_PROCESSING_NORMAL_SHARPENING_BIT_FB;
+		layer_settings_flags |= XRT_LAYER_COMPOSITION_PROCESSING_NORMAL_SHARPENING_BIT_FB;
 	}
 
 	if ((xr_layer_settings_flags & XR_COMPOSITION_LAYER_SETTINGS_QUALITY_SHARPENING_BIT_FB) != 0) {
-		layer_settings_flags |= XRT_COMPOSITION_LAYER_PROCESSING_QUALITY_SHARPENING_BIT_FB;
+		layer_settings_flags |= XRT_LAYER_COMPOSITION_PROCESSING_QUALITY_SHARPENING_BIT_FB;
 	}
 
 	return layer_settings_flags;
