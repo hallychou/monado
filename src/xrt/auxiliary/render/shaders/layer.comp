@@ -6,6 +6,8 @@
 
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_shuffle : require
 
 #include "srgb.inc.glsl"
 #include "hsv.inc.glsl"
@@ -20,9 +22,7 @@ struct layer_data
 	uint layer_type;
 	uint unpremultiplied_alpha;
 	uint inverted_alpha;
-
-	// This struct is used in an array, gets padded to vec4.
-	uint _padding0;
+	uint sample_count;
 };
 
 struct image_info
@@ -116,6 +116,94 @@ layout(set = 0, binding = 3, std140) uniform restrict Config
 	Layer layers[RENDER_MAX_LAYERS];
 } ubo;
 
+const vec2 sample_offsets[] = {
+	// Trivial:
+	vec2(.0, .0),
+
+	// 2x MSAA:
+	vec2(+.25, +.25),
+	vec2(-.25, -.25),
+
+	// 4x MSAA:
+	vec2(-.125, -.372),
+	vec2(+.375, -.125),
+	vec2(-.375, +.125),
+	vec2(+.125, +.375),
+
+	// 8x MSAA:
+	vec2(+.0625, -.1875),
+	vec2(-.0625, +.1875),
+	vec2(+.3125, +.0625),
+	vec2(-.1875, -.3125),
+	vec2(-.3125, +.3125),
+	vec2(-.4375, -.0625),
+	vec2(+.1875, +.4375),
+	vec2(+.3375, -.4375),
+
+	// 16x MSAA:
+	vec2(-.375, -.375),
+	vec2(-.125, -.375),
+	vec2(+.125, -.375),
+	vec2(+.375, -.375),
+	vec2(-.375, -.125),
+	vec2(-.125, -.125),
+	vec2(+.125, -.125),
+	vec2(+.375, -.125),
+	vec2(-.375, +.125),
+	vec2(-.125, +.125),
+	vec2(+.125, +.125),
+	vec2(+.375, +.125),
+	vec2(-.375, +.375),
+	vec2(-.125, +.375),
+	vec2(+.125, +.375),
+	vec2(+.375, +.375)
+};
+
+vec4 sample_source_texture(vec2 uv, uint layer)
+{
+	uint source_image_index = LAYER.image_info.color_image_index;
+	uint sample_count = LAYER.layer_data.sample_count;
+
+	if (sample_count == 1) {
+		return texture(source[source_image_index], uv);
+	}
+
+	// All invocations are laid out in 2x2 quads. Therefore to obtain a partial
+	// derivative on both axis' coordinates have to be swapped diagonally.
+	//   x 1 2 3 4 5 6 7 8
+	//  y+----------------
+	//  1| 0 1 4 5 8 9 C D
+	//   |  X   X   X   X  ...
+	//  2| 2 3 6 7 A B E F
+
+	uint peer_idx = gl_SubgroupInvocationID ^ 3;
+	vec4 colour = vec4(.0);
+
+	// Check if both invocations have reached a valid uv coordinate
+	bool peer_valid = subgroupBallotBitExtract(subgroupBallot(true), peer_idx);
+
+	if (peer_valid) {
+		// Swap coords with peer and calculate derivative
+		vec2 diff = subgroupShuffle(uv, peer_idx) - uv;
+
+		// Handle non-continuous wrapping uvs for cylinder and equirect layers
+		// TODO: this will probably need some more work
+		vec2 extent = abs(LAYER.post_transform.zw);
+		diff = mix(diff, diff - extent * sign(diff), greaterThan(abs(diff), extent / 2));
+
+		// Accumulate requested number of samples and average them out
+		for (uint sample_idx = 0; sample_idx < sample_count; sample_idx++) {
+			colour += texture(source[source_image_index], uv + diff * sample_offsets[sample_idx + sample_count - 1]);
+		}
+		colour /= sample_count;
+	} else {
+		// Peer invocation is inactive, fallback to a single sample
+		colour = texture(source[source_image_index], uv);
+	}
+
+	return colour;
+}
+
 vec4 apply_chroma_key(vec4 color, uint layer)
 {
 	float curve = LAYER.chroma_key.curve;
@@ -165,10 +253,25 @@ float invert_alpha(float alpha, uint layer)
 	return alpha;
 }
 
-vec2 position_to_view_uv(ivec2 extent, uint ix, uint iy)
+ivec2 invocation_to_position()
+{
+	uint quad_idx = gl_LocalInvocationIndex / 4;
+	uint local_idx = gl_LocalInvocationIndex % 4;
+
+	uvec3 n_quads = gl_WorkGroupSize / 2;
+	uvec3 base = gl_WorkGroupID * gl_WorkGroupSize;
+
+	// Lay out local invocations so every group of 4 invocations forms a 2x2 quad.
+	uint ix = base.x + (quad_idx % n_quads.x) * 2 + local_idx % 2;
+	uint iy = base.y + (quad_idx / n_quads.x) * 2 + local_idx / 2;
+
+	return ivec2(ix, iy);
+}
+
+vec2 position_to_view_uv(ivec2 extent, ivec2 px)
 {
 	// Turn the index into floating point.
-	vec2 xy = vec2(float(ix), float(iy));
+	vec2 xy = vec2(px);
 
 	// The inverse of the extent of a view image is the pixel size in [0 .. 1] space.
 	vec2 extent_pixel_size = vec2(1.0 / float(extent.x), 1.0 / float(extent.y));
@@ -315,12 +418,10 @@ vec4 do_cylinder(vec2 view_uv, uint layer)
 
 		vec2 uv_sub = fma(sample_point, LAYER.post_transform.zw, LAYER.post_transform.xy);
 
-		uint index = LAYER.image_info.color_image_index;
 #ifdef DEBUG
-		out_color += texture(source[index], uv_sub) / 2.f;
+		out_color += sample_source_texture(uv_sub, layer) / 2.f;
 #else
-
-		out_color = texture(source[index], uv_sub);
+		out_color = sample_source_texture(uv_sub, layer);
 #endif
 	} else {
 		out_color += vec4(0.f);
@@ -414,12 +515,10 @@ vec4 do_equirect2(vec2 view_uv, uint layer)
 
 		vec2 uv_sub = fma(sample_point, LAYER.post_transform.zw, LAYER.post_transform.xy);
 
-		uint index = LAYER.image_info.color_image_index;
 #ifdef DEBUG
-		out_color += texture(source[index], uv_sub) / 2.0;
+		out_color += sample_source_texture(uv_sub, layer) / 2.0;
 #else
-
-		out_color = texture(source[index], uv_sub);
+		out_color = sample_source_texture(uv_sub, layer);
 #endif
 	} else {
 		out_color += vec4(0.f);
@@ -430,13 +529,11 @@ vec4 do_equirect2(vec2 view_uv, uint layer)
 
 vec4 do_projection_uv(vec2 view_uv, uint layer, out vec2 out_uv)
 {
-	uint source_image_index = LAYER.image_info.color_image_index;
-
 	// Do any transformation needed.
 	vec2 uv = transform_uv(view_uv, layer);
 
 	// Sample the source.
-	vec4 colour = vec4(texture(source[source_image_index], uv).rgba);
+	vec4 colour = sample_source_texture(uv, layer);
 
 	out_uv = uv;
 
@@ -483,8 +580,6 @@ vec3 get_direction(vec2 uv)
 
 vec4 do_quad(vec2 view_uv, uint layer)
 {
-	uint source_image_index = LAYER.image_info.color_image_index;
-
 	// center point of the plane in view space.
 	vec3 quad_position = LAYER.quad_position.xyz;
 
@@ -546,7 +641,7 @@ vec4 do_quad(vec2 view_uv, uint layer)
 			// sample on the desired subimage, not the entire texture
 			plane_uv = fma(plane_uv, LAYER.post_transform.zw, LAYER.post_transform.xy);
 
-			colour = texture(source[source_image_index], plane_uv);
+			colour = sample_source_texture(plane_uv, layer);
 		} else {
 			// intersection on infinite plane outside of plane bounds
 			colour = vec4(0.0, 0.0, 0.0, 0.0);
@@ -629,17 +724,16 @@ vec4 do_layers(vec2 view_uv)
 
 void main()
 {
-	uint ix = gl_GlobalInvocationID.x;
-	uint iy = gl_GlobalInvocationID.y;
+	ivec2 px = invocation_to_position();
 
 	ivec2 offset = ivec2(ubo.view.xy);
 	ivec2 extent = ivec2(ubo.view.zw);
 
-	if (ix >= extent.x || iy >= extent.y) {
+	if (px.x >= extent.x || px.y >= extent.y) {
 		return;
 	}
 
-	vec2 view_uv = position_to_view_uv(extent, ix, iy);
+	vec2 view_uv = position_to_view_uv(extent, px);
 
 	vec4 colour = do_layers(view_uv);
 
@@ -648,5 +742,5 @@ void main()
 		colour.rgb = from_linear_to_srgb(colour.rgb);
 	}
 
-	imageStore(target, ivec2(offset.x + ix, offset.y + iy), colour);
+	imageStore(target, offset + px, colour);
 }
