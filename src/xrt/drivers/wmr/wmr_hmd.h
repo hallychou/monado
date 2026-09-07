@@ -94,6 +94,25 @@ struct wmr_hmd
 	 */
 	struct os_hid_device *hid_control_dev;
 
+	/*!
+	 * Consecutive os_hid_read() failures on hid_control_dev, reset on any
+	 * successful read. Past a threshold, control_read_packets() backs off with a
+	 * short sleep instead of retrying unbounded: an unrecovering companion dropout was
+	 * measured pinning monado-service at 400%+ CPU for the length of a real session,
+	 * because the outer thread loop's usual
+	 * pacing (hid_hololens_sensors_dev's blocking read) stops blocking once real
+	 * IMU data is arriving quickly. Unlike hololens_consecutive_read_errors this
+	 * never gives up -- the companion device isn't load-bearing for tracking.
+	 */
+	int companion_consecutive_read_errors;
+	/*!
+	 * When nonzero, skip companion read attempts until this monotonic timestamp instead
+	 * of sleeping in the shared read loop. See control_read_packets: the old in-loop
+	 * 10ms sleep throttled the hololens sensors reads and let the IMU stream fall a
+	 * fixed ~630ms behind.
+	 */
+	int64_t companion_backoff_until_ns;
+
 	//! Current desired HMD screen state.
 	bool hmd_screen_enable;
 	//! Latest raw IPD value read from the device.

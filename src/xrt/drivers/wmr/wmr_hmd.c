@@ -580,6 +580,21 @@ control_read_packets(struct wmr_hmd *wh)
 
 	unsigned char buffer[WMR_FEATURE_BUFFER_SIZE];
 
+	// The backoff below started life as a 10ms os_nanosleep INSIDE this shared read loop.
+	// That was wrong, and expensively so: With the (universal) companion storm
+	// active, that capped the whole loop -- hololens sensors reads included -- at
+	// ~100 iterations/s against ~250 IMU packets/s produced, so the kernel-side ring
+	// filled and the IMU stream ran a pinned ~630ms stale. hw2mono (fit from IMU
+	// arrivals) absorbed the lag, pushing the camera stamps ~630ms into the FUTURE:
+	// that one number turned out to be the 632-666ms offset behind a long-standing
+	// image-ahead-of-IMU tracker collapse here, and a constant ~1s perceived latency
+	// (prediction trusts the stamps, so it cannot bridge staleness it cannot see).
+	// Back off by SKIPPING the companion attempt until a deadline instead: same
+	// <=100Hz retry ceiling for the companion, zero impact on the loop's pace.
+	if (wh->companion_backoff_until_ns != 0 && os_monotonic_get_ns() < wh->companion_backoff_until_ns) {
+		return true;
+	}
+
 	// Do not block
 	os_mutex_lock(&wh->hid_lock);
 	int size = os_hid_read(wh->hid_control_dev, buffer, sizeof(buffer), 0);
@@ -590,12 +605,47 @@ control_read_packets(struct wmr_hmd *wh)
 		// headset display is powering up. Don't kill the whole read thread over a
 		// read error here: the same thread also reads the hololens sensors device
 		// (IMU and tunnelled controller packets), which is typically still healthy.
-		// No extra pacing: a failing read is one cheap syscall, and each loop
-		// iteration is already paced by the blocking hololens read.
-		WMR_DEBUG(wh, "Error reading from companion (HMD control) device. Call to os_hid_read returned %i",
-		          size);
+		//
+		// This read is non-blocking, so in isolation a single failure is one cheap
+		// syscall. But a *sustained* dropout is not rare -- confirmed under real
+		// gameplay load (SLAM tracking plus a running application) --
+		// and the assumption that the outer loop is always paced by the hololens
+		// device's blocking 100ms read doesn't hold once real IMU data is arriving
+		// fast enough that read to stop blocking. Left unbounded, that measured
+		// 472175 consecutive failures and monado-service pinned at 400%+ CPU for
+		// the whole ~17-minute session, recovering only on SIGTERM. Back off once
+		// a dropout looks sustained rather than transient. Unlike the hololens
+		// sensors read, never give up -- the companion device isn't load-bearing
+		// for tracking, so slowing the retry rate is enough.
+		wh->companion_consecutive_read_errors++;
+		if (wh->companion_consecutive_read_errors == 1 || wh->companion_consecutive_read_errors % 1000 == 0) {
+			WMR_WARN(wh,
+			         "Error reading from companion (HMD control) device (%d in a row). Call to "
+			         "os_hid_read returned %i",
+			         wh->companion_consecutive_read_errors, size);
+		} else {
+			WMR_DEBUG(wh,
+			          "Error reading from companion (HMD control) device. Call to os_hid_read returned %i",
+			          size);
+		}
+		if (wh->companion_consecutive_read_errors > 50) {
+			// WMR_COMPANION_BACKOFF_BLOCKING=1 restores the old in-loop sleep for
+			// an A/B against the skip-based backoff (see the comment at the top of
+			// this function for why the sleep is the wrong shape).
+			static int backoff_blocking = -1;
+			if (backoff_blocking == -1) {
+				backoff_blocking = getenv("WMR_COMPANION_BACKOFF_BLOCKING") != NULL;
+			}
+			if (backoff_blocking) {
+				os_nanosleep(U_TIME_1MS_IN_NS * 10);
+			} else {
+				wh->companion_backoff_until_ns = os_monotonic_get_ns() + U_TIME_1MS_IN_NS * 10;
+			}
+		}
 		return true;
 	}
+	wh->companion_consecutive_read_errors = 0;
+	wh->companion_backoff_until_ns = 0;
 	if (size == 0) {
 		WMR_TRACE(wh, "No more data to read");
 		return true; // No more messages, return.
