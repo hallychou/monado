@@ -232,8 +232,8 @@ simulated_hmd_create(enum simulated_movement movement, const struct xrt_pose *ce
 	} else if (hmd->base.hmd->view_count == 2) {
 		info.fov[0] = 85.0f * (M_PI / 180.0f);
 		info.fov[1] = 85.0f * (M_PI / 180.0f);
-		// ret = u_device_setup_split_side_by_side(&hmd->base, &info);
-		ret = u_device_setup_full_screen(&hmd->base, &info);
+		ret = u_device_setup_split_side_by_side(&hmd->base, &info);
+		// ret = u_device_setup_full_screen(&hmd->base, &info);
 	} else {
 		U_LOG_E("Invalid view count");
 		ret = false;

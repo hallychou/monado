@@ -155,7 +155,7 @@ update_compute_shared_descriptor_set(struct vk_bundle *vk,
                                      VkSampler distortion_samplers[3 * XRT_MAX_VIEWS],
                                      VkImageView distortion_image_views[3 * XRT_MAX_VIEWS],
                                      uint32_t target_binding,
-                                     VkImageView target_image_view,
+                                     VkImageView *target_image_views,
                                      uint32_t ubo_binding,
                                      VkBuffer ubo_buffer,
                                      VkDeviceSize ubo_size,
@@ -176,10 +176,16 @@ update_compute_shared_descriptor_set(struct vk_bundle *vk,
 		distortion_image_info[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 
-	VkDescriptorImageInfo target_image_info = {
-	    .imageView = target_image_view,
-	    .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
-	};
+	// VkDescriptorImageInfo target_image_info = {
+	//     .imageView = target_image_views,
+	//     .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+	// };
+
+	VkDescriptorImageInfo target_image_info[2];
+	for (uint32_t i = 0; i < 2; ++i) {
+		target_image_info[i].imageView = target_image_views[i];
+		target_image_info[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	}
 
 	VkDescriptorBufferInfo buffer_info = {
 	    .buffer = ubo_buffer,
@@ -208,9 +214,9 @@ update_compute_shared_descriptor_set(struct vk_bundle *vk,
 	        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 	        .dstSet = descriptor_set,
 	        .dstBinding = target_binding,
-	        .descriptorCount = 1,
+	        .descriptorCount = 2,
 	        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-	        .pImageInfo = &target_image_info,
+	        .pImageInfo = target_image_info,
 	    },
 	    {
 	        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -284,7 +290,8 @@ dispatch_project_pipeline(struct render_compute *render,
                           VkImageView src_image_views[XRT_MAX_VIEWS],
                           const struct xrt_normalized_rect src_norm_rects[XRT_MAX_VIEWS],
                           VkImage target_image,
-                          VkImageView target_image_view,
+                          VkImageView *target_image_views,
+                          uint32_t num_image_views,
                           VkImageLayout target_final_layout,
                           const struct render_viewport_data views[XRT_MAX_VIEWS],
                           VkPipeline pipeline)
@@ -344,7 +351,7 @@ dispatch_project_pipeline(struct render_compute *render,
 	    distortion_samplers,              //
 	    r->distortion.image_views,        //
 	    r->compute.target_binding,        //
-	    target_image_view,                //
+	    target_image_views,               //
 	    r->compute.ubo_binding,           //
 	    r->compute.distortion.ubo.buffer, //
 	    VK_WHOLE_SIZE,                    //
@@ -584,7 +591,8 @@ render_compute_projection_timewarp(struct render_compute *render,
                                    const struct xrt_pose new_poses_scanout_begin[XRT_MAX_VIEWS],
                                    const struct xrt_pose new_poses_scanout_end[XRT_MAX_VIEWS],
                                    VkImage target_image,
-                                   VkImageView target_image_view,
+                                   VkImageView *target_image_views,
+                                   uint32_t target_image_view_count,
                                    VkImageLayout target_final_layout,
                                    const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
@@ -620,10 +628,11 @@ render_compute_projection_timewarp(struct render_compute *render,
 		data->transform_timewarp_scanout_begin[i] = time_warp_matrix_scanout_begin[i];
 		data->transform_timewarp_scanout_end[i] = time_warp_matrix_scanout_end[i];
 		data->post_transforms[i] = src_norm_rects[i];
+		data->image_view_count = target_image_view_count;
 	}
 
 	dispatch_project_pipeline(render, src_samplers, src_image_views, src_norm_rects, target_image,
-	                          target_image_view, target_final_layout, views,
+	                          target_image_views, target_image_view_count, target_final_layout, views,
 	                          r->compute.distortion.timewarp_pipeline);
 }
 
@@ -642,7 +651,8 @@ render_compute_projection_scanout_compensation(struct render_compute *render,
                                                const struct xrt_pose new_poses_scanout_begin[XRT_MAX_VIEWS],
                                                const struct xrt_pose new_poses_scanout_end[XRT_MAX_VIEWS],
                                                VkImage target_image,
-                                               VkImageView target_image_view,
+                                               VkImageView *target_image_views,
+                                               uint32_t target_image_view_count,
                                                VkImageLayout target_final_layout,
                                                const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
@@ -674,10 +684,12 @@ render_compute_projection_scanout_compensation(struct render_compute *render,
 		data->transform_timewarp_scanout_begin[i] = time_warp_matrix_scanout_begin[i];
 		data->transform_timewarp_scanout_end[i] = time_warp_matrix_scanout_end[i];
 		data->post_transforms[i] = src_rects[i];
+		data->image_view_count = target_image_view_count;
 	}
 
-	dispatch_project_pipeline(render, src_samplers, src_image_views, src_rects, target_image, target_image_view,
-	                          target_final_layout, views, r->compute.distortion.timewarp_pipeline);
+	dispatch_project_pipeline(render, src_samplers, src_image_views, src_rects, target_image, target_image_views,
+	                          target_image_view_count, target_final_layout, views,
+	                          r->compute.distortion.timewarp_pipeline);
 }
 
 void
@@ -686,21 +698,23 @@ render_compute_projection_no_timewarp(struct render_compute *render,
                                       VkImageView src_image_views[XRT_MAX_VIEWS],
                                       const struct xrt_normalized_rect src_rects[XRT_MAX_VIEWS],
                                       VkImage target_image,
-                                      VkImageView target_image_view,
+                                      VkImageView *target_image_views,
+                                      uint32_t num_image_views,
                                       VkImageLayout target_final_layout,
                                       const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
 	assert(render->r != NULL);
 	struct render_resources *r = render->r;
 
-	dispatch_project_pipeline(render, src_samplers, src_image_views, src_rects, target_image, target_image_view,
-	                          target_final_layout, views, r->compute.distortion.pipeline);
+	dispatch_project_pipeline(render, src_samplers, src_image_views, src_rects, target_image, target_image_views,
+	                          num_image_views, target_final_layout, views, r->compute.distortion.pipeline);
 }
 
 void
 render_compute_clear(struct render_compute *render,
                      VkImage target_image,
-                     VkImageView target_image_view,
+                     VkImageView *target_image_views,
+                     uint32_t target_image_view_count,
                      VkImageLayout target_final_layout,
                      const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
@@ -769,7 +783,7 @@ render_compute_clear(struct render_compute *render,
 	    distortion_samplers,              //
 	    r->distortion.image_views,        //
 	    r->compute.target_binding,        //
-	    target_image_view,                //
+	    target_image_views,               //
 	    r->compute.ubo_binding,           //
 	    r->compute.clear.ubo.buffer,      //
 	    VK_WHOLE_SIZE,                    // ubo_size

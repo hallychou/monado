@@ -215,8 +215,8 @@ struct comp_render_dispatch_data
 			//! Target image for distortion, used for barrier.
 			VkImage image;
 
-			//! Target image view for distortion.
-			VkImageView storage_view;
+			//! Target image views for distortion.
+			VkImageView *storage_views;
 
 			//! Target image layout for distortion, the final layout to transition to.
 			VkImageLayout final_layout;
@@ -527,12 +527,14 @@ comp_render_gfx_dispatch(struct render_gfx *render,
  *
  * @param[in,out] data Common render dispatch data.
  * @param target_image Image to render into
- * @param target_storage_view Corresponding image view
+ * @param target_storage_views Corresponding image views
+ * @param target_storage_view_count Number of image views
  */
 static inline void
 comp_render_cs_add_target(struct comp_render_dispatch_data *data,
                           VkImage target_image,
-                          VkImageView target_storage_view,
+                          VkImageView *target_storage_views,
+                          uint32_t target_storage_view_count,
                           VkImageLayout target_final_layout)
 {
 	// Error tracking.
@@ -540,7 +542,8 @@ comp_render_cs_add_target(struct comp_render_dispatch_data *data,
 
 	// When writing into the target.
 	data->target.cs.image = target_image;
-	data->target.cs.storage_view = target_storage_view;
+	data->target.cs.storage_views = target_storage_views;
+	data->target.image_view_count = target_storage_view_count;
 	data->target.cs.final_layout = target_final_layout;
 }
 

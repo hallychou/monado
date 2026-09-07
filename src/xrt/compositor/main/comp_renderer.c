@@ -1060,7 +1060,8 @@ dispatch_compute(struct comp_renderer *r,
 
 	// Target Vulkan resources..
 	VkImage target_image = r->c->target->images[r->acquired_buffer].handle;
-	VkImageView target_storage_view = r->c->target->images[r->acquired_buffer].views[0];
+	uint32_t target_storage_view_count = r->c->target->image_view_count;
+	VkImageView *target_storage_views = r->c->target->images[r->acquired_buffer].views;
 	VkImageLayout target_final_layout = r->c->target->final_layout;
 
 	// Target view information.
@@ -1078,7 +1079,8 @@ dispatch_compute(struct comp_renderer *r,
 	    eye_poses,                       //
 	    fovs,                            //
 	    target_image,                    //
-	    target_storage_view,             //
+	    target_storage_views,            //
+	    target_storage_view_count,       //
 	    target_final_layout,             //
 	    target_viewport_datas);          //
 
