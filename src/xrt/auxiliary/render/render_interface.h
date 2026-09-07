@@ -799,6 +799,12 @@ struct render_gfx_target_resources
 	VkFramebuffer framebuffer;
 };
 
+struct render_gfx_target_image_resources
+{
+	uint32_t rtr_count;
+	struct render_gfx_target_resources rtr_array[2];
+};
+
 /*!
  * Init a target resource struct, caller has to keep target alive until closed.
  *

@@ -160,6 +160,7 @@ comp_settings_init(struct comp_settings *s, struct xrt_device *xdev)
 		add_format(s, VK_FORMAT_A8B8G8R8_SRGB_PACK32);
 	}
 
+	s->image_view_count = 2;
 	s->display = debug_get_num_option_xcb_display();
 	s->color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 	s->present_mode = get_desired_present_mode();

@@ -150,12 +150,14 @@ struct comp_renderer
 	 * comp_target images. Each target resources holds all of the resources
 	 * needed to render to that target and its views.
 	 */
-	struct render_gfx_target_resources *rtr_array;
+	// struct render_gfx_target_resources *rtr_array;
 
 	/*!
 	 * Array of fences equal in size to the number of comp_target images.
 	 */
 	VkFence *fences;
+
+	struct render_gfx_target_image_resources *buffer_array;
 
 	/*!
 	 * The number of renderings/fences we've created: set from comp_target when we use that data.
@@ -168,6 +170,7 @@ struct comp_renderer
 	 * subsequents present waits are redundant and can be skipped.
 	 */
 	bool shared_present_semaphore_wait_once;
+	uint32_t image_view_count;
 
 	//! @}
 };
@@ -436,13 +439,14 @@ calc_pose_data(struct comp_renderer *r,
 static void
 renderer_build_rendering_target_resources(struct comp_renderer *r,
                                           struct render_gfx_target_resources *rtr,
-                                          uint32_t index)
+                                          uint32_t image_index,
+                                          uint32_t view_index)
 {
 	COMP_TRACE_MARKER();
 
 	struct comp_compositor *c = r->c;
 
-	VkImageView image_view = r->c->target->images[index].view;
+	VkImageView image_view = r->c->target->images[image_index].views[view_index];
 	VkExtent2D extent = {r->c->target->width, r->c->target->height};
 
 	render_gfx_target_resources_init( //
@@ -472,7 +476,7 @@ renderer_create_renderings_and_fences(struct comp_renderer *r)
 
 	bool use_compute = r->settings->use_compute;
 	if (!use_compute) {
-		r->rtr_array = U_TYPED_ARRAY_CALLOC(struct render_gfx_target_resources, r->buffer_count);
+		r->buffer_array = U_TYPED_ARRAY_CALLOC(struct render_gfx_target_image_resources, r->buffer_count);
 
 		render_gfx_render_pass_init(       //
 		    &r->target_render_pass,        // rgrp
@@ -482,7 +486,11 @@ renderer_create_renderings_and_fences(struct comp_renderer *r)
 		    r->c->target->final_layout);   // final_layout
 
 		for (uint32_t i = 0; i < r->buffer_count; ++i) {
-			renderer_build_rendering_target_resources(r, &r->rtr_array[i], i);
+
+			r->buffer_array[i].rtr_count = r->image_view_count;
+			for (uint32_t v = 0; v < r->image_view_count; ++v) {
+				renderer_build_rendering_target_resources(r, &r->buffer_array[i].rtr_array[v], i, v);
+			}
 		}
 	}
 
@@ -514,16 +522,19 @@ renderer_close_renderings_and_fences(struct comp_renderer *r)
 {
 	struct vk_bundle *vk = &r->c->base.vk;
 	// Renderings
-	if (r->buffer_count > 0 && r->rtr_array != NULL) {
+	if (r->buffer_count > 0 && r->buffer_array != NULL) {
 		for (uint32_t i = 0; i < r->buffer_count; i++) {
-			render_gfx_target_resources_fini(&r->rtr_array[i]);
+			for (uint32_t v = 0; v < r->image_view_count; v++) {
+				render_gfx_target_resources_fini(&r->buffer_array[i].rtr_array[v]);
+			}
 		}
 
 		// Close the render pass used for rendering to the target.
 		render_gfx_render_pass_fini(&r->target_render_pass);
 
-		free(r->rtr_array);
-		r->rtr_array = NULL;
+
+		free(r->buffer_array);
+		r->buffer_array = NULL;
 	}
 
 	// Fences
@@ -599,6 +610,7 @@ renderer_ensure_images_and_renderings(struct comp_renderer *r, bool force_recrea
 	            .width = r->c->settings.preferred.width,
 	            .height = r->c->settings.preferred.height,
 	        },
+	    .image_array_layers = r->c->settings.image_view_count,
 	    .image_usage = image_usage,
 	    .color_space = r->settings->color_space,
 	    .present_mode = r->settings->present_mode,
@@ -622,6 +634,7 @@ renderer_ensure_images_and_renderings(struct comp_renderer *r, bool force_recrea
 		return false;
 
 	r->buffer_count = r->c->target->image_count;
+	r->image_view_count = r->c->settings.image_view_count;
 
 	renderer_create_renderings_and_fences(r);
 
@@ -641,7 +654,7 @@ renderer_init(struct comp_renderer *r, struct comp_compositor *c, VkExtent2D scr
 
 	r->acquired_buffer = -1;
 	r->fenced_buffer = -1;
-	r->rtr_array = NULL;
+	r->buffer_array = NULL;
 
 	// Setup the scratch images.
 	bool bret = chl_scratch_ensure( //
@@ -960,7 +973,7 @@ dispatch_graphics(struct comp_renderer *r,
 	uint32_t layer_count = c->base.layer_accum.layer_count;
 
 	// Resources for the distortion render target.
-	struct render_gfx_target_resources *rtr = &r->rtr_array[r->acquired_buffer];
+	struct render_gfx_target_image_resources *rtir = &r->buffer_array[r->acquired_buffer];
 
 	// Viewport information.
 	struct render_viewport_data viewport_datas[XRT_MAX_VIEWS];
@@ -994,7 +1007,7 @@ dispatch_graphics(struct comp_renderer *r,
 	    world_poses_scanout_end,          //
 	    eye_poses,                        //
 	    fovs,                             //
-	    rtr,                              //
+	    rtir,                             //
 	    viewport_datas,                   //
 	    vertex_rots);                     //
 
@@ -1047,7 +1060,7 @@ dispatch_compute(struct comp_renderer *r,
 
 	// Target Vulkan resources..
 	VkImage target_image = r->c->target->images[r->acquired_buffer].handle;
-	VkImageView target_storage_view = r->c->target->images[r->acquired_buffer].view;
+	VkImageView target_storage_view = r->c->target->images[r->acquired_buffer].views[0];
 	VkImageLayout target_final_layout = r->c->target->final_layout;
 
 	// Target view information.

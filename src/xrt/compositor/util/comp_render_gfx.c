@@ -496,12 +496,14 @@ do_quad_layer(struct render_gfx *render,
 static void
 crg_clear_output(struct render_gfx *render, const struct comp_render_dispatch_data *d)
 {
-	render_gfx_begin_target(     //
-	    render,                  //
-	    d->target.gfx.rtr,       //
-	    &background_color_idle); //
+	for (uint32_t v = 0; v < d->target.view_count; ++v) {
+		render_gfx_begin_target(        //
+		    render,                     //
+		    d->views[v].target.gfx.rtr, //
+		    &background_color_idle);    //
 
-	render_gfx_end_target(render);
+		render_gfx_end_target(render);
+	}
 }
 
 /*
@@ -528,39 +530,39 @@ crg_distortion_common(struct render_gfx *render,
 
 	struct gfx_mesh_state ms = XRT_STRUCT_INIT;
 
-	for (uint32_t i = 0; i < d->target.view_count; i++) {
+	for (uint32_t v = 0; v < d->target.view_count; v++) {
 
 		struct render_gfx_mesh_ubo_data data = {
-		    .vertex_rot = d->views[i].target.gfx.vertex_rot,
-		    .post_transform = md->views[i].src_norm_rect,
+		    .vertex_rot = d->views[v].target.gfx.vertex_rot,
+		    .post_transform = md->views[v].src_norm_rect,
 		};
 
 		// Extra arguments for timewarp.
 		if (do_timewarp) {
-			data.pre_transform = d->views[i].pre_transform;
+			data.pre_transform = d->views[v].pre_transform;
 
 			render_calc_time_warp_matrix(              //
-			    &md->views[i].src_pose,                //
-			    &md->views[i].src_fov,                 //
-			    &d->views[i].world_pose_scanout_begin, //
+			    &md->views[v].src_pose,                //
+			    &md->views[v].src_fov,                 //
+			    &d->views[v].world_pose_scanout_begin, //
 			    &data.transform_scanout_begin);        //
 
 			render_calc_time_warp_matrix(            //
-			    &md->views[i].src_pose,              //
-			    &md->views[i].src_fov,               //
-			    &d->views[i].world_pose_scanout_end, //
+			    &md->views[v].src_pose,              //
+			    &md->views[v].src_fov,               //
+			    &d->views[v].world_pose_scanout_end, //
 			    &data.transform_scanout_end);        //
 		}
 
 		ret = render_gfx_mesh_alloc_and_write( //
 		    render,                            //
 		    &data,                             //
-		    md->views[i].src_sampler,          //
-		    md->views[i].src_image_view,       //
-		    &ms.descriptor_sets[i]);           //
+		    md->views[v].src_sampler,          //
+		    md->views[v].src_image_view,       //
+		    &ms.descriptor_sets[v]);           //
 		VK_CHK_WITH_GOTO(ret, "render_gfx_mesh_alloc_and_write", err_no_memory);
 
-		VK_NAME_DESCRIPTOR_SET(vk, ms.descriptor_sets[i], "render_gfx mesh descriptor sets");
+		VK_NAME_DESCRIPTOR_SET(vk, ms.descriptor_sets[v], "render_gfx mesh descriptor sets");
 	}
 
 
@@ -568,33 +570,39 @@ crg_distortion_common(struct render_gfx *render,
 	 * Do command writing here.
 	 */
 
-	render_gfx_begin_target(       //
-	    render,                    //
-	    d->target.gfx.rtr,         //
-	    &background_color_active); //
 
-	for (uint32_t i = 0; i < d->target.view_count; i++) {
-		// Convenience.
-		const struct render_viewport_data *viewport_data = &d->views[i].target.viewport_data;
+	for (uint32_t iv = 0; iv < d->target.image_view_count; ++iv) {
+		render_gfx_begin_target(         //
+		    render,                      //
+		    d->views[iv].target.gfx.rtr, //
+		    &background_color_active);   //
 
-		const render_scissor_data_t *scissor_data = &d->views[i].target.scissor_data;
 
-		render_gfx_begin_view( //
-		    render,            //
-		    i,                 // view_index
-		    viewport_data,     //
-		    scissor_data);     //
+		for (uint32_t v = iv; v < d->target.view_count; v += d->target.image_view_count) {
+			// Convenience.
+			const struct render_viewport_data *viewport_data = &d->views[v].target.viewport_data;
 
-		render_gfx_mesh_draw(      //
-		    render,                //
-		    i,                     // mesh_index
-		    ms.descriptor_sets[i], //
-		    do_timewarp);          //
+			const render_scissor_data_t *scissor_data = &d->views[v].target.scissor_data;
 
-		render_gfx_end_view(render);
+			render_gfx_begin_view( //
+			    render,            //
+			    v,                 // view_index
+			    viewport_data,     //
+			    scissor_data);     //
+
+			render_gfx_mesh_draw(      //
+			    render,                //
+			    v,                     // mesh_index
+			    ms.descriptor_sets[v], //
+			    do_timewarp);          //
+
+			render_gfx_end_view(render);
+		}
+
+		render_gfx_end_target(render);
 	}
 
-	render_gfx_end_target(render);
+
 
 	return;
 

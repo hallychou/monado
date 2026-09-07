@@ -160,6 +160,9 @@ struct comp_render_view_data
 		{
 			//! Distortion target vertex rotation information.
 			struct xrt_matrix_2x2 vertex_rot;
+
+			//! The resources needed for the target.
+			struct render_gfx_target_resources *rtr;
 		} gfx;
 	} target; // When used as a destination.
 };
@@ -198,12 +201,13 @@ struct comp_render_dispatch_data
 		 */
 		uint32_t view_count;
 
+		uint32_t image_view_count;
+
 		//! Members used only by GFX @ref comp_render_gfx
-		struct
-		{
-			//! The resources needed for the target.
-			struct render_gfx_target_resources *rtr;
-		} gfx;
+		// struct
+		// {
+		//
+		// } gfx;
 
 		//! Members used only by CS @ref comp_render_cs
 		struct
@@ -350,7 +354,7 @@ comp_render_gfx_add_target(struct comp_render_dispatch_data *data, struct render
 	data->target.initialized = true;
 
 	// When writing into the target.
-	data->target.gfx.rtr = target_rtr;
+	// data->target.gfx.rtr = target_rtr;
 }
 
 /*!
@@ -407,6 +411,7 @@ comp_render_gfx_add_target_view(struct comp_render_dispatch_data *data,
                                 const struct xrt_normalized_rect *squash_as_src_norm_rect,
                                 const struct xrt_matrix_2x2 *target_vertex_rot,
                                 const struct render_viewport_data *target_viewport_data,
+                                struct render_gfx_target_resources *target_rtr,
                                 const render_scissor_data_t *target_scissor_data)
 {
 	struct comp_render_view_data *view = comp_render_dispatch_add_target_view( //
@@ -418,6 +423,7 @@ comp_render_gfx_add_target_view(struct comp_render_dispatch_data *data,
 
 	// When writing into the target.
 	view->target.gfx.vertex_rot = *target_vertex_rot;
+	view->target.gfx.rtr = target_rtr;
 }
 
 /*!

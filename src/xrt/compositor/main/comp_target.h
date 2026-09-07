@@ -22,7 +22,6 @@
 extern "C" {
 #endif
 
-
 /*!
  * For marking timepoints on a frame's lifetime, not a async event.
  *
@@ -62,7 +61,7 @@ enum comp_target_display_timing_usage
 struct comp_target_image
 {
 	VkImage handle;
-	VkImageView view;
+	VkImageView views[2];
 };
 
 /*!
@@ -81,6 +80,9 @@ struct comp_target_create_images_info
 
 	// Number of formats.
 	uint32_t format_count;
+
+	// Number of image array layers.
+	uint32_t image_array_layers;
 
 	//! Preferred extent, can be ignored by the target.
 	VkExtent2D extent;
@@ -151,6 +153,8 @@ struct comp_target
 
 	//! Number of images that this target has.
 	uint32_t image_count;
+	//! Number of views that this target's images have.
+	uint32_t image_view_count;
 	//! Array of images and image views for rendering.
 	struct comp_target_image *images;
 

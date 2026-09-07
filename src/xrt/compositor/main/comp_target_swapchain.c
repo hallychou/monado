@@ -96,12 +96,14 @@ destroy_image_views(struct comp_target_swapchain *cts)
 	struct vk_bundle *vk = get_vk(cts);
 
 	for (uint32_t i = 0; i < cts->base.image_count; i++) {
-		if (cts->base.images[i].view == VK_NULL_HANDLE) {
-			continue;
-		}
+		for (uint32_t view = 0; view < cts->base.image_view_count; view++) {
+			if (cts->base.images[i].views[view] == VK_NULL_HANDLE) {
+				continue;
+			}
 
-		vk->vkDestroyImageView(vk->device, cts->base.images[i].view, NULL);
-		cts->base.images[i].view = VK_NULL_HANDLE;
+			vk->vkDestroyImageView(vk->device, cts->base.images[i].views[view], NULL);
+			cts->base.images[i].views[view] = VK_NULL_HANDLE;
+		}
 	}
 
 	free(cts->base.images);
@@ -144,16 +146,21 @@ create_image_views(struct comp_target_swapchain *cts)
 
 	for (uint32_t i = 0; i < cts->base.image_count; i++) {
 		cts->base.images[i].handle = images[i];
-		vk_create_view(                 //
-		    vk,                         // vk_bundle
-		    cts->base.images[i].handle, // image
-		    VK_IMAGE_VIEW_TYPE_2D,      // type
-		    cts->surface.format.format, // format
-		    subresource_range,          // subresource_range
-		    &cts->base.images[i].view); // out_view
+
+		for (uint32_t view = 0; view < cts->base.image_view_count; view++) {
+			subresource_range.baseArrayLayer = view;
+
+			vk_create_view(                        //
+			    vk,                                // vk_bundle
+			    cts->base.images[i].handle,        // image
+			    VK_IMAGE_VIEW_TYPE_2D,             // type
+			    cts->surface.format.format,        // format
+			    subresource_range,                 // subresource_range
+			    &cts->base.images[i].views[view]); // out_view
 
 
-		VK_NAME_IMAGE_VIEW(vk, cts->base.images[i].view, "comp_target_swapchain image view");
+			VK_NAME_IMAGE_VIEW(vk, cts->base.images[i].views[view], "comp_target_swapchain image view");
+		}
 	}
 
 	free(images);
@@ -801,6 +808,12 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 	// Now we can free the info.
 	vk_surface_info_destroy(&info);
 
+	// Make sure the surface can hold the requested amount of layers.
+	if (surface_caps.maxImageArrayLayers < create_info->image_array_layers) {
+		COMP_ERROR(ct->c, "requested layer count unsupported (requested %u, max %u)",
+		           create_info->image_array_layers, surface_caps.maxImageArrayLayers);
+		goto error_print_and_free;
+	}
 
 	/*
 	 * Non-failable selections.
@@ -854,7 +867,7 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 	            .width = extent.width,
 	            .height = extent.height,
 	        },
-	    .imageArrayLayers = 1,
+	    .imageArrayLayers = create_info->image_array_layers,
 	    .imageUsage = create_info->image_usage,
 	    .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	    .queueFamilyIndexCount = 0,
@@ -898,6 +911,7 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 	cts->base.format = cts->surface.format.format;
 	cts->base.final_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 	cts->base.surface_transform = surface_caps.currentTransform;
+	cts->base.image_view_count = create_info->image_array_layers;
 	cts->base.present_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
 
 #ifdef VK_KHR_shared_presentable_image
