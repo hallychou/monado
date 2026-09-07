@@ -68,6 +68,7 @@ simulated_hmd(struct xrt_device *xdev)
 
 DEBUG_GET_ONCE_LOG_OPTION(simulated_log, "SIMULATED_LOG", U_LOGGING_WARN)
 DEBUG_GET_ONCE_NUM_OPTION(view_count, "SIMULATED_VIEW_COUNT", 2)
+DEBUG_GET_ONCE_NUM_OPTION(image_view_count, "SIMULATED_IMAGE_VIEW_COUNT", 1)
 
 #define HMD_TRACE(hmd, ...) U_LOG_XDEV_IFL_T(&hmd->base, hmd->log_level, __VA_ARGS__)
 #define HMD_DEBUG(hmd, ...) U_LOG_XDEV_IFL_D(&hmd->base, hmd->log_level, __VA_ARGS__)
@@ -209,6 +210,7 @@ simulated_hmd_create(enum simulated_movement movement, const struct xrt_pose *ce
 	hmd->movement = movement;
 
 	hmd->base.hmd->view_count = debug_get_num_option_view_count();
+	hmd->base.hmd->image_view_count = debug_get_num_option_image_view_count();
 	// Print name.
 	snprintf(hmd->base.str, XRT_DEVICE_NAME_LEN, "Simulated HMD");
 	snprintf(hmd->base.serial, XRT_DEVICE_NAME_LEN, "Simulated HMD");
@@ -232,8 +234,14 @@ simulated_hmd_create(enum simulated_movement movement, const struct xrt_pose *ce
 	} else if (hmd->base.hmd->view_count == 2) {
 		info.fov[0] = 85.0f * (M_PI / 180.0f);
 		info.fov[1] = 85.0f * (M_PI / 180.0f);
-		ret = u_device_setup_split_side_by_side(&hmd->base, &info);
-		// ret = u_device_setup_full_screen(&hmd->base, &info);
+		if (hmd->base.hmd->image_view_count == 1) {
+			ret = u_device_setup_split_side_by_side(&hmd->base, &info);
+		} else if (hmd->base.hmd->image_view_count == 2) {
+			ret = u_device_setup_full_screen(&hmd->base, &info);
+		} else {
+			U_LOG_E("Invalid image view count");
+			ret = false;
+		}
 	} else {
 		U_LOG_E("Invalid view count");
 		ret = false;
