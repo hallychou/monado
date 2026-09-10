@@ -9,6 +9,7 @@
  */
 
 #include "xrt/xrt_config_arch.h"
+#include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_system.h"
 
 #include "interfaces/context.hpp"
@@ -33,6 +34,10 @@
 
 #include "steamvr_lh_interface.h"
 #include "device.hpp"
+
+#ifdef XRT_BUILD_DRIVER_SOLARXR
+#include "solarxr/solarxr_interface.h"
+#endif
 
 #include <cstring>
 #include <dlfcn.h>
@@ -974,6 +979,10 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 void
 destroy(struct xrt_system_devices *xsysd)
 {
+#ifdef XRT_BUILD_DRIVER_SOLARXR
+	solarxr_device_clear_feeder_devices(xsysd->static_roles.body);
+#endif
+
 	for (uint32_t i = 0; i < ARRAY_SIZE(xsysd->static_xdevs); i++) {
 		xrt_device_destroy(&xsysd->static_xdevs[i]);
 	}

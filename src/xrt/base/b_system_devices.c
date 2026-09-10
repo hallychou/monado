@@ -17,11 +17,16 @@
 #include "util/u_misc.h"
 #include "util/u_system_devices.h"
 
+#include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_device.h"
 
 #include <assert.h>
 #include <limits.h>
 #include <stdlib.h>
+
+#ifdef XRT_BUILD_DRIVER_SOLARXR
+#include "solarxr/solarxr_interface.h"
+#endif
 
 /*
  *
@@ -292,6 +297,10 @@ void
 b_system_devices_close(struct xrt_system_devices *xsysd)
 {
 	struct b_system_devices *bsysd = b_system_devices(xsysd);
+
+#ifdef XRT_BUILD_DRIVER_SOLARXR
+	solarxr_device_clear_feeder_devices(xsysd->static_roles.body);
+#endif
 
 	for (uint32_t i = 0; i < ARRAY_SIZE(bsysd->base.static_xdevs); i++) {
 		xrt_device_destroy(&bsysd->base.static_xdevs[i]);
