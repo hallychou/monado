@@ -7,6 +7,9 @@
  * @ingroup drv_rift
  */
 
+#include "math/m_relation_history.h"
+#include "math/m_space.h"
+
 #include "util/u_device.h"
 #include "util/u_var.h"
 #include "util/u_file.h"
@@ -39,25 +42,74 @@ rift_touch_controller_get_tracked_pose(struct xrt_device *xdev,
 {
 	struct rift_touch_controller *controller = (struct rift_touch_controller *)xdev;
 
+	struct xrt_relation_chain xrc = {0};
+	struct xrt_pose pose_offset = XRT_POSE_IDENTITY;
+	struct xrt_vec3 pose_angle_vector = XRT_VEC3_UNIT_X;
+
+	// Values from
+	// SteamVR/resources/rendermodels/oculus_quest_plus_controller_(left/right)/oculus_quest_plus_controller_(left/right).json
 	switch (name) {
 	case XRT_INPUT_TOUCH_GRIP_POSE:
-	case XRT_INPUT_TOUCH_AIM_POSE: {
-		struct xrt_space_relation relation = XRT_SPACE_RELATION_ZERO;
-
-		if (imu_fusion_get_prediction(controller->input.imu_fusion, (uint64_t)at_timestamp_ns,
-		                              &relation.pose.orientation, &relation.angular_velocity) == 0) {
-			relation.relation_flags = XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
-			                          XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
-			                          XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
-
-			(*out_relation) = relation;
-		}
+		math_quat_from_angle_vector(DEG_TO_RAD(20.6f), &pose_angle_vector, &pose_offset.orientation);
+		pose_offset.position.y = -0.00182941f;
+		pose_offset.position.z = 0.1019482f;
 		break;
-	}
+	case XRT_INPUT_TOUCH_AIM_POSE:
+		math_quat_from_angle_vector(DEG_TO_RAD(-39.4f), &pose_angle_vector, &pose_offset.orientation);
+		pose_offset.position.y = -0.03894766f;
+		pose_offset.position.z = 0.00949694f;
+		break;
 	default: return XRT_ERROR_INPUT_UNSUPPORTED;
 	}
 
+	// Grip pose and aim pose both have the same X value, but it's sign changes depending on the handedness of the
+	// controller.
+	switch (controller->device_type) {
+	case RIFT_RADIO_DEVICE_LEFT_TOUCH: pose_offset.position.x = 0.007f; break;
+	case RIFT_RADIO_DEVICE_RIGHT_TOUCH: pose_offset.position.x = -0.007f; break;
+	default: break;
+	}
+
+	m_relation_chain_push_pose(&xrc, &pose_offset);
+
+	struct xrt_space_relation *relation = m_relation_chain_reserve(&xrc);
+
+	if (imu_fusion_get_prediction(controller->input.imu_fusion, (uint64_t)at_timestamp_ns,
+	                              &relation->pose.orientation, &relation->angular_velocity) == 0) {
+		relation->relation_flags = XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
+		                           XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+		                           XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
+
+		if (controller->use_constellation) {
+			// borrow the angular velocity from the IMU, but just use the constellation position and
+			// orientation
+			struct xrt_vec3 ang_vel = relation->angular_velocity;
+			m_relation_history_get(controller->constellation_relation_history, at_timestamp_ns, relation);
+			relation->angular_velocity = ang_vel;
+			relation->relation_flags =
+			    XRT_SPACE_RELATION_POSITION_VALID_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
+			    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+			    XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
+		}
+	}
+
+	m_relation_chain_resolve(&xrc, out_relation);
+
 	return XRT_SUCCESS;
+}
+
+static void
+touch_controller_constellation_tracking_source_get_tracked_pose(
+    struct t_constellation_tracker_tracking_source *tracking_source,
+    timepoint_ns when_ns,
+    struct xrt_space_relation *out_relation)
+{
+	struct rift_touch_controller *controller =
+	    container_of(tracking_source, struct rift_touch_controller, constellation_tracking_source);
+
+	*out_relation = (struct xrt_space_relation)XRT_SPACE_RELATION_ZERO;
+
+	m_relation_history_get(controller->constellation_relation_history, when_ns, out_relation);
 }
 
 static void
@@ -168,7 +220,17 @@ rift_touch_controller_get_battery_status(struct xrt_device *xdev,
 
 void
 rift_touch_controller_node_break_apart(struct xrt_frame_node *node)
-{}
+{
+	struct rift_touch_controller *controller = rift_touch_controller_from_node(node);
+
+	os_mutex_lock(&controller->constellation_mutex);
+	// will remain locked until the mutex is destroyed to prevent reading constellation fields after the controller
+	// has been removed
+	if (controller->constellation_tracker) {
+		t_constellation_tracker_remove_device(controller->constellation_tracker,
+		                                      controller->constellation_device_id);
+	}
+}
 
 void
 rift_touch_controller_node_destroy(struct xrt_frame_node *node)
@@ -181,12 +243,16 @@ rift_touch_controller_node_destroy(struct xrt_frame_node *node)
 		os_mutex_destroy(&controller->input.mutex);
 	}
 
+	if (controller->constellation_mutex_created) {
+		os_mutex_destroy(&controller->constellation_mutex);
+	}
+
 	if (controller->radio_data.calibration_body_json) {
 		free(controller->radio_data.calibration_body_json);
 	}
 
-	if (controller->input.calibration.leds) {
-		free(controller->input.calibration.leds);
+	if (controller->input.calibration.led_model.leds) {
+		free(controller->input.calibration.led_model.leds);
 	}
 
 	if (controller->input.clock_tracker) {
@@ -196,6 +262,8 @@ rift_touch_controller_node_destroy(struct xrt_frame_node *node)
 	if (controller->input.imu_fusion) {
 		imu_fusion_destroy(controller->input.imu_fusion);
 	}
+
+	m_relation_history_destroy(&controller->constellation_relation_history);
 
 	u_device_free(&controller->base);
 }
@@ -317,6 +385,22 @@ rift_remote_create(struct rift_hmd *hmd, struct xrt_frame_context *xfctx)
 	return remote;
 }
 
+void
+touch_controller_constellation_device_push_constellation_tracker_sample(
+    struct t_constellation_tracker_device *connection, struct t_constellation_tracker_sample *sample)
+{
+	struct rift_touch_controller *controller =
+	    container_of(connection, struct rift_touch_controller, constellation_device);
+
+	struct xrt_space_relation relation = XRT_SPACE_RELATION_ZERO;
+	relation.pose = sample->pose;
+	relation.relation_flags = XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+	                          XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
+	                          XRT_SPACE_RELATION_POSITION_VALID_BIT;
+
+	m_relation_history_push(controller->constellation_relation_history, &relation, sample->timestamp_ns);
+}
+
 static struct rift_touch_controller *
 rift_touch_controller_create(struct rift_hmd *hmd,
                              enum rift_radio_device_type device_type,
@@ -356,6 +440,14 @@ rift_touch_controller_create(struct rift_hmd *hmd,
 	default: break; return controller;
 	}
 	controller->base.name = XRT_DEVICE_TOUCH_CONTROLLER_RIFT_CV1;
+
+	m_relation_history_create(&controller->constellation_relation_history);
+
+	controller->use_constellation = false;
+	controller->constellation_tracking_source.get_tracked_pose =
+	    touch_controller_constellation_tracking_source_get_tracked_pose;
+	controller->constellation_device.push_constellation_tracker_sample =
+	    touch_controller_constellation_device_push_constellation_tracker_sample;
 
 #define SET_INPUT(NAME, ACTIVE)                                                                                        \
 	do {                                                                                                           \
@@ -410,6 +502,14 @@ rift_touch_controller_create(struct rift_hmd *hmd,
 		return NULL;
 	}
 	controller->input.mutex_created = true;
+
+	result = os_mutex_init(&controller->constellation_mutex);
+	if (result < 0) {
+		HMD_ERROR(hmd, "Failed to init touch controller constellation mutex");
+		rift_touch_controller_node_destroy(&controller->node);
+		return NULL;
+	}
+	controller->constellation_mutex_created = true;
 
 	controller->input.clock_tracker = m_clock_windowed_skew_tracker_alloc(64);
 	if (controller->input.clock_tracker == NULL) {
@@ -719,7 +819,6 @@ rift_touch_controller_calibration_hash_read_callback(void *user_data, uint16_t a
 	if (result < 0) {
 		return result;
 	}
-
 	return 0;
 }
 
