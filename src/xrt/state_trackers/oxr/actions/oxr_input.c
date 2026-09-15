@@ -2033,10 +2033,6 @@ oxr_action_sync_data_with_context(struct oxr_logger *log,
 		os_mutex_unlock(&sess_context->sync_actions_mutex);
 	}
 
-	if (countActionSets == 0) {
-		// Nothing to do.
-		return XR_SUCCESS;
-	}
 
 	// Synchronize outputs to this time.
 	int64_t now = time_state_get_now(sess->sys->inst->timekeeping);
