@@ -38,13 +38,13 @@
 #include <stdlib.h>
 #include <assert.h>
 
-
-
 /*
  *
  * Helper functions and defines.
  *
  */
+
+DEBUG_GET_ONCE_NUM_OPTION(force_super_sampling, "OXR_FORCE_SUPER_SAMPLING", 0)
 
 #define XR_COMPOSITION_LAYER_FLAGS_ALL_VALID                                                                           \
 	(XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT | XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT | \
@@ -183,19 +183,19 @@ convert_layer_settings_flags(XrCompositionLayerSettingsFlagsFB xr_layer_settings
 	enum xrt_layer_composition_flags layer_settings_flags = 0;
 
 	if ((xr_layer_settings_flags & XR_COMPOSITION_LAYER_SETTINGS_NORMAL_SUPER_SAMPLING_BIT_FB) != 0) {
-		layer_settings_flags |= XRT_COMPOSITION_LAYER_PROCESSING_NORMAL_SUPER_SAMPLING_BIT_FB;
+		layer_settings_flags |= XRT_LAYER_COMPOSITION_PROCESSING_NORMAL_SUPER_SAMPLING_BIT_FB;
 	}
 
 	if ((xr_layer_settings_flags & XR_COMPOSITION_LAYER_SETTINGS_QUALITY_SUPER_SAMPLING_BIT_FB) != 0) {
-		layer_settings_flags |= XRT_COMPOSITION_LAYER_PROCESSING_QUALITY_SUPER_SAMPLING_BIT_FB;
+		layer_settings_flags |= XRT_LAYER_COMPOSITION_PROCESSING_QUALITY_SUPER_SAMPLING_BIT_FB;
 	}
 
 	if ((xr_layer_settings_flags & XR_COMPOSITION_LAYER_SETTINGS_NORMAL_SHARPENING_BIT_FB) != 0) {
-		layer_settings_flags |= XRT_COMPOSITION_LAYER_PROCESSING_NORMAL_SHARPENING_BIT_FB;
+		layer_settings_flags |= XRT_LAYER_COMPOSITION_PROCESSING_NORMAL_SHARPENING_BIT_FB;
 	}
 
 	if ((xr_layer_settings_flags & XR_COMPOSITION_LAYER_SETTINGS_QUALITY_SHARPENING_BIT_FB) != 0) {
-		layer_settings_flags |= XRT_COMPOSITION_LAYER_PROCESSING_QUALITY_SHARPENING_BIT_FB;
+		layer_settings_flags |= XRT_LAYER_COMPOSITION_PROCESSING_QUALITY_SHARPENING_BIT_FB;
 	}
 
 	return layer_settings_flags;
@@ -295,6 +295,12 @@ fill_in_layer_settings(struct oxr_session *sess,
                        const XrCompositionLayerBaseHeader *layer,
                        struct xrt_layer_data *xlayer_data)
 {
+	switch (debug_get_num_option_force_super_sampling()) {
+	case 1: xlayer_data->flags |= XRT_LAYER_COMPOSITION_PROCESSING_NORMAL_SUPER_SAMPLING_BIT_FB; break;
+	case 2: xlayer_data->flags |= XRT_LAYER_COMPOSITION_PROCESSING_QUALITY_SUPER_SAMPLING_BIT_FB; break;
+	default: break;
+	}
+
 #ifdef OXR_HAVE_FB_composition_layer_settings
 	// Is the extension enabled?
 	if (!sess->sys->inst->extensions.FB_composition_layer_settings) {

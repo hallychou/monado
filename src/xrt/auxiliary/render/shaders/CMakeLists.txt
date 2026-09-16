@@ -57,7 +57,7 @@ add_custom_target(render_shader_specialization DEPENDS ${SHADER_SPECIALIZATION_H
 spirv_shaders(
 	SHADER_HEADERS
 	SPIRV_VERSION
-	1.0 # Currently targeting Vulkan 1.0
+	1.3 # Currently targeting Vulkan 1.1
 	SOURCES
 	${SHADERS}
 	DEPENDS

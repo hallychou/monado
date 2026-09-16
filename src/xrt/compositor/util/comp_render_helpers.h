@@ -159,6 +159,17 @@ apply_bias_and_scale_from_layer(const struct xrt_layer_data *data,
 	}
 }
 
+static inline uint32_t
+select_layer_sample_count(const struct xrt_layer_data *data)
+{
+	if (data->flags & XRT_LAYER_COMPOSITION_PROCESSING_QUALITY_SUPER_SAMPLING_BIT_FB) {
+		return 8;
+	} else if (data->flags & XRT_LAYER_COMPOSITION_PROCESSING_NORMAL_SUPER_SAMPLING_BIT_FB) {
+		return 4;
+	}
+
+	return 1;
+}
 
 /*
  *
