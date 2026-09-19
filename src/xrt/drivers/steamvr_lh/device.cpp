@@ -1560,6 +1560,21 @@ HmdDevice::init_vive_cosmos(struct xrt_prober *xp)
 	cosmos_resolution_get_extents(&width, &height);
 	setup_display_extents(width, height);
 
+	cosmos_config *config = cosmos_get_config(this->cosmos.hid);
+
+	auto halve_tangent_scale = [](float angle) { return atanf(tanf(angle) / 2.0f); };
+
+	for (int i = 0; i < 2; i++) {
+		xrt_fov &fov = this->hmd_parts->base.distortion.fov[i];
+		htc_config_get_fov(&config->base, i, &fov);
+
+		fov.angle_left = halve_tangent_scale(fov.angle_left);
+		fov.angle_right = halve_tangent_scale(fov.angle_right);
+
+		fov.angle_up = halve_tangent_scale(fov.angle_up);
+		fov.angle_down = halve_tangent_scale(fov.angle_down);
+	}
+
 	return true;
 }
 
