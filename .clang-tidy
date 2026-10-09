@@ -105,7 +105,6 @@ Checks:       |
     -hicpp-use-nullptr,
     -hicpp-use-override,
     -hicpp-vararg,
-    -misc-const-correctness,
     -misc-header-include-cycle,
     -misc-include-cleaner,
     -misc-no-recursion,
