@@ -206,15 +206,25 @@ wmr_read_fw_block(struct wmr_controller_base *d, uint8_t blk_id, uint8_t **out_d
 	struct wmr_controller_fw_cmd fw_cmd;
 	memset(&fw_cmd, 0, sizeof(fw_cmd));
 
+	/* The header request can also pick up a late reply to the previous block's last
+	 * chunk request. Discard it and ask again, as the chunk loop below does. */
+	int stale_replies = 0;
 	fw_cmd = WMR_CONTROLLER_FW_CMD_INIT(0x06, 0x02, blk_id, 0xffffffff);
-	if (wmr_controller_send_fw_cmd_retry(d, &fw_cmd, 0x02, &fw_cmd_response, 3) < 0) {
-		WMR_WARN(d, "Failed to read fw - cmd 0x02 failed to read header for block %d", blk_id);
-		return -1;
-	}
-	if (fw_cmd_response.response.block_id_echo != blk_id) {
-		WMR_WARN(d, "Failed to read fw - stale reply for block %u while reading block %u",
-		         fw_cmd_response.response.block_id_echo, blk_id);
-		return -1;
+	while (true) {
+		if (wmr_controller_send_fw_cmd_retry(d, &fw_cmd, 0x02, &fw_cmd_response, 3) < 0) {
+			WMR_WARN(d, "Failed to read fw - cmd 0x02 failed to read header for block %d", blk_id);
+			return -1;
+		}
+		if (fw_cmd_response.response.block_id_echo == blk_id) {
+			break;
+		}
+		WMR_DEBUG(d, "Discarding stale fw reply (block %u) while reading the header of block %u",
+		          fw_cmd_response.response.block_id_echo, blk_id);
+		if (++stale_replies > 3) {
+			WMR_WARN(d, "Failed to read fw - too many stale replies reading the header of block %u",
+			         blk_id);
+			return -1;
+		}
 	}
 
 	data_size = fw_cmd_response.response.blk_remain + fw_cmd_response.response.len;
@@ -238,7 +248,7 @@ wmr_read_fw_block(struct wmr_controller_base *d, uint8_t blk_id, uint8_t **out_d
 	data_pos += to_copy;
 	remain -= to_copy;
 
-	int stale_replies = 0;
+	stale_replies = 0;
 	while (remain > 0) {
 		fw_cmd = WMR_CONTROLLER_FW_CMD_INIT(0x06, 0x02, blk_id, remain);
 
