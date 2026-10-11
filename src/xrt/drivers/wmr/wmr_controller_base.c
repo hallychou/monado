@@ -666,15 +666,18 @@ wmr_controller_base_init(struct wmr_controller_base *wcb,
 	};
 	struct wmr_controller_fw_cmd_response fw_cmd_response;
 
+	/* Both init commands are safe to resend, and over a host Bluetooth link the first
+	 * reply after a controller wakes up can take longer than the read timeout. */
+
 	/* Zero command. Reinits controller internal state */
 	fw_cmd = WMR_CONTROLLER_FW_CMD_INIT(0x06, 0x0, 0, 0);
-	if (wmr_controller_send_fw_cmd(wcb, &fw_cmd, 0x06, &fw_cmd_response) < 0) {
+	if (wmr_controller_send_fw_cmd_retry(wcb, &fw_cmd, 0x06, &fw_cmd_response, 3) < 0) {
 		return false;
 	}
 
 	/* Quiesce/restart controller tasks */
 	fw_cmd = WMR_CONTROLLER_FW_CMD_INIT(0x06, 0x04, 0xc1, 0x02);
-	if (wmr_controller_send_fw_cmd(wcb, &fw_cmd, 0x06, &fw_cmd_response) < 0) {
+	if (wmr_controller_send_fw_cmd_retry(wcb, &fw_cmd, 0x06, &fw_cmd_response, 3) < 0) {
 		return false;
 	}
 
