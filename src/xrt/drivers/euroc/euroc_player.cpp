@@ -102,8 +102,8 @@ struct euroc_player
 	// Sinks
 	struct xrt_frame_sink cam_sinks[EUROC_MAX_CAMS]; //!< Intermediate sink for each camera frames
 	struct xrt_imu_sink imu_sink;                    //!< Intermediate sink for IMU samples
-	struct xrt_slam_sinks in_sinks;                  //!< Pointers to intermediate sinks
-	struct xrt_slam_sinks out_sinks;                 //!< Pointers to downstream sinks
+	struct xrt_tracking_sinks in_sinks;              //!< Pointers to intermediate sinks
+	struct xrt_tracking_sinks out_sinks;             //!< Pointers to downstream sinks
 
 	enum u_logging_level log_level;               //!< Log messages with this priority and onwards
 	struct euroc_player_dataset_info dataset;     //!< Contains information about the source dataset
@@ -652,7 +652,7 @@ euroc_player_stream(void *ptr)
 // Frame server functionality
 
 static xrt_result_t
-euroc_player_enumerate_modes(struct xrt_fs *xfs, struct xrt_fs_mode **out_modes, uint32_t *out_count)
+euroc_player_enumerate_frame_modes(struct xrt_fs *xfs, struct xrt_fs_mode **out_modes, uint32_t *out_count)
 {
 	struct euroc_player *ep = euroc_player(xfs);
 
@@ -746,10 +746,10 @@ receive_imu_sample(struct xrt_imu_sink *sink, struct xrt_imu_sample *s)
  * the user clicks the start button.
  */
 static xrt_result_t
-euroc_player_stream_start(struct xrt_fs *xfs,
-                          struct xrt_frame_sink *xs,
-                          enum xrt_fs_capture_type capture_type,
-                          uint32_t descriptor_index)
+euroc_player_frame_stream_start(struct xrt_fs *xfs,
+                                struct xrt_frame_sink *xs,
+                                enum xrt_fs_capture_type capture_type,
+                                uint32_t frame_mode_index)
 {
 	struct euroc_player *ep = euroc_player(xfs);
 
@@ -776,11 +776,11 @@ euroc_player_stream_start(struct xrt_fs *xfs,
 }
 
 static xrt_result_t
-euroc_player_slam_stream_start(struct xrt_fs *xfs, struct xrt_slam_sinks *sinks)
+euroc_player_tracking_streams_start(struct xrt_fs *xfs, struct xrt_tracking_sinks *sinks)
 {
 	struct euroc_player *ep = euroc_player(xfs);
 	ep->out_sinks = *sinks;
-	return euroc_player_stream_start(xfs, NULL, XRT_FS_CAPTURE_TYPE_TRACKING, 0);
+	return euroc_player_frame_stream_start(xfs, NULL, XRT_FS_CAPTURE_TYPE_TRACKING, 0);
 }
 
 static xrt_result_t
@@ -1025,10 +1025,10 @@ euroc_player_create(struct xrt_frame_context *xfctx, const char *path, struct eu
 
 	struct xrt_fs *xfs = &ep->base;
 	u_frameserver_populate_function_pointers(xfs);
-	xfs->enumerate_modes = euroc_player_enumerate_modes;
+	xfs->enumerate_frame_modes = euroc_player_enumerate_frame_modes;
 	xfs->configure_capture = euroc_player_configure_capture;
-	xfs->stream_start = euroc_player_stream_start;
-	xfs->slam_stream_start = euroc_player_slam_stream_start;
+	xfs->frame_stream_start = euroc_player_frame_stream_start;
+	xfs->tracking_streams_start = euroc_player_tracking_streams_start;
 	xfs->stream_stop = euroc_player_stream_stop;
 	xfs->is_running = euroc_player_is_running;
 

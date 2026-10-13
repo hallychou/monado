@@ -1482,12 +1482,12 @@ wmr_hmd_switch_hmd_tracker(void *wh_ptr)
 	}
 }
 
-static struct xrt_slam_sinks *
+static struct xrt_tracking_sinks *
 wmr_hmd_slam_track(struct wmr_hmd *wh)
 {
 	DRV_TRACE_MARKER();
 
-	struct xrt_slam_sinks *sinks = NULL;
+	struct xrt_tracking_sinks *sinks = NULL;
 
 #ifdef XRT_FEATURE_SLAM
 	struct t_slam_tracker_config config = {0};
@@ -1555,12 +1555,12 @@ static int
 wmr_hmd_hand_track(struct wmr_hmd *wh,
                    struct t_stereo_camera_calibration *stereo_calib,
                    struct xrt_hand_masks_sink *masks_sink,
-                   struct xrt_slam_sinks **out_sinks,
+                   struct xrt_tracking_sinks **out_sinks,
                    struct xrt_device **out_device)
 {
 	DRV_TRACE_MARKER();
 
-	struct xrt_slam_sinks *sinks = NULL;
+	struct xrt_tracking_sinks *sinks = NULL;
 	struct xrt_device *device = NULL;
 
 #ifdef XRT_BUILD_DRIVER_HANDTRACKING
@@ -1666,7 +1666,7 @@ wmr_hmd_setup_ui(struct wmr_hmd *wh)
  * @return true on success, false when an unexpected state is reached.
  */
 static bool
-wmr_hmd_setup_trackers(struct wmr_hmd *wh, struct xrt_slam_sinks *out_sinks, struct xrt_device **out_handtracker)
+wmr_hmd_setup_trackers(struct wmr_hmd *wh, struct xrt_tracking_sinks *out_sinks, struct xrt_device **out_handtracker)
 {
 	// We always have at least 3dof HMD tracking
 	bool dof3_enabled = true;
@@ -1721,7 +1721,7 @@ wmr_hmd_setup_trackers(struct wmr_hmd *wh, struct xrt_slam_sinks *out_sinks, str
 	m_imu_3dof_init(&wh->fusion.i3dof, M_IMU_3DOF_USE_GRAVITY_DUR_20MS);
 
 	// Initialize SLAM tracker
-	struct xrt_slam_sinks *slam_sinks = NULL;
+	struct xrt_tracking_sinks *slam_sinks = NULL;
 	if (wh->tracking.slam_enabled) {
 		slam_sinks = wmr_hmd_slam_track(wh);
 		if (slam_sinks == NULL) {
@@ -1731,7 +1731,7 @@ wmr_hmd_setup_trackers(struct wmr_hmd *wh, struct xrt_slam_sinks *out_sinks, str
 	}
 
 	// Initialize hand tracker
-	struct xrt_slam_sinks *hand_sinks = NULL;
+	struct xrt_tracking_sinks *hand_sinks = NULL;
 	struct xrt_device *hand_device = NULL;
 	struct xrt_hand_masks_sink *masks_sink = slam_sinks ? slam_sinks->hand_masks : NULL;
 	if (wh->tracking.hand_enabled) {
@@ -1745,7 +1745,7 @@ wmr_hmd_setup_trackers(struct wmr_hmd *wh, struct xrt_slam_sinks *out_sinks, str
 	t_stereo_camera_calibration_reference(&stereo_calib, NULL);
 
 	// Setup sinks depending on tracking configuration
-	struct xrt_slam_sinks entry_sinks = {0};
+	struct xrt_tracking_sinks entry_sinks = {0};
 	if (slam_enabled && hand_enabled) {
 		struct xrt_frame_sink *entry_cam0_sink = NULL;
 		struct xrt_frame_sink *entry_cam1_sink = NULL;
@@ -1761,7 +1761,7 @@ wmr_hmd_setup_trackers(struct wmr_hmd *wh, struct xrt_slam_sinks *out_sinks, str
 	} else if (hand_enabled) {
 		entry_sinks = *hand_sinks;
 	} else {
-		entry_sinks = (struct xrt_slam_sinks){0};
+		entry_sinks = (struct xrt_tracking_sinks){0};
 	}
 
 	*out_sinks = entry_sinks;
@@ -1988,7 +1988,7 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
 	// Switch on data streams on the HMD (only cameras for now as IMU is not yet integrated into wmr_source)
 	wh->tracking.source = wmr_source_create(&wh->tracking.xfctx, dev_holo, wh->config);
 
-	struct xrt_slam_sinks sinks = {0};
+	struct xrt_tracking_sinks sinks = {0};
 	struct xrt_device *hand_device = NULL;
 	bool success = wmr_hmd_setup_trackers(wh, &sinks, &hand_device);
 	if (!success) {
@@ -1998,7 +1998,7 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
 	}
 
 	// Stream data source into sinks (if populated)
-	xrt_result_t xret = xrt_fs_slam_stream_start(wh->tracking.source, &sinks);
+	xrt_result_t xret = xrt_fs_tracking_streams_start(wh->tracking.source, &sinks);
 	if (xret != XRT_SUCCESS) {
 		//! @todo Could reach this due to !XRT_HAVE_LIBUSB but the HMD should keep working
 		WMR_WARN(wh, "Failed to start WMR source, got %s", u_str_xrt_result(xret));

@@ -27,11 +27,11 @@ extern "C" {
  * @param cam_count Number of cameras to record
  * @param imu_count Number of IMU sensors to record
  * @param record_from_start Whether to start recording immediately on creation.
- * @return struct xrt_slam_sinks* Sinks to push samples to for recording.
+ * @return struct xrt_tracking_sinks* Sinks to push samples to for recording.
  *
  * @ingroup aux_tracking
  */
-struct xrt_slam_sinks *
+struct xrt_tracking_sinks *
 euroc_recorder_create(
     struct xrt_frame_context *xfctx, const char *record_path, int cam_count, int imu_count, bool record_from_start);
 
@@ -41,7 +41,7 @@ euroc_recorder_create(
  * @param er_sinks The recorder sinks returned by @ref euroc_recorder_create
  */
 void
-euroc_recorder_start(struct xrt_slam_sinks *er_sinks);
+euroc_recorder_start(struct xrt_tracking_sinks *er_sinks);
 
 /*!
  * Stop recording samples sent to the recorder sinks. You can start and
@@ -50,7 +50,7 @@ euroc_recorder_start(struct xrt_slam_sinks *er_sinks);
  * @param er_sinks The recorder sinks returned by @ref euroc_recorder_create
  */
 void
-euroc_recorder_stop(struct xrt_slam_sinks *er_sinks);
+euroc_recorder_stop(struct xrt_tracking_sinks *er_sinks);
 
 /*!
  * Add EuRoC recorder UI button to start recording after creation.
@@ -60,7 +60,7 @@ euroc_recorder_stop(struct xrt_slam_sinks *er_sinks);
  * @param prefix Prefix in case you have multiple recorders, otherwise pass an empty string
  */
 void
-euroc_recorder_add_ui(struct xrt_slam_sinks *er_sinks, void *root, const char *prefix);
+euroc_recorder_add_ui(struct xrt_tracking_sinks *er_sinks, void *root, const char *prefix);
 
 #ifdef __cplusplus
 }
