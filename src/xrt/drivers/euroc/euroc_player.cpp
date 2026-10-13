@@ -678,6 +678,24 @@ euroc_player_enumerate_frame_modes(struct xrt_ds *xds, struct xrt_ds_frame_mode 
 }
 
 static xrt_result_t
+euroc_player_get_tracking_capabilities(struct xrt_ds *xds, struct xrt_ds_tracking_capabilities *out_capabilities)
+{
+	struct euroc_player *ep = euroc_player(xds);
+
+	*out_capabilities = {
+	    // Pull the amount of cameras this playback is actually streaming.
+	    .cam_count = static_cast<uint32_t>(ep->playback.cam_count),
+	    /*!
+	     * @todo This will need to be changed to the dataset's IMU count when
+	     *       we support multiple IMUs in this player.
+	     */
+	    .imu_count = IMU_COUNT,
+	};
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
 euroc_player_configure_capture(struct xrt_ds *xds, struct xrt_ds_frame_capture_parameters *cp)
 {
 	// Noop, this is a playback routine, there's no parameters to support.
@@ -1026,6 +1044,7 @@ euroc_player_create(struct xrt_frame_context *xfctx, const char *path, struct eu
 	struct xrt_ds *xds = &ep->base;
 	u_data_source_populate_function_pointers(xds);
 	xds->enumerate_frame_modes = euroc_player_enumerate_frame_modes;
+	xds->get_tracking_capabilities = euroc_player_get_tracking_capabilities;
 	xds->configure_capture = euroc_player_configure_capture;
 	xds->frame_stream_start = euroc_player_frame_stream_start;
 	xds->tracking_streams_start = euroc_player_tracking_streams_start;

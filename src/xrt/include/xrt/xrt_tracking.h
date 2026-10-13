@@ -217,8 +217,8 @@ struct xrt_hand_masks_sink
  */
 struct xrt_tracking_sinks
 {
-	int cam_count;
-	int imu_count;
+	uint32_t cam_count;
+	uint32_t imu_count;
 	struct xrt_frame_sink *cams[XRT_TRACKING_MAX_CAMS];
 	struct xrt_imu_sink *imus[XRT_TRACKING_MAX_IMUS];
 	struct xrt_pose_sink *gt; //!< Can receive ground truth poses if available
