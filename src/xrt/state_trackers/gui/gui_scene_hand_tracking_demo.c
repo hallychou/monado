@@ -59,18 +59,18 @@ gui_scene_hand_tracking_demo(struct gui_program *p)
 	settings.want_cameras = true;
 	settings.want_imu = false;
 
-	struct xrt_fs *the_fs = depthai_fs_slam(&bsysd->xfctx, &settings);
+	struct xrt_ds *the_ds = depthai_ds_slam(&bsysd->xfctx, &settings);
 
-	if (the_fs == NULL) {
+	if (the_ds == NULL) {
 		xrt_system_devices_destroy(&xsysd);
 		return;
 	}
 
 	struct t_stereo_camera_calibration *calib = NULL;
-	depthai_fs_get_stereo_calibration(the_fs, &calib);
+	depthai_ds_get_stereo_calibration(the_ds, &calib);
 
 
-	struct xrt_slam_sinks *hand_sinks = NULL;
+	struct xrt_tracking_sinks *hand_sinks = NULL;
 
 	struct t_camera_extra_info extra_camera_info = XRT_STRUCT_INIT;
 	extra_camera_info.views[0].boundary_type = HT_IMAGE_BOUNDARY_NONE;
@@ -94,7 +94,7 @@ gui_scene_hand_tracking_demo(struct gui_program *p)
 
 	xsysd->static_xdevs[xsysd->static_xdev_count++] = ht_dev;
 
-	struct xrt_slam_sinks gen_lock = {0};
+	struct xrt_tracking_sinks gen_lock = {0};
 	u_sink_force_genlock_create( //
 	    &bsysd->xfctx,           //
 	    hand_sinks->cams[0],     //
@@ -102,7 +102,7 @@ gui_scene_hand_tracking_demo(struct gui_program *p)
 	    &gen_lock.cams[0],       //
 	    &gen_lock.cams[1]);      //
 
-	xrt_fs_slam_stream_start(the_fs, &gen_lock);
+	xrt_ds_tracking_streams_start(the_ds, &gen_lock);
 
 	p->xsysd = xsysd;
 

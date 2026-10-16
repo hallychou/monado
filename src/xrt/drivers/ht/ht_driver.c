@@ -15,7 +15,7 @@
 #include "util/u_var.h"
 #include "xrt/xrt_defines.h"
 #include "xrt/xrt_frame.h"
-#include "xrt/xrt_frameserver.h"
+#include "xrt/xrt_data_source.h"
 #include "xrt/xrt_prober.h"
 
 #include "util/u_device.h"
@@ -230,7 +230,7 @@ int
 ht_device_create(struct xrt_frame_context *xfctx,
                  struct t_stereo_camera_calibration *calib,
                  struct t_hand_tracking_create_info create_info,
-                 struct xrt_slam_sinks **out_sinks,
+                 struct xrt_tracking_sinks **out_sinks,
                  struct xrt_device **out_device)
 {
 

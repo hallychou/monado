@@ -10,17 +10,13 @@
  * @ingroup xrt_iface
  */
 
-#include "math/m_api.h"
-#include "math/m_space.h"
-#include "multi_wrapper/multi.h"
-#include "realsense/rs_interface.h"
-#include "tracking/t_hand_tracking.h"
-#include "tracking/t_tracking.h"
-
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_prober.h"
 #include "xrt/xrt_system.h"
+#include "xrt/xrt_data_source.h"
+#include "xrt/xrt_results.h"
+#include "xrt/xrt_tracking.h"
 
 #include "util/u_config_json.h"
 #include "util/u_debug.h"
@@ -29,6 +25,17 @@
 #include "util/u_file.h"
 #include "util/u_pretty_print.h"
 #include "util/u_builder_search.h"
+
+#include "math/m_api.h"
+#include "math/m_space.h"
+#include "math/m_mathinclude.h"
+
+#include "multi_wrapper/multi.h"
+
+#include "realsense/rs_interface.h"
+
+#include "tracking/t_hand_tracking.h"
+#include "tracking/t_tracking.h"
 
 #include "target_builder_helpers.h"
 #include "target_builder_interface.h"
@@ -57,12 +64,7 @@
 
 #include "ht_ctrl_emu/ht_ctrl_emu_interface.h"
 
-#include "xrt/xrt_frameserver.h"
-#include "xrt/xrt_results.h"
-#include "xrt/xrt_tracking.h"
-
 #include <assert.h>
-#include "math/m_mathinclude.h"
 
 DEBUG_GET_ONCE_OPTION(ns_config_path, "NS_CONFIG_PATH", NULL)
 DEBUG_GET_ONCE_LOG_OPTION(ns_log, "NS_LOG", U_LOGGING_WARN)
@@ -287,17 +289,17 @@ ns_setup_depthai_device(struct ns_builder *nsb,
 	settings.want_cameras = true;
 	settings.want_imu = true;
 
-	struct xrt_fs *the_fs = depthai_fs_slam(xfctx, &settings);
+	struct xrt_ds *xds = depthai_ds_slam(xfctx, &settings);
 
-	if (the_fs == NULL) {
+	if (xds == NULL) {
 		return XRT_ERROR_DEVICE_CREATION_FAILED;
 	}
 
 	struct t_stereo_camera_calibration *calib = NULL;
-	depthai_fs_get_stereo_calibration(the_fs, &calib);
+	depthai_ds_get_stereo_calibration(xds, &calib);
 
 
-	struct xrt_slam_sinks *slam_sinks = NULL;
+	struct xrt_tracking_sinks *slam_sinks = NULL;
 	xret = twrap_slam_create_device(xfctx, XRT_DEVICE_DEPTHAI, &slam_sinks, out_head_device);
 	if (xret != XRT_SUCCESS) {
 		U_LOG_E("twrap_slam_create_device: %u", xret);
@@ -309,7 +311,7 @@ ns_setup_depthai_device(struct ns_builder *nsb,
 	}
 
 #ifdef XRT_BUILD_DRIVER_HANDTRACKING
-	struct xrt_slam_sinks *hand_sinks = NULL;
+	struct xrt_tracking_sinks *hand_sinks = NULL;
 	struct xrt_hand_masks_sink *masks_sink = slam_sinks ? slam_sinks->hand_masks : NULL;
 
 	struct t_camera_extra_info extra_camera_info = {0};
@@ -339,7 +341,7 @@ ns_setup_depthai_device(struct ns_builder *nsb,
 	}
 #endif
 
-	struct xrt_slam_sinks entry_sinks = {0};
+	struct xrt_tracking_sinks entry_sinks = {0};
 	struct xrt_frame_sink *entry_left_sink = NULL;
 	struct xrt_frame_sink *entry_right_sink = NULL;
 
@@ -351,15 +353,19 @@ ns_setup_depthai_device(struct ns_builder *nsb,
 	entry_right_sink = slam_sinks->cams[1];
 #endif
 
-	entry_sinks = (struct xrt_slam_sinks){
+	entry_sinks = (struct xrt_tracking_sinks){
+	    .cam_count = 2,
+	    .imu_count = 1,
 	    .cams[0] = entry_left_sink,
 	    .cams[1] = entry_right_sink,
-	    .imu = slam_sinks->imu,
+	    .imus[0] = slam_sinks->imus[0],
 	    .gt = slam_sinks->gt,
 	};
 
-	struct xrt_slam_sinks unused_slam_sinks = {0};
-	unused_slam_sinks.imu = entry_sinks.imu;
+	struct xrt_tracking_sinks unused_slam_sinks = {0};
+	unused_slam_sinks.cam_count = entry_sinks.cam_count;
+	unused_slam_sinks.imu_count = entry_sinks.imu_count;
+	unused_slam_sinks.imus[0] = entry_sinks.imus[0];
 
 	u_sink_force_genlock_create(     //
 	    xfctx,                       //
@@ -368,7 +374,7 @@ ns_setup_depthai_device(struct ns_builder *nsb,
 	    &unused_slam_sinks.cams[0],  //
 	    &unused_slam_sinks.cams[1]); //
 
-	xrt_fs_slam_stream_start(the_fs, &unused_slam_sinks);
+	xrt_ds_tracking_streams_start(xds, &unused_slam_sinks);
 
 	return XRT_SUCCESS;
 }

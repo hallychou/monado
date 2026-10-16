@@ -207,13 +207,18 @@ struct xrt_hand_masks_sink
 
 
 /*!
- * Container of pointers to sinks that could be used for a SLAM system. Sinks
- * are considered disabled if they are null.
+ * Container of pointers to a collection of sinks useful for tracking algorithms.
+ * Sinks are considered disabled if they are null or the count is zero.
+ *
+ * Example usecases:
+ * - Streaming just IMU data to feed 3dof tracking for a device it is mounted to.
+ * - Streaming just stereo camera data to feed a hand tracker.
+ * - Streaming IMU + camera data to feed a SLAM tracker.
  */
-struct xrt_slam_sinks
+struct xrt_tracking_sinks
 {
-	int cam_count;
-	int imu_count;
+	uint32_t cam_count;
+	uint32_t imu_count;
 	struct xrt_frame_sink *cams[XRT_TRACKING_MAX_CAMS];
 	struct xrt_imu_sink *imus[XRT_TRACKING_MAX_IMUS];
 	struct xrt_pose_sink *gt; //!< Can receive ground truth poses if available

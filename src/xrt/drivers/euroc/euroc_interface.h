@@ -10,7 +10,7 @@
 #pragma once
 
 #include "util/u_logging.h"
-#include "xrt/xrt_frameserver.h"
+#include "xrt/xrt_data_source.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -90,7 +90,7 @@ euroc_player_fill_default_config_for(struct euroc_player_config *config, const c
  *
  * @ingroup drv_euroc
  */
-struct xrt_fs *
+struct xrt_ds *
 euroc_player_create(struct xrt_frame_context *xfctx, const char *path, struct euroc_player_config *config);
 
 /*!
