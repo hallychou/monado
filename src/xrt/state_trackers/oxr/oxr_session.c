@@ -1735,12 +1735,34 @@ oxr_session_get_visibility_mask(struct oxr_logger *log,
 		if (is_emulated_quad_inset_view(xdev, viewIndex)) {
 			u_visibility_mask_get_noop(type, &mask);
 		} else {
-			xrt_result_t xret = xrt_device_get_visibility_mask(xdev, type, viewIndex, &mask);
+			xrt_result_t xret = XRT_ERROR_NOT_IMPLEMENTED;
+			if (xdev->get_visibility_mask != NULL) {
+				xret = xrt_device_get_visibility_mask(xdev, type, viewIndex, &mask);
+			}
 			if (xret == XRT_ERROR_NOT_IMPLEMENTED && xdev->hmd != NULL) {
 				const struct xrt_fov fov = xdev->hmd->distortion.fov[viewIndex];
 				u_visibility_mask_get_default(type, &fov, &mask);
 			} else {
 				OXR_CHECK_XRET(log, sess, xret, get_visibility_mask);
+			}
+
+			// xrLocateViews reports parallel views with a parallelized fov, the mask must
+			// also be rendered into parallel view
+			if (mask != NULL && sess->sys->inst->quirks.parallel_views) {
+				struct xrt_space_relation T_xdev_head = XRT_SPACE_RELATION_ZERO;
+				struct locate_views_data data = {0};
+				const uint32_t view_count = xdev->hmd != NULL ? (uint32_t)xdev->hmd->view_count : 2;
+				XrResult ret =
+				    get_device_fovs_and_poses(log, sess, xdev, 0, view_count, &T_xdev_head, &data);
+				if (ret != XR_SUCCESS) {
+					free(mask);
+					return ret;
+				}
+
+				const struct xrt_quat *orientation = &data.poses[viewIndex].orientation;
+				if (!math_quat_is_identity(orientation, 0.0001f)) {
+					u_visibility_mask_rotate(mask, orientation);
+				}
 			}
 		}
 		sys->visibility_mask[viewIndex] = mask;
