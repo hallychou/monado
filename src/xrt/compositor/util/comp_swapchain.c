@@ -1,4 +1,5 @@
 // Copyright 2019-2023, Collabora, Ltd.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -14,6 +15,7 @@
 
 #include "util/u_misc.h"
 #include "util/u_handles.h"
+#include "util/u_logging.h"
 #include "util/u_trace_marker.h"
 #include "util/u_limited_unique_id.h"
 
@@ -23,11 +25,19 @@
 #include "vk/vk_helpers.h"
 #include "vk/vk_mini_helpers.h"
 
+#include "allocation/a_allocator.h"
+
 #include "util/comp_swapchain.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+
+#define XVK_CHK_AND_RET(...) U_LOG_CHK_AND_RET(vk->log_level, __VA_ARGS__)
+#define XVK_CHK_WITH_GOTO(...) U_LOG_CHK_WITH_GOTO(vk->log_level, __VA_ARGS__)
+#define XVK_CHK_WITH_RET(...) U_LOG_CHK_WITH_RET(vk->log_level, __VA_ARGS__)
+#define XVK_CHK_ONLY_PRINT(...) U_LOG_CHK_ONLY_PRINT(vk->log_level, __VA_ARGS__)
+#define XVK_CHK_ALWAYS_RET(...) U_LOG_CHK_ALWAYS_RET(vk->log_level, __VA_ARGS__)
 
 
 /*
@@ -240,11 +250,6 @@ set_common_fields(struct comp_swapchain *sc,
 	sc->vk = vk;
 	sc->cscs = cscs;
 
-	// Make sure the handles are invalid.
-	for (uint32_t i = 0; i < ARRAY_SIZE(sc->base.images); i++) {
-		sc->base.images[i].handle = XRT_GRAPHICS_BUFFER_HANDLE_INVALID;
-	}
-
 	return sc;
 }
 
@@ -293,15 +298,56 @@ image_cleanup(struct vk_bundle *vk, struct comp_swapchain_image *image)
 	image->array_size = 0;
 }
 
+/*!
+ * Clean up all resources held by a comp_swapchain, but does not free the
+ * struct itself. Safe to call at any point during initialization - only
+ * cleans up what was allocated. Does NOT clean up threading objects
+ * (mutex/cond) as they are only initialized at the very end of successful
+ * creation and require the use_count check in @ref comp_swapchain_teardown.
+ *
+ * @param vk Vulkan bundle.
+ * @param sc The swapchain to clean up.
+ */
 static void
 cleanup_post_create_vulkan_setup(struct vk_bundle *vk, struct comp_swapchain *sc)
 {
-
-	uint32_t image_count = sc->vkic.image_count;
-
-	for (uint32_t i = 0; i < image_count; i++) {
-		image_cleanup(vk, &(sc->images[i]));
+	// Clean up image views.
+	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
+		image_cleanup(vk, &sc->images[i]);
 	}
+
+	// Release the allocation collection (handles cleanup of VkImages).
+	xrt_allocation_collection_reference(&sc->base.xac, NULL);
+}
+
+/*!
+ * Get VkImages from the image collection and store them in the swapchain.
+ * On error, releases the image collection and returns the error.
+ *
+ * @param vk Vulkan bundle (for logging).
+ * @param sc The swapchain to populate.
+ * @return XRT_SUCCESS on success.
+ */
+static XRT_CHECK_RESULT xrt_result_t
+get_and_store_vk_images(struct vk_bundle *vk, struct comp_swapchain *sc)
+{
+	VkImage images[XRT_MAX_SWAPCHAIN_IMAGES] = {VK_NULL_HANDLE};
+
+	xrt_result_t xret = xrt_allocation_collection_get_all( //
+	    sc->base.xac,                                      //
+	    XRT_ALLOCATION_TYPE_VULKAN_IMAGE,                  //
+	    sizeof(VkImage),                                   //
+	    images);                                           //
+	if (xret != XRT_SUCCESS) {
+		VK_ERROR(vk, "Failed to get all Vulkan images.");
+		return xret;
+	}
+
+	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
+		sc->images[i].image = images[i];
+	}
+
+	return XRT_SUCCESS;
 }
 
 static XRT_CHECK_RESULT xrt_result_t
@@ -310,7 +356,7 @@ do_post_create_vulkan_setup(struct vk_bundle *vk,
                             struct comp_swapchain *sc)
 {
 	xrt_result_t xret = XRT_SUCCESS;
-	uint32_t image_count = sc->vkic.image_count;
+	uint32_t image_count = sc->base.base.image_count;
 	VkCommandBuffer cmd_buffer;
 	VkResult ret;
 
@@ -328,6 +374,7 @@ do_post_create_vulkan_setup(struct vk_bundle *vk,
 		VkFormat srgb_format = vk_format_convert_unorm_to_srgb(image_view_format);
 		if (srgb_format == VK_FORMAT_UNDEFINED) {
 			VK_ERROR(vk, "Could not find sRGB format for format %s", vk_format_string(image_view_format));
+			cleanup_post_create_vulkan_setup(vk, sc);
 			return XRT_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED;
 		}
 
@@ -344,6 +391,7 @@ do_post_create_vulkan_setup(struct vk_bundle *vk,
 	if (image_view_usage == 0) {
 		VK_ERROR(vk, "Could not derive image view usage flags for format %s",
 		         vk_format_string(image_view_format));
+		cleanup_post_create_vulkan_setup(vk, sc);
 		return XRT_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED;
 	}
 
@@ -376,7 +424,7 @@ do_post_create_vulkan_setup(struct vk_bundle *vk,
 			// Create view with only the specific usage we need.
 			ret = vk_create_view_usage(             //
 			    vk,                                 // vk
-			    sc->vkic.images[i].handle,          // image
+			    sc->images[i].image,                // image
 			    image_view_type,                    // type
 			    image_view_format,                  // format
 			    image_view_usage,                   // image_usage
@@ -390,7 +438,7 @@ do_post_create_vulkan_setup(struct vk_bundle *vk,
 			// Create view with only the specific usage we need.
 			ret = vk_create_view_swizzle_usage(        //
 			    vk,                                    // vk
-			    sc->vkic.images[i].handle,             // image
+			    sc->images[i].image,                   // image
 			    image_view_type,                       // type
 			    image_view_format,                     // format
 			    image_view_usage,                      // image_usage
@@ -444,7 +492,7 @@ do_post_create_vulkan_setup(struct vk_bundle *vk,
 		vk_cmd_image_barrier_gpu_locked(              //
 		    vk,                                       //
 		    cmd_buffer,                               //
-		    sc->vkic.images[i].handle,                //
+		    sc->images[i].image,                      //
 		    0,                                        //
 		    VK_ACCESS_SHADER_READ_BIT,                //
 		    VK_IMAGE_LAYOUT_UNDEFINED,                //
@@ -528,7 +576,7 @@ comp_swapchain_create_init(struct comp_swapchain *sc,
                            const struct xrt_swapchain_create_info *info,
                            const struct xrt_swapchain_create_properties *xsccp)
 {
-	VkResult ret;
+	xrt_result_t xret;
 
 	VK_DEBUG(vk, "CREATE %p %" PRIu32 "x%" PRIu32 " %s (%" PRIu32 ")", //
 	         (void *)sc,                                               //
@@ -544,39 +592,25 @@ comp_swapchain_create_init(struct comp_swapchain *sc,
 
 	set_common_fields(sc, destroy_func, vk, cscs, xsccp->image_count);
 
-	// Use the image helper to allocate the images.
-	ret = vk_ic_allocate(vk, info, xsccp->image_count, &sc->vkic);
-	if (ret == VK_ERROR_FEATURE_NOT_PRESENT) {
-		return XRT_ERROR_SWAPCHAIN_FLAG_VALID_BUT_UNSUPPORTED;
-	}
-	if (ret == VK_ERROR_FORMAT_NOT_SUPPORTED) {
-		return XRT_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED;
-	}
-	if (ret != VK_SUCCESS) {
-		return XRT_ERROR_VULKAN;
-	}
+	// Allocate images via the allocation collection helper.
+	xret = a_allocator_allocate(vk, info, xsccp->image_count, &sc->base.xac);
+	XVK_CHK_WITH_GOTO(xret, "a_allocator_allocate", error);
 
-	xrt_graphics_buffer_handle_t handles[ARRAY_SIZE(sc->vkic.images)];
+	// Get VkImages from the image collection and store them.
+	xret = get_and_store_vk_images(vk, sc);
+	XVK_CHK_WITH_GOTO(xret, "get_and_store_vk_images", error);
 
-	ret = vk_ic_get_handles(vk, &sc->vkic, ARRAY_SIZE(handles), handles);
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "Failed to get native handles for images.");
-		vk_ic_destroy(vk, &sc->vkic);
-		return XRT_ERROR_VULKAN;
-	}
-	for (uint32_t i = 0; i < sc->vkic.image_count; i++) {
-		sc->base.images[i].handle = handles[i];
-		sc->base.images[i].size = sc->vkic.images[i].size;
-		sc->base.images[i].use_dedicated_allocation = sc->vkic.images[i].use_dedicated_allocation;
-	}
-
-	xrt_result_t res = do_post_create_vulkan_setup(vk, info, sc);
-	if (res != XRT_SUCCESS) {
-		vk_ic_destroy(vk, &sc->vkic);
-		return res;
-	}
+	// Post-create setup.
+	xret = do_post_create_vulkan_setup(vk, info, sc);
+	// do_post_create_vulkan_setup already called cleanup_post_create_vulkan_setup on error.
+	XVK_CHK_AND_RET(xret, "do_post_create_vulkan_setup");
 
 	return XRT_SUCCESS;
+
+error:
+	xrt_allocation_collection_reference(&sc->base.xac, NULL);
+
+	return xret;
 }
 
 xrt_result_t
@@ -588,7 +622,7 @@ comp_swapchain_import_init(struct comp_swapchain *sc,
                            struct xrt_image_native *native_images,
                            uint32_t native_image_count)
 {
-	VkResult ret;
+	xrt_result_t xret = XRT_SUCCESS;
 
 	VK_DEBUG(vk, "IMPORT %p %" PRIu32 "x%" PRIu32 " %s (%" PRIu32 ")", //
 	         (void *)sc,                                               //
@@ -597,25 +631,31 @@ comp_swapchain_import_init(struct comp_swapchain *sc,
 
 	set_common_fields(sc, destroy_func, vk, cscs, native_image_count);
 
-	// Use the image helper to get the images.
-	ret = vk_ic_from_natives(vk, info, native_images, native_image_count, &sc->vkic);
-	if (ret == VK_ERROR_FEATURE_NOT_PRESENT) {
-		return XRT_ERROR_SWAPCHAIN_FLAG_VALID_BUT_UNSUPPORTED;
-	}
-	if (ret == VK_ERROR_FORMAT_NOT_SUPPORTED) {
-		return XRT_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED;
-	}
-	if (ret != VK_SUCCESS) {
-		return XRT_ERROR_VULKAN;
-	}
+	/*
+	 * Import images via the allocation collection helper. Only memory
+	 * allocated with VkExportMemoryAllocateInfo can be exported, which the
+	 * import doesn't use, so the native handles can't be re-exported from the
+	 * collection. Some xrt_swapchain flags could be added in the future to
+	 * make imported images re-exportable.
+	 */
+	xret = a_allocator_import_from_natives(vk, info, native_images, native_image_count, &sc->base.xac);
+	XVK_CHK_WITH_GOTO(xret, "a_allocator_import_from_natives", error);
 
-	xrt_result_t res = do_post_create_vulkan_setup(vk, info, sc);
-	if (res != XRT_SUCCESS) {
-		vk_ic_destroy(vk, &sc->vkic);
-		return res;
-	}
+	// Get VkImages from the image collection and store them.
+	xret = get_and_store_vk_images(vk, sc);
+	XVK_CHK_WITH_GOTO(xret, "get_and_store_vk_images", error);
+
+	// Post-create setup.
+	xret = do_post_create_vulkan_setup(vk, info, sc);
+	// do_post_create_vulkan_setup already called cleanup_post_create_vulkan_setup on error.
+	XVK_CHK_AND_RET(xret, "do_post_create_vulkan_setup");
 
 	return XRT_SUCCESS;
+
+error:
+	xrt_allocation_collection_reference(&sc->base.xac, NULL);
+
+	return xret;
 }
 
 void
@@ -625,6 +665,8 @@ comp_swapchain_teardown(struct comp_swapchain *sc)
 
 	VK_TRACE(vk, "REALLY DESTROY");
 
+	// Destroy threading objects, these are only initialized at the very
+	// end of do_post_create_vulkan_setup so must be handled here.
 	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
 		// compositor ensures to garbage collect after gpu work finished
 		if (sc->images[i].use_count != 0) {
@@ -637,15 +679,8 @@ comp_swapchain_teardown(struct comp_swapchain *sc)
 		pthread_cond_destroy(&sc->images[i].use_cond);
 	}
 
-	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
-		image_cleanup(vk, &sc->images[i]);
-	}
-
-	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
-		u_graphics_buffer_unref(&sc->base.images[i].handle);
-	}
-
-	vk_ic_destroy(vk, &sc->vkic);
+	// Clean up all other resources.
+	cleanup_post_create_vulkan_setup(vk, sc);
 }
 
 

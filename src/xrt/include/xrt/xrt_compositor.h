@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -44,6 +44,7 @@ extern "C" {
  *
  */
 
+struct xrt_allocation_collection;
 struct xrt_device;
 struct xrt_image_native;
 struct xrt_compositor;
@@ -2175,8 +2176,14 @@ struct xrt_image_native
 
 /*!
  * @interface xrt_swapchain_native
- * Base class for a swapchain that exposes a native buffer handle to be imported
- * into a client API.
+ * Native compositor swapchain: extends @ref xrt_swapchain with a process-local
+ * id and (usually) an @ref xrt_allocation_collection that owns the GPU images.
+ *
+ * Per-image native handles are not stored on this struct; clients obtain them
+ * from the @ref xrt_allocation_collection see the struct for more details.
+ * Often @ref XRT_ALLOCATION_TYPE_NATIVE_IMAGE is used to import the images
+ * into other APIS, or directly use the @ref XRT_ALLOCATION_TYPE_VULKAN_IMAGE
+ * type.
  *
  * @ingroup xrt_iface comp
  * @extends xrt_swapchain
@@ -2192,7 +2199,17 @@ struct xrt_swapchain_native
 	 */
 	xrt_limited_unique_id_t limited_unique_id;
 
-	struct xrt_image_native images[XRT_MAX_SWAPCHAIN_IMAGES];
+	/*!
+	 * Allocation collection for this swapchain's images.
+	 *
+	 * Implementations MUST set this to a non-NULL collection for swapchains
+	 * created with the @ref xrt_compositor::create_swapchain function.
+	 *
+	 * This field MUST only be NULL for imported swapchains where the
+	 * compositor implementation MAY not attach a client-side allocation
+	 * collection.
+	 */
+	struct xrt_allocation_collection *xac;
 };
 
 /*!

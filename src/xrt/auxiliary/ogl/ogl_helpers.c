@@ -1,4 +1,5 @@
 // Copyright 2020, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -7,8 +8,12 @@
  * @ingroup aux_ogl
  */
 
+#include "xrt/xrt_allocation_collection.h"
+
 #include "util/u_handles.h"
 #include "util/u_logging.h"
+#include "util/u_pretty_print.h"
+#include "util/u_native_images.h"
 
 #include "ogl_helpers.h"
 #include "ogl_api.h" // IWYU pragma: keep
@@ -168,4 +173,59 @@ ogl_import_from_native(struct xrt_image_native *natives,
 
 	return true;
 #endif
+}
+
+XRT_CHECK_RESULT bool
+ogl_import_from_allocation_collection(struct xrt_allocation_collection *xac,
+                                      const struct xrt_swapchain_create_info *info,
+                                      struct ogl_import_results *results)
+{
+	struct xrt_image_native natives[XRT_MAX_SWAPCHAIN_IMAGES] = XRT_STRUCT_INIT;
+	struct xrt_swapchain_create_info local_info = XRT_STRUCT_INIT;
+	xrt_result_t xret = XRT_SUCCESS;
+
+	assert(xac != NULL);
+	assert(results != NULL);
+
+	// If no info was provided, get it from the allocation collection.
+	if (info == NULL) {
+		xret = xrt_allocation_collection_get_property( //
+		    xac,                                       //
+		    XRT_ALLOCATION_PROPERTY_SWAPCHAIN_INFO,    //
+		    &local_info);                              //
+		if (xret != XRT_SUCCESS) {
+			U_LOG_E("Failed to get swapchain info: %s", u_str_xrt_result(xret));
+			return false;
+		}
+		info = &local_info; // Use the local copy if no info was provided.
+	}
+
+	// Validate the image count.
+	uint32_t image_count = xac->image_count;
+	if (image_count > XRT_MAX_SWAPCHAIN_IMAGES) {
+		U_LOG_E("Image count %u exceeds maximum supported %u", image_count, XRT_MAX_SWAPCHAIN_IMAGES);
+		return false;
+	}
+
+	// Get the native images from the allocation collection.
+	xret = xrt_allocation_collection_get_all( //
+	    xac,                                  //
+	    XRT_ALLOCATION_TYPE_NATIVE_IMAGE,     //
+	    sizeof(struct xrt_image_native),      //
+	    natives);                             //
+	if (xret != XRT_SUCCESS) {
+		U_LOG_E("Failed to get native images: %s", u_str_xrt_result(xret));
+		return false;
+	}
+
+	// Do the actual import.
+	const bool ok = ogl_import_from_native(natives, image_count, info, results);
+
+	/*
+	 * Always unref the native handles, per XRT_ALLOCATION_TYPE_NATIVE_IMAGE
+	 * ownership rules we are responsible for freeing the handles.
+	 */
+	u_native_images_unref_all(natives, image_count);
+
+	return ok;
 }

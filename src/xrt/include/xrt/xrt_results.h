@@ -287,4 +287,9 @@ typedef enum xrt_result
 	 * This does not, however, indicate a permanent inability to start the stream. Other modes may work.
 	 */
 	XRT_ERROR_STREAMING_START_FAILED = -47,
+
+	/*!
+	 * The requested property is not supported.
+	 */
+	XRT_ERROR_UNSUPPORTED_PROPERTY = -48,
 } xrt_result_t;
