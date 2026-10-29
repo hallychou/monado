@@ -22,16 +22,20 @@ add_custom_target(
 add_library(driver_monado MODULE main.c)
 add_dependencies(driver_monado steamvr_generated_input_profiles)
 
-target_link_libraries(
-	driver_monado
-	PRIVATE
-		xrt-external-openvr
-		aux_util
-		st_ovrd
-		st_prober
-		target_lists
-		target_instance_no_comp
-	)
+if(XRT_FEATURE_IPC_CLIENT)
+	target_link_libraries(driver_monado PRIVATE xrt-external-openvr aux_util st_ovrd ipc_client)
+else()
+	target_link_libraries(
+		driver_monado
+		PRIVATE
+			xrt-external-openvr
+			aux_util
+			st_ovrd
+			st_prober
+			target_lists
+			target_instance_no_comp
+		)
+endif()
 
 # meta data that the steamvr plugin needs in the base directory of the steamvr plugin
 file(COPY driver.vrdrivermanifest DESTINATION ${PROJECT_BINARY_DIR}/steamvr-monado)

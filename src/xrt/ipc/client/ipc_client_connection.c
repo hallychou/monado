@@ -298,8 +298,14 @@ ipc_client_setup_shm(struct ipc_connection *ipc_c)
 	ipc_c->ism = mmap(NULL, size, access, flags, ipc_c->ism_handle, 0);
 #endif
 
+#ifndef XRT_OS_WINDOWS
+	if (ipc_c->ism == MAP_FAILED) {
+		ipc_c->ism = NULL;
+	}
+#endif
 	if (ipc_c->ism == NULL) {
-		IPC_ERROR(ipc_c, "Failed to mmap shm!");
+		IPC_ERROR(ipc_c, "Failed to mmap shm! (handle=%d, size=%zu)", ipc_c->ism_handle, size);
+		ipc_c->ism = NULL;
 		return XRT_ERROR_IPC_FAILURE;
 	}
 
