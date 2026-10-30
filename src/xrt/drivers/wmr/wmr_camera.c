@@ -14,6 +14,7 @@
 #include "math/m_api.h"
 
 #include "os/os_threading.h"
+#include "os/os_time.h"
 #include "xrt/xrt_byte_order.h"
 
 #include "util/u_autoexpgain.h"
@@ -92,10 +93,19 @@ struct wmr_camera
 	libusb_context *ctx;
 	libusb_device_handle *dev;
 
+	//! Set by wmr_camera_start(), cleared by wmr_camera_stop(). Guarded by @ref xfer_lock.
 	bool running;
 
 	struct os_thread_helper usb_thread;
 	int usb_complete;
+
+	//! Guards @ref running and @ref xfers_in_flight.
+	struct os_mutex xfer_lock;
+	/*!
+	 * Image transfers submitted and not yet finally completed. wmr_camera_stop() waits for this to
+	 * reach zero so that no img_xfer_cb() is executing once it returns and the transfers can be freed.
+	 */
+	int xfers_in_flight;
 
 	struct wmr_camera_config tcam_confs[WMR_MAX_CAMERAS]; //!< Configs for tracking cameras
 	int tcam_count;                                       //!< Number of tracking cameras
@@ -248,9 +258,6 @@ wmr_cam_usb_thread(void *ptr)
 
 		os_thread_helper_lock(&cam->usb_thread);
 	}
-
-	//! @todo Think this is not needed? what condition are we waiting for?
-	os_thread_helper_wait_locked(&cam->usb_thread);
 	os_thread_helper_unlock(&cam->usb_thread);
 
 	return NULL;
@@ -300,7 +307,15 @@ img_xfer_cb(struct libusb_transfer *xfer)
 
 	struct wmr_camera *cam = xfer->user_data;
 
-	if (!cam->running) {
+	// After a stop, the final completion of each transfer (normally LIBUSB_TRANSFER_CANCELLED) only retires it.
+	os_mutex_lock(&cam->xfer_lock);
+	bool running = cam->running;
+	if (!running) {
+		cam->xfers_in_flight--;
+	}
+	os_mutex_unlock(&cam->xfer_lock);
+
+	if (!running) {
 		return;
 	}
 
@@ -439,7 +454,20 @@ drop_frame:
 	xrt_frame_reference(&xf, NULL);
 
 out:
-	libusb_submit_transfer(xfer);
+	// Resubmit, unless wmr_camera_stop() ran while this frame was being processed: its cancel found
+	// nothing in flight to cancel, and a transfer resubmitted now, on a camera told to stop streaming,
+	// might never complete.
+	os_mutex_lock(&cam->xfer_lock);
+	if (!cam->running) {
+		cam->xfers_in_flight--;
+	} else {
+		int res = libusb_submit_transfer(xfer);
+		if (res < 0) {
+			WMR_CAM_ERROR(cam, "Failed to resubmit camera transfer: %s", libusb_error_name(res));
+			cam->xfers_in_flight--;
+		}
+	}
+	os_mutex_unlock(&cam->xfer_lock);
 }
 
 
@@ -466,6 +494,12 @@ wmr_camera_open(struct wmr_camera_open_config *config)
 		cam->tcam_confs[i] = *config->tcam_confs[i];
 		cam->cam_sinks[i] = config->tcam_sinks[i];                                     // SLAM frames
 		cam->cam_sinks[i + cam->tcam_count] = config->tcam_sinks[i + cam->tcam_count]; // Controller frames
+	}
+
+	if (os_mutex_init(&cam->xfer_lock) != 0) {
+		WMR_CAM_ERROR(cam, "Failed to initialise threading");
+		free(cam);
+		return NULL;
 	}
 
 	if (os_thread_helper_init(&cam->usb_thread) != 0) {
@@ -602,6 +636,8 @@ wmr_camera_free(struct wmr_camera *cam)
 		cam->ctx = NULL;
 	}
 
+	os_mutex_destroy(&cam->xfer_lock);
+
 	// Tidy the variable tracking.
 	u_var_remove_root(cam);
 	u_sink_debug_destroy(&cam->debug_sinks[WMR_DEBUG_SINK_SLAM]);
@@ -637,7 +673,9 @@ wmr_camera_start(struct wmr_camera *cam)
 		goto fail;
 	}
 
+	os_mutex_lock(&cam->xfer_lock);
 	cam->running = true;
+	os_mutex_unlock(&cam->xfer_lock);
 
 	for (int i = 0; i < NUM_XFERS; i++) {
 		uint8_t *recv_buf = malloc(cam->xfer_size);
@@ -646,7 +684,15 @@ wmr_camera_start(struct wmr_camera *cam)
 		                          img_xfer_cb, cam, 0);
 		cam->xfers[i]->flags |= LIBUSB_TRANSFER_FREE_BUFFER;
 
+		// Counted before submitting: the completion may run on the USB thread before submit returns.
+		os_mutex_lock(&cam->xfer_lock);
+		cam->xfers_in_flight++;
 		res = libusb_submit_transfer(cam->xfers[i]);
+		if (res < 0) {
+			cam->xfers_in_flight--;
+		}
+		os_mutex_unlock(&cam->xfer_lock);
+
 		if (res < 0) {
 			WMR_CAM_ERROR(cam, "Failed to submit transfer %d", i);
 			goto fail;
@@ -676,15 +722,41 @@ wmr_camera_stop(struct wmr_camera *cam)
 	int res;
 	int i;
 
+	os_mutex_lock(&cam->xfer_lock);
 	if (!cam->running) {
+		os_mutex_unlock(&cam->xfer_lock);
 		return true;
 	}
 	cam->running = false;
+	os_mutex_unlock(&cam->xfer_lock);
 
+	// A transfer whose callback is executing right now is not in flight and is not found by the cancel;
+	// that callback sees running == false and retires the transfer instead of resubmitting it.
 	for (i = 0; i < NUM_XFERS; i++) {
 		if (cam->xfers[i] != NULL) {
 			libusb_cancel_transfer(cam->xfers[i]);
 		}
+	}
+
+	/*
+	 * Cancellation is asynchronous: wait until every transfer has had its final completion, i.e. until
+	 * the USB thread has run the last img_xfer_cb(). Before that, a callback could still be delivering a
+	 * frame into sinks that the caller goes on to tear down, and wmr_camera_free() could close the device
+	 * with transfers in flight. The USB thread keeps handling events until wmr_camera_free(). Bounded
+	 * like the equivalent wait in the UVC driver, so a misbehaving device cannot hang the teardown.
+	 */
+	int in_flight = 0;
+	for (int attempt = 0; attempt < 500; attempt++) {
+		os_mutex_lock(&cam->xfer_lock);
+		in_flight = cam->xfers_in_flight;
+		os_mutex_unlock(&cam->xfer_lock);
+		if (in_flight == 0) {
+			break;
+		}
+		os_nanosleep(OS_NS_PER_USEC * 1000);
+	}
+	if (in_flight != 0) {
+		WMR_CAM_WARN(cam, "%d camera transfers still in flight after 500 ms, stopping anyway", in_flight);
 	}
 
 	res = set_active(cam, false);
