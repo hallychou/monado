@@ -17,6 +17,7 @@
 #include "vive/vive_common.h"
 
 #include "vp2/vp2_hid.h"
+#include "cosmos/cosmos_hid.h"
 
 #include "openvr_driver.h"
 
@@ -153,6 +154,19 @@ struct VivePro2Data
 	}
 };
 
+struct ViveCosmosData
+{
+	cosmos_hid *hid{nullptr};
+
+	~ViveCosmosData()
+	{
+		if (hid != nullptr) {
+			cosmos_hid_destroy(hid);
+			hid = nullptr;
+		}
+	}
+};
+
 class HmdDevice : public Device
 {
 public:
@@ -175,6 +189,10 @@ public:
 	// clang-format off
 	struct VivePro2Data vp2{};
 	// clang-format on
+
+	struct ViveCosmosData cosmos
+	{
+	};
 
 	HmdDevice(const DeviceBuilder &builder);
 
@@ -218,6 +236,9 @@ public:
 	bool
 	init_vive_pro_2(struct xrt_prober *xp);
 
+	bool
+	init_vive_cosmos(struct xrt_prober *xp);
+
 private:
 	std::unique_ptr<Parts> hmd_parts{nullptr};
 
@@ -229,6 +250,12 @@ private:
 
 	void
 	set_nominal_frame_interval(uint64_t interval_ns);
+
+	void
+	setup_display_extents(int width, int height);
+
+	struct os_hid_device *
+	open_hid(struct xrt_prober *xp, uint16_t vid, uint16_t pid, const char *device_name);
 
 	std::condition_variable hmd_parts_cv;
 	std::mutex hmd_parts_mut;

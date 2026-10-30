@@ -479,6 +479,8 @@ if(XRT_BUILD_DRIVER_SURVIVE)
 		survive/survive_internal.h
 		survive/survive_vp2.c
 		survive/survive_vp2.h
+		survive/survive_cosmos.c
+		survive/survive_cosmos.h
 		)
 	target_link_libraries(
 		drv_survive
@@ -490,6 +492,7 @@ if(XRT_BUILD_DRIVER_SURVIVE)
 			aux_vive
 			drv_includes
 			drv_vp2
+			drv_cosmos
 			PkgConfig::SURVIVE
 		)
 
@@ -618,16 +621,23 @@ if(XRT_BUILD_DRIVER_SIMULAVR)
 endif()
 
 if(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE OR XRT_BUILD_DRIVER_SURVIVE)
-	add_library(
-		drv_vp2 STATIC
-		vp2/vp2_hid.c
-		vp2/vp2_hid.h
-		vp2/vp2_config.cpp
-		vp2/vp2_config.h
-		vp2/vp2_protocol.h
-		)
+    add_library(
+        drv_vp2 STATIC
+        vp2/vp2_hid.c
+        vp2/vp2_hid.h
+        vp2/vp2_config.cpp
+        vp2/vp2_config.h
+        vp2/vp2_protocol.h
+    )
+    add_library(
+        drv_cosmos STATIC
+        cosmos/cosmos_hid.c
+        cosmos/cosmos_hid.h
+        cosmos/cosmos_config.cpp
+        cosmos/cosmos_config.h
+    )
 	target_link_libraries(
-		drv_vp2
+		drv_cosmos
 		PRIVATE
 			aux_os
 			aux_util
@@ -657,6 +667,7 @@ if(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE)
 			aux_math
 			aux_vive
 			drv_vp2
+			drv_cosmos
 			drv_includes
 			base
 			xrt-interfaces

@@ -36,6 +36,9 @@ vive_determine_variant(const char *model_number)
 	           strcmp(model_number, "VIVE_Pro 2 PV") == 0 || strcmp(model_number, "Vive_Pro 2 PV") == 0) {
 		variant = VIVE_VARIANT_PRO2;
 		U_LOG_D("Found HTC Vive Pro 2 HMD");
+	} else if (strcmp(model_number, "VIVE Cosmos External Tracking") == 0) {
+		variant = VIVE_VARIANT_COSMOS;
+		U_LOG_D("Found HTC Vive Cosmos External Tracking faceplate");
 	} else if (strcmp(model_number, "Beyond") == 0) {
 		variant = VIVE_VARIANT_BEYOND;
 		U_LOG_D("Found Bigscreen Beyond HMD");
@@ -68,6 +71,10 @@ vive_variant_scanout_info(enum VIVE_VARIANT variant,
 		*out_panel_refresh_type = XRT_PANEL_REFRESH_TYPE_ROLLING;
 		*out_scanout_direction = XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM;
 		*out_scanout_time_ns = frame_period_ns * 2448.0 / 2574.0;
+		return true;
+	case VIVE_VARIANT_COSMOS:
+		*out_scanout_direction = XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM;
+		*out_scanout_time_ns = frame_period_ns * 1700.0 / 1728.0;
 		return true;
 	default:
 		*out_panel_refresh_type = XRT_PANEL_REFRESH_TYPE_GLOBAL;

@@ -1062,6 +1062,9 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 		if (ctx->hmd->variant == VIVE_VARIANT_PRO2 && !ctx->hmd->init_vive_pro_2(xp)) {
 			U_LOG_IFL_W(level, "Found Vive Pro 2, but failed to initialize.");
 		}
+		if (ctx->hmd->variant == VIVE_VARIANT_COSMOS && !ctx->hmd->init_vive_cosmos(xp)) {
+			U_LOG_IFL_W(level, "Found Vive Cosmos, but failed to initialize.");
+		}
 
 		xsysd->static_xdevs[xsysd->static_xdev_count++] = ctx->hmd;
 	}
