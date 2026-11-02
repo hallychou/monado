@@ -55,6 +55,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#ifdef XRT_OS_LINUX
+#include <dirent.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <limits.h>
+#endif
 #ifndef XRT_OS_WINDOWS
 #include <unistd.h> // for sleep()
 #endif
@@ -570,6 +576,233 @@ control_ipd_value_decode(struct wmr_hmd *wh, const unsigned char *buffer, int si
 	}
 }
 
+/*
+ *
+ * Companion device hot-reconnect.
+ *
+ * WHY THIS EXISTS, because it is not obvious from the symptom. The companion device sits on
+ * the headset's USB2 branch, which re-enumerates constantly: measured on Linux at 0.92-4.63
+ * drops per minute with a p50 outage of 3.0 s, and measured on WINDOWS at 3.47/min with a p50
+ * of 2.9 s -- same cable, same headset, same machine, OS as the only variable.
+ * So the dropouts are the link's and we cannot fix them here.
+ *
+ * What IS ours is what happens next. A re-enumeration invalidates the open hidraw fd forever:
+ * the node the driver holds is gone, every subsequent read returns -1, and no amount of
+ * retrying will ever succeed again. That is why the companion error counter keeps climbing
+ * through stretches where lsusb already shows the branch back at 5/5 -- past the first
+ * re-enumeration, that counter is measuring our own dead-fd polling, not the device. And
+ * everything that rides this channel goes with it for the rest of the session: panel control
+ * (the screen-off at shutdown silently does nothing), the IPD value, and the proximity sensor
+ * behind XR_EXT_user_presence -- which is exactly the "presence freezes when the storm kills
+ * the channel" behaviour, and why the only known cure was relaunching the service.
+ *
+ * Windows takes the same 274 disconnects in 79 minutes while five titles play and the wearer
+ * notices nothing but audio. The difference is not tolerance of a broken handle -- it is that
+ * its stack re-opens the device. This does that.
+ *
+ * Deliberately scoped: only the companion. The USB3 branch (hololens sensors: IMU, camera
+ * tunnel, controller tunnel) has never dropped in any capture on either OS, so nothing that
+ * matters for tracking passes through here, and a reconnect must never be able to disturb it.
+ */
+
+#ifdef XRT_OS_LINUX
+/*!
+ * Find the hidraw node that currently belongs to the companion device, by the VID/PID
+ * remembered at creation time.
+ *
+ * Deliberately NOT done by remembering the old /dev/hidrawN path: the whole point is that the
+ * device re-enumerated, and the kernel hands out a different node number when it does.
+ * Deliberately NOT done through the prober either: re-probing rebuilds the device list other
+ * drivers hold pointers into, which is a much larger hammer than reading one sysfs attribute.
+ */
+static bool
+companion_find_hidraw_path(struct wmr_hmd *wh, char *out_path, size_t out_path_len)
+{
+	if (wh->companion_vid == 0 && wh->companion_pid == 0) {
+		// No prober device was recorded at creation, so there is no identity to search
+		// for. Degrade to the old behaviour rather than scanning sysfs on every retry.
+		return false;
+	}
+
+	char want[64];
+	// Format used by the HID core in uevent: bus:vendor:product, e.g. 0003:000003F0:00000580.
+	snprintf(want, sizeof(want), "HID_ID=0003:%08X:%08X", wh->companion_vid, wh->companion_pid);
+
+	DIR *dir = opendir("/sys/class/hidraw");
+	if (dir == NULL) {
+		return false;
+	}
+
+	bool found = false;
+	char fallback[PATH_MAX] = {0};
+	struct dirent *ent = NULL;
+	while ((ent = readdir(dir)) != NULL) {
+		if (strncmp(ent->d_name, "hidraw", 6) != 0) {
+			continue;
+		}
+
+		char uevent[PATH_MAX];
+		snprintf(uevent, sizeof(uevent), "/sys/class/hidraw/%s/device/uevent", ent->d_name);
+		FILE *f = fopen(uevent, "r");
+		if (f == NULL) {
+			continue;
+		}
+
+		bool match = false;
+		char line[256];
+		while (fgets(line, sizeof(line), f) != NULL) {
+			if (strncmp(line, want, strlen(want)) == 0) {
+				match = true;
+				break;
+			}
+		}
+		fclose(f);
+
+		if (!match) {
+			continue;
+		}
+
+		char dev_path[PATH_MAX];
+		snprintf(dev_path, sizeof(dev_path), "/dev/%s", ent->d_name);
+
+		// A VID/PID can carry several HID interfaces. The companion's control interface is
+		// USB interface 0 (see wmr_create_headset), so prefer the node whose sysfs path
+		// goes through a ":1.0" interface directory, and only fall back to a bare VID/PID
+		// match if none of them says so.
+		char link[PATH_MAX];
+		snprintf(link, sizeof(link), "/sys/class/hidraw/%s/device", ent->d_name);
+		char real[PATH_MAX];
+		if (realpath(link, real) != NULL && strstr(real, ":1.0/") != NULL) {
+			snprintf(out_path, out_path_len, "%s", dev_path);
+			found = true;
+			break;
+		}
+		if (fallback[0] == '\0') {
+			snprintf(fallback, sizeof(fallback), "%s", dev_path);
+		}
+	}
+	closedir(dir);
+
+	if (!found && fallback[0] != '\0') {
+		snprintf(out_path, out_path_len, "%s", fallback);
+		found = true;
+	}
+
+	return found;
+}
+
+/*!
+ * Try once to replace the dead companion handle with a fresh one.
+ *
+ * Returns true only when the swap actually happened. A false is the ORDINARY case during a
+ * 2-3 s outage -- the device simply is not there yet -- and is not logged loudly.
+ */
+static bool
+wmr_hmd_companion_reconnect(struct wmr_hmd *wh)
+{
+	char path[PATH_MAX];
+	if (!companion_find_hidraw_path(wh, path, sizeof(path))) {
+		// Still absent. Expected for the duration of the outage.
+		return false;
+	}
+
+	struct os_hid_device *fresh = NULL;
+	int ret = os_hid_open_hidraw(path, &fresh);
+	if (ret != 0 || fresh == NULL) {
+		wh->companion_reconnect_failures++;
+		// EACCES here is systematic, not transient: the node reappeared before udev
+		// re-applied its permissions, or the udev rule is missing entirely. Say so
+		// once rather than hiding it in a retry loop that will never succeed.
+		if (wh->companion_reconnect_failures == 1 || wh->companion_reconnect_failures % 100 == 0) {
+			WMR_WARN(wh, "Companion device is present at %s but could not be opened: %i (%s)", path, ret,
+			         strerror(ret < 0 ? -ret : ret));
+		}
+		return false;
+	}
+
+	int64_t now_ns = os_monotonic_get_ns();
+	uint64_t dead_ms =
+	    wh->companion_dead_since_ns != 0 ? (now_ns - wh->companion_dead_since_ns) / U_TIME_1MS_IN_NS : 0;
+
+	// Swap and close under the lock, so no other thread can still be inside a call on the
+	// old handle. Every companion access reads wh->hid_control_dev with hid_lock held --
+	// that is what makes this safe, and why the HID_SEND/HID_GET call sites below pass the
+	// field itself rather than a pointer cached before the lock.
+	os_mutex_lock(&wh->hid_lock);
+	struct os_hid_device *stale = wh->hid_control_dev;
+	wh->hid_control_dev = fresh;
+	if (stale != NULL) {
+		os_hid_destroy(stale);
+	}
+	os_mutex_unlock(&wh->hid_lock);
+
+	wh->companion_consecutive_read_errors = 0;
+	wh->companion_backoff_until_ns = 0;
+	wh->companion_dead_since_ns = 0;
+	wh->companion_reconnect_count++;
+
+	WMR_INFO(wh, "Companion device RECONNECTED on %s after %" PRIu64 " ms dead (reconnect #%u, %u failed opens)",
+	         path, dead_ms, wh->companion_reconnect_count, wh->companion_reconnect_failures);
+
+	// Re-assert the panel state. A companion power cycle is exactly the case where the
+	// screen-enable command is lost, and the historical symptom of that is a panel that
+	// stays dark for the rest of the session with a relaunch as the only cure. Sending it
+	// again is the same recovery the activation path already performs for the same reason
+	// (see wmr_hmd_activate_reverb's second screen_enable call). Env-gated in case a rig
+	// ever turns out to dislike it: WMR_COMPANION_RECONNECT_SCREEN=0.
+	static int reassert_screen = -1;
+	if (reassert_screen == -1) {
+		const char *env = getenv("WMR_COMPANION_RECONNECT_SCREEN");
+		reassert_screen = (env == NULL || env[0] != '0');
+	}
+	if (reassert_screen && wh->hmd_desc != NULL && wh->hmd_desc->screen_enable_func != NULL) {
+		wh->hmd_desc->screen_enable_func(wh, wh->hmd_screen_enable);
+	}
+
+	// Proximity/IPD re-sync after a reconnect: OFF by default.
+	// A feature-report read of WMR_CONTROL_MSG_IPD_VALUE here looked like "the experiment
+	// that finds out" whether the device answers. Measured: it does NOT answer, and the read
+	// blocks for 1.4-5.0 s (the usbhid control-transfer timeout) INSIDE the shared run loop,
+	// which is also the IMU reader -- so every companion re-enumeration stalled the IMU and
+	// camera streams by up to 5 s (kernel hidraw ring full, headset still sending), and the
+	// backlog then dragged the hw2mono filter (see wmr_source.c) into a 3.5 s rejection
+	// hole. The wearer got relocated on every natural USB2 drop. WMR_COMPANION_RECONNECT_RESYNC=1
+	// re-enables the read for a future A/B; presence stays on its pre-outage value until the
+	// sensor next changes, which is the lesser evil by a wide margin.
+	static int resync_enabled = -1;
+	if (resync_enabled == -1) {
+		const char *env = getenv("WMR_COMPANION_RECONNECT_RESYNC");
+		resync_enabled = (env != NULL && env[0] == '1');
+	}
+	if (resync_enabled) {
+		// Try to re-sync the proximity/IPD value. This message is CHANGE-driven, so after a
+		// reconnect the driver can sit indefinitely on a value from before the outage -- if the
+		// wearer took the headset off during it, presence would be wrong until they moved it
+		// again. The activation path reads ids 0x50/0x09/0x08/0x06 exactly like this, but on
+		// the hardware measured here this id never answers; the timing below is what makes the
+		// cost of finding that out visible when running the A/B.
+		unsigned char resync[64] = {WMR_CONTROL_MSG_IPD_VALUE};
+		int64_t rs0 = os_monotonic_get_ns();
+		os_mutex_lock(&wh->hid_lock);
+		int rret = os_hid_get_feature(wh->hid_control_dev, resync[0], resync, sizeof(resync));
+		os_mutex_unlock(&wh->hid_lock);
+		WMR_INFO(wh, "reconnect: proximity feature read took %.1f ms",
+		         (double)(os_monotonic_get_ns() - rs0) / 1e6);
+		if (rret >= 3 && resync[0] == WMR_CONTROL_MSG_IPD_VALUE) {
+			WMR_INFO(wh, "Companion proximity re-synced by feature read after reconnect (%i bytes)", rret);
+			control_ipd_value_decode(wh, resync, rret);
+		} else {
+			WMR_INFO(
+			    wh,
+			    "Companion proximity could NOT be re-synced by feature read (returned %i); presence stays "
+			    "on its pre-outage value until the sensor next changes",
+			    rret);
+		}
+	}
+	return true;
+}
+#endif // XRT_OS_LINUX
+
 static bool
 control_read_packets(struct wmr_hmd *wh)
 {
@@ -577,16 +810,107 @@ control_read_packets(struct wmr_hmd *wh)
 
 	unsigned char buffer[WMR_FEATURE_BUFFER_SIZE];
 
+	// The backoff below started life as a 10ms os_nanosleep INSIDE this shared read loop.
+	// That was wrong, and expensively so: With the (universal) companion storm
+	// active, that capped the whole loop -- hololens sensors reads included -- at
+	// ~100 iterations/s against ~250 IMU packets/s produced, so the kernel-side ring
+	// filled and the IMU stream ran a pinned ~630ms stale. hw2mono (fit from IMU
+	// arrivals) absorbed the lag, pushing the camera stamps ~630ms into the FUTURE:
+	// that one number turned out to be the 632-666ms offset behind a long-standing
+	// image-ahead-of-IMU tracker collapse here, and a constant ~1s perceived latency
+	// (prediction trusts the stamps, so it cannot bridge staleness it cannot see).
+	// Back off by SKIPPING the companion attempt until a deadline instead: same
+	// <=100Hz retry ceiling for the companion, zero impact on the loop's pace.
+	if (wh->companion_backoff_until_ns != 0 && os_monotonic_get_ns() < wh->companion_backoff_until_ns) {
+		return true;
+	}
+
 	// Do not block
 	os_mutex_lock(&wh->hid_lock);
 	int size = os_hid_read(wh->hid_control_dev, buffer, sizeof(buffer), 0);
 	os_mutex_unlock(&wh->hid_lock);
 
 	if (size < 0) {
-		WMR_ERROR(wh, "Error reading from companion (HMD control) device. Call to os_hid_read returned %i",
-		          size);
-		return false;
+		// The companion device can transiently drop off and re-enumerate while the
+		// headset display is powering up. Don't kill the whole read thread over a
+		// read error here: the same thread also reads the hololens sensors device
+		// (IMU and tunnelled controller packets), which is typically still healthy.
+		//
+		// This read is non-blocking, so in isolation a single failure is one cheap
+		// syscall. But a *sustained* dropout is not rare -- confirmed under real
+		// gameplay load (SLAM tracking plus a running application) --
+		// and the assumption that the outer loop is always paced by the hololens
+		// device's blocking 100ms read doesn't hold once real IMU data is arriving
+		// fast enough that read to stop blocking. Left unbounded, that measured
+		// 472175 consecutive failures and monado-service pinned at 400%+ CPU for
+		// the whole ~17-minute session, recovering only on SIGTERM. Back off once
+		// a dropout looks sustained rather than transient. Unlike the hololens
+		// sensors read, never give up -- the companion device isn't load-bearing
+		// for tracking, so slowing the retry rate is enough.
+		wh->companion_consecutive_read_errors++;
+		if (wh->companion_consecutive_read_errors == 1 || wh->companion_consecutive_read_errors % 1000 == 0) {
+			WMR_WARN(wh,
+			         "Error reading from companion (HMD control) device (%d in a row). Call to "
+			         "os_hid_read returned %i",
+			         wh->companion_consecutive_read_errors, size);
+		} else {
+			WMR_DEBUG(wh,
+			          "Error reading from companion (HMD control) device. Call to os_hid_read returned %i",
+			          size);
+		}
+#ifdef XRT_OS_LINUX
+		// Remember when this dead stretch started, so a recovery can be reported with a
+		// number instead of an adjective.
+		if (wh->companion_dead_since_ns == 0) {
+			wh->companion_dead_since_ns = os_monotonic_get_ns();
+		}
+
+		// Past the point where this stopped looking like a hiccup, assume the handle is
+		// a corpse and go looking for the device's new node.
+		//
+		// Both constants are TIME, not error counts, on purpose: the error count accrues
+		// at whatever rate the shared read loop happens to be running (paced by the
+		// hololens device's blocking read, and by this function's own backoff), so a
+		// count threshold makes the recovery latency depend on unrelated load. 500 ms of
+		// silence is comfortably longer than any hiccup and far shorter than the ~3 s
+		// outages the link actually produces; retrying every 250 ms costs four scans of
+		// /sys/class/hidraw per second of downtime and nothing at all while healthy.
+		// WMR_COMPANION_RECONNECT=0 restores the old retry-the-dead-fd-forever behaviour
+		// for an A/B.
+		static int reconnect_enabled = -1;
+		if (reconnect_enabled == -1) {
+			const char *env = getenv("WMR_COMPANION_RECONNECT");
+			reconnect_enabled = (env == NULL || env[0] != '0');
+		}
+		int64_t now_ns = os_monotonic_get_ns();
+		bool dead_long_enough = (now_ns - wh->companion_dead_since_ns) > (U_TIME_1MS_IN_NS * 500);
+		if (reconnect_enabled && dead_long_enough && now_ns >= wh->companion_reconnect_next_ns) {
+			wh->companion_reconnect_next_ns = now_ns + U_TIME_1MS_IN_NS * 250;
+			if (wmr_hmd_companion_reconnect(wh)) {
+				return true;
+			}
+		}
+#endif
+
+		if (wh->companion_consecutive_read_errors > 50) {
+			// WMR_COMPANION_BACKOFF_BLOCKING=1 restores the old in-loop sleep for
+			// an A/B against the skip-based backoff (see the comment at the top of
+			// this function for why the sleep is the wrong shape).
+			static int backoff_blocking = -1;
+			if (backoff_blocking == -1) {
+				backoff_blocking = getenv("WMR_COMPANION_BACKOFF_BLOCKING") != NULL;
+			}
+			if (backoff_blocking) {
+				os_nanosleep(U_TIME_1MS_IN_NS * 10);
+			} else {
+				wh->companion_backoff_until_ns = os_monotonic_get_ns() + U_TIME_1MS_IN_NS * 10;
+			}
+		}
+		return true;
 	}
+	wh->companion_consecutive_read_errors = 0;
+	wh->companion_backoff_until_ns = 0;
+	wh->companion_dead_since_ns = 0;
 	if (size == 0) {
 		WMR_TRACE(wh, "No more data to read");
 		return true; // No more messages, return.
@@ -704,10 +1028,14 @@ hololens_sensors_enable_imu(struct wmr_hmd *wh)
 	}
 }
 
+// The HID argument is evaluated INSIDE the lock on purpose: hid_control_dev can be swapped
+// underneath us by wmr_hmd_companion_reconnect(), and a handle read before taking the lock
+// could be the one that reconnect is about to close. Callers pass the field, not a cached copy.
 #define HID_SEND(hmd, HID, DATA, STR)                                                                                  \
 	do {                                                                                                           \
 		os_mutex_lock(&hmd->hid_lock);                                                                         \
-		int _ret = os_hid_set_feature(HID, DATA, sizeof(DATA));                                                \
+		struct os_hid_device *_hid = (HID);                                                                    \
+		int _ret = _hid != NULL ? os_hid_set_feature(_hid, DATA, sizeof(DATA)) : -1;                           \
 		os_mutex_unlock(&hmd->hid_lock);                                                                       \
 		if (_ret < 0) {                                                                                        \
 			WMR_ERROR(wh, "Send (%s): %i", STR, _ret);                                                     \
@@ -717,7 +1045,8 @@ hololens_sensors_enable_imu(struct wmr_hmd *wh)
 #define HID_GET(hmd, HID, DATA, STR)                                                                                   \
 	do {                                                                                                           \
 		os_mutex_lock(&hmd->hid_lock);                                                                         \
-		int _ret = os_hid_get_feature(HID, DATA[0], DATA, sizeof(DATA));                                       \
+		struct os_hid_device *_hid = (HID);                                                                    \
+		int _ret = _hid != NULL ? os_hid_get_feature(_hid, DATA[0], DATA, sizeof(DATA)) : -1;                  \
 		os_mutex_unlock(&hmd->hid_lock);                                                                       \
 		if (_ret < 0) {                                                                                        \
 			WMR_ERROR(wh, "Get (%s): %i", STR, _ret);                                                      \
@@ -732,7 +1061,6 @@ wmr_hmd_activate_reverb(struct wmr_hmd *wh)
 {
 	DRV_TRACE_MARKER();
 
-	struct os_hid_device *hid = wh->hid_control_dev;
 
 	WMR_TRACE(wh, "Activating HP Reverb G1/G2 HMD...");
 
@@ -743,22 +1071,22 @@ wmr_hmd_activate_reverb(struct wmr_hmd *wh)
 
 	for (int i = 0; i < 4; i++) {
 		unsigned char cmd[64] = {0x50, 0x01};
-		HID_SEND(wh, hid, cmd, "loop");
+		HID_SEND(wh, wh->hid_control_dev, cmd, "loop");
 
 		unsigned char data[64] = {0x50};
-		HID_GET(wh, hid, data, "loop");
+		HID_GET(wh, wh->hid_control_dev, data, "loop");
 
 		os_nanosleep(U_TIME_1MS_IN_NS * 10); // Sleep 10ms
 	}
 
 	unsigned char data[64] = {0x09};
-	HID_GET(wh, hid, data, "data_1");
+	HID_GET(wh, wh->hid_control_dev, data, "data_1");
 
 	data[0] = 0x08;
-	HID_GET(wh, hid, data, "data_2");
+	HID_GET(wh, wh->hid_control_dev, data, "data_2");
 
 	data[0] = 0x06;
-	HID_GET(wh, hid, data, "data_3");
+	HID_GET(wh, wh->hid_control_dev, data, "data_3");
 
 	WMR_INFO(wh, "Sent activation report.");
 
@@ -775,6 +1103,11 @@ wmr_hmd_activate_reverb(struct wmr_hmd *wh)
 	// Get the sleep amount, then sleep. One or two seconds was not enough.
 	uint64_t seconds = debug_get_num_option_sleep_seconds();
 	os_nanosleep(U_TIME_1S_IN_NS * seconds);
+
+	// The companion HID device can transiently drop off and re-enumerate right around
+	// activation, which can silently lose the screen-enable command sent above. Resend it
+	// now that things have had time to settle, so the panel doesn't stay stuck off/blank.
+	wmr_hmd_screen_enable_reverb(wh, wh->hmd_screen_enable);
 
 	return 0;
 }
@@ -806,14 +1139,13 @@ wmr_hmd_screen_enable_reverb(struct wmr_hmd *wh, bool enable)
 {
 	DRV_TRACE_MARKER();
 
-	struct os_hid_device *hid = wh->hid_control_dev;
 
 	unsigned char cmd[2] = {0x04, 0x00};
 	if (enable) {
 		cmd[1] = enable ? 0x01 : 0x00;
 	}
 
-	HID_SEND(wh, hid, cmd, (enable ? "screen_on" : "screen_off"));
+	HID_SEND(wh, wh->hid_control_dev, cmd, (enable ? "screen_on" : "screen_off"));
 
 	wh->hmd_screen_enable = enable;
 
@@ -826,20 +1158,19 @@ wmr_hmd_activate_odyssey_plus(struct wmr_hmd *wh)
 {
 	DRV_TRACE_MARKER();
 
-	struct os_hid_device *hid = wh->hid_control_dev;
 
 	WMR_TRACE(wh, "Activating Odyssey HMD...");
 
 	os_nanosleep(U_TIME_1MS_IN_NS * 300);
 
 	unsigned char data[64] = {0x16};
-	HID_GET(wh, hid, data, "data_1");
+	HID_GET(wh, wh->hid_control_dev, data, "data_1");
 
 	data[0] = 0x15;
-	HID_GET(wh, hid, data, "data_2");
+	HID_GET(wh, wh->hid_control_dev, data, "data_2");
 
 	data[0] = 0x14;
-	HID_GET(wh, hid, data, "data_3");
+	HID_GET(wh, wh->hid_control_dev, data, "data_3");
 
 	// Enable the HMD screen now, if required. Otherwise, if screen should initially be disabled, then
 	// proactively disable it now. Why? Because some cases of irregular termination of Monado will
@@ -872,14 +1203,13 @@ wmr_hmd_screen_enable_odyssey_plus(struct wmr_hmd *wh, bool enable)
 {
 	DRV_TRACE_MARKER();
 
-	struct os_hid_device *hid = wh->hid_control_dev;
 
 	unsigned char cmd[2] = {0x12, 0x00};
 	if (enable) {
 		cmd[1] = enable ? 0x01 : 0x00;
 	}
 
-	HID_SEND(wh, hid, cmd, (enable ? "screen_on" : "screen_off"));
+	HID_SEND(wh, wh->hid_control_dev, cmd, (enable ? "screen_on" : "screen_off"));
 
 	wh->hmd_screen_enable = enable;
 
@@ -1814,6 +2144,7 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
                struct os_hid_device *hid_holo,
                struct os_hid_device *hid_ctrl,
                struct xrt_prober_device *dev_holo,
+               struct xrt_prober_device *dev_companion,
                enum u_logging_level log_level,
                struct xrt_device **out_hmd,
                struct xrt_device **out_handtracker,
@@ -1847,6 +2178,15 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
 
 	wh->hid_hololens_sensors_dev = hid_holo;
 	wh->hid_control_dev = hid_ctrl;
+
+	// Remembered so the read thread can find the companion again after it re-enumerates.
+	// Taken from the prober device rather than hardcoded: the companion's VID/PID differ per
+	// headset model (see wmr_prober.c's check_and_get_interface), and a G2 constant here would
+	// quietly disable recovery on every other WMR headset.
+	if (dev_companion != NULL) {
+		wh->companion_vid = dev_companion->vendor_id;
+		wh->companion_pid = dev_companion->product_id;
+	}
 
 	// Mutex before thread.
 	ret = os_mutex_init(&wh->fusion.mutex);
@@ -2018,12 +2358,32 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
 
 		os_mutex_lock(&wh->controller_status_lock);
 		if (wmr_hmd_request_controller_status(wh)) {
-			/* @todo: Add a timed version of os_cond_wait and a timeout? */
-			/* This will be signalled from the reader thread */
-			while (!wh->have_left_controller_status && !wh->have_right_controller_status) {
-				os_cond_wait(&wh->controller_status_cond, &wh->controller_status_lock);
+			/* The reader thread sets one flag per processed status report (which
+			 * includes creating that controller when it is online) and signals the
+			 * cond once both are set. Wait for BOTH - exiting on the first would
+			 * routinely lose the second controller.
+			 *
+			 * Bounded: a lost status reply used to hang startup forever here
+			 * (resolving the @todo that was in this spot). Polling instead of a
+			 * cond wait because os_threading has no timed cond wait yet; while
+			 * waiting, re-request the status every second so one lost
+			 * request/reply doesn't cost the whole window. The deadline covers
+			 * two worst-case controller creations incl. fw-read retries. */
+			const int64_t deadline_ns = os_monotonic_get_ns() + (int64_t)10 * U_TIME_1S_IN_NS;
+			int64_t next_request_ns = os_monotonic_get_ns() + U_TIME_1S_IN_NS;
+			while (!(wh->have_left_controller_status && wh->have_right_controller_status) &&
+			       os_monotonic_get_ns() < deadline_ns) {
+				os_mutex_unlock(&wh->controller_status_lock);
+				os_nanosleep(U_TIME_1MS_IN_NS * 20);
+				os_mutex_lock(&wh->controller_status_lock);
+
+				int64_t now_ns = os_monotonic_get_ns();
+				if (now_ns >= next_request_ns) {
+					wmr_hmd_request_controller_status(wh);
+					next_request_ns = now_ns + U_TIME_1S_IN_NS;
+				}
 			}
-			have_controller_status = true;
+			have_controller_status = wh->have_left_controller_status && wh->have_right_controller_status;
 		}
 		os_mutex_unlock(&wh->controller_status_lock);
 
