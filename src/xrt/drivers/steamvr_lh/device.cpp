@@ -55,6 +55,7 @@
 DEBUG_GET_ONCE_BOOL_OPTION(lh_emulate_hand, "LH_EMULATE_HAND", true)
 DEBUG_GET_ONCE_FLOAT_OPTION(lh_override_ipd, "LH_OVERRIDE_IPD_MM", -1.0f)
 DEBUG_GET_ONCE_BOOL_OPTION(lh_standby_on_exit, "LH_STANDBY_ON_EXIT", false)
+DEBUG_GET_ONCE_NUM_OPTION(lh_max_prediction_ms, "LH_MAX_PREDICTION_MS", 80)
 
 // Each device will have its own input class.
 struct InputClass
@@ -253,6 +254,15 @@ const std::unordered_map<VIVE_VARIANT, InputClass> hmd_classes{
         },
     },
 };
+
+int64_t
+clamp_prediction_timestamp_ns(int64_t ts)
+{
+	static int64_t ns_from_now = debug_get_num_option_lh_max_prediction_ms() * U_TIME_1MS_IN_NS;
+	if (ns_from_now <= 0)
+		return ts;
+	return std::min(ts, chrono_timestamp_ns() + ns_from_now);
+}
 
 // Template for calling a member function of Device from a free function
 template <typename DeviceType, auto Func, typename Ret, typename... Args>
@@ -734,6 +744,8 @@ ControllerDevice::get_hand_tracking(enum xrt_input_name name,
 		return XRT_ERROR_NOT_IMPLEMENTED;
 	}
 
+	desired_timestamp_ns = clamp_prediction_timestamp_ns(desired_timestamp_ns);
+
 	// No handtracking data?
 	if (joint_history.empty()) {
 		out_value->is_active = false;
@@ -802,6 +814,7 @@ ControllerDevice::get_hand_tracking(enum xrt_input_name name,
 void
 Device::get_pose(uint64_t at_timestamp_ns, xrt_space_relation *out_relation)
 {
+	at_timestamp_ns = (uint64_t)clamp_prediction_timestamp_ns((int64_t)at_timestamp_ns);
 	m_relation_history_get(this->relation_hist, at_timestamp_ns, out_relation);
 }
 
@@ -1069,6 +1082,8 @@ HmdDevice::get_view_poses(const xrt_vec3 *default_eye_relation,
 		// Convert from mm -> m
 		eye_relation.x = override_ipd_mm / 1000.0f;
 	}
+
+	at_timestamp_ns = (uint64_t)clamp_prediction_timestamp_ns((int64_t)at_timestamp_ns);
 
 	xrt_result_t xret = u_device_get_view_poses( //
 	    this,                                    //
