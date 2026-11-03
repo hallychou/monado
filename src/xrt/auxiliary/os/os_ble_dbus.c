@@ -400,9 +400,12 @@ array_find_variant_value(const DBusMessageIter *first_elm, const char *key, DBus
 	for_each(elm, *first_elm)
 	{
 		const char *str = NULL;
-		dict_get_string_and_varient_child(&elm, &str, out_value);
+		int ret = dict_get_string_and_varient_child(&elm, &str, out_value);
+		if (ret < 0) {
+			continue;
+		}
 
-		if (strcmp(key, str) == 0) {
+		if (str && strcmp(key, str) == 0) {
 			return 1;
 		}
 	}
@@ -533,9 +536,12 @@ device_has_uuid(const DBusMessageIter *dict, const char *uuid, const char **out_
 	{
 		const char *iface_str = NULL;
 		DBusMessageIter iface_elm = {0};
-		dict_get_string_and_array_elm(&elm, &iface_str, &iface_elm);
+		ret = dict_get_string_and_array_elm(&elm, &iface_str, &iface_elm);
+		if (ret < 0) {
+			continue;
+		}
 
-		if (strcmp(iface_str, "org.bluez.Device1") != 0) {
+		if (iface_str && strcmp(iface_str, "org.bluez.Device1") != 0) {
 			continue;
 		}
 
@@ -630,9 +636,12 @@ gatt_char_has_uuid(const DBusMessageIter *dict, const char *uuid, const char **o
 		const char *iface_str = NULL;
 		DBusMessageIter iface_elm = {0};
 
-		dict_get_string_and_array_elm(&elm, &iface_str, &iface_elm);
+		ret = dict_get_string_and_array_elm(&elm, &iface_str, &iface_elm);
+		if (ret < 0) {
+			continue;
+		}
 
-		if (strcmp(iface_str, "org.bluez.GattCharacteristic1") != 0) {
+		if (iface_str && strcmp(iface_str, "org.bluez.GattCharacteristic1") != 0) {
 			continue;
 		}
 
