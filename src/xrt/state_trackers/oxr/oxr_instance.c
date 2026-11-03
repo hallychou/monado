@@ -210,7 +210,7 @@ detect_engine(struct oxr_logger *log, struct oxr_instance *inst, const XrInstanc
 }
 
 static void
-apply_quirks(struct oxr_logger *log, struct oxr_instance *inst, const XrInstanceCreateInfo *create_info)
+apply_quirks(struct oxr_logger *log, struct oxr_instance *inst, const char *app_name)
 {
 	// Reset.
 	inst->quirks.skip_end_session = false;
@@ -229,20 +229,23 @@ apply_quirks(struct oxr_logger *log, struct oxr_instance *inst, const XrInstance
 		inst->quirks.skip_end_session = true;
 	}
 
-	// This only works on Beat Saber <1.40.9, on newer versions
-	// the application name is "Unity Application" which is too generic.
-	if (strcmp("Beat Saber", create_info->applicationInfo.applicationName) == 0) {
-		inst->quirks.parallel_views = true;
-	}
+	if (app_name) {
 
-	// Metro Awakening sets XR_SWAPCHAIN_USAGE_INPUT_ATTACHMENT_BIT_KHR without requesting the extension.
-	if (strcmp("Impact", create_info->applicationInfo.applicationName) == 0) {
-		inst->quirks.no_usage_bit_validation_in_create_swapchain = true;
-	}
+		// This only works on Beat Saber <1.40.9, on newer versions
+		// the application name is "Unity Application" which is too generic.
+		if (strcmp("Beat Saber", app_name) == 0) {
+			inst->quirks.parallel_views = true;
+		}
 
-	// Microsoft Flight Simulator 2020 writes garbage in layerFlags for xrEndFrame
-	if (strcmp("FS2020", create_info->applicationInfo.applicationName) == 0) {
-		inst->quirks.no_layer_flags_bit_validation = true;
+		// Metro Awakening sets XR_SWAPCHAIN_USAGE_INPUT_ATTACHMENT_BIT_KHR without requesting the extension.
+		if (strcmp("Impact", app_name) == 0) {
+			inst->quirks.no_usage_bit_validation_in_create_swapchain = true;
+		}
+
+		// Microsoft Flight Simulator 2020 writes garbage in layerFlags for xrEndFrame
+		if (strcmp("FS2020", app_name) == 0) {
+			inst->quirks.no_layer_flags_bit_validation = true;
+		}
 	}
 
 	// Currently always true.
@@ -445,7 +448,7 @@ oxr_instance_create(struct oxr_logger *log,
 	detect_engine(log, inst, createInfo);
 
 	// Apply any quirks
-	apply_quirks(log, inst, createInfo);
+	apply_quirks(log, inst, createInfo->applicationInfo.applicationName);
 
 	u_var_add_root((void *)inst, "XrInstance", true);
 
