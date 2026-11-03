@@ -193,7 +193,7 @@ unscale_brightness(uint8_t scaled_brightness)
 static bool
 send_payload_to_sensor(struct xreal_air_hmd *hmd, uint8_t msgid, const uint8_t *data, uint8_t len)
 {
-	uint8_t payload[SENSOR_BUFFER_SIZE];
+	uint8_t payload[SENSOR_BUFFER_SIZE] = {0};
 
 	const uint16_t packet_len = 3 + len;
 	const uint16_t payload_len = 5 + packet_len;
@@ -203,7 +203,9 @@ send_payload_to_sensor(struct xreal_air_hmd *hmd, uint8_t msgid, const uint8_t *
 	payload[6] = ((packet_len >> 8u) & 0xFFu);
 	payload[7] = msgid;
 
-	memcpy(payload + 8, data, len);
+	if (data) {
+		memcpy(payload + 8, data, len);
+	}
 
 	const uint32_t checksum = crc32_checksum(payload + 5, packet_len);
 
@@ -675,7 +677,7 @@ read_thread(void *ptr)
 static bool
 send_payload_to_control(struct xreal_air_hmd *hmd, uint16_t msgid, const uint8_t *data, uint8_t len)
 {
-	uint8_t payload[CONTROL_BUFFER_SIZE];
+	uint8_t payload[CONTROL_BUFFER_SIZE] = {0};
 
 	const uint16_t packet_len = 17 + len;
 	const uint16_t payload_len = 5 + packet_len;
@@ -693,7 +695,9 @@ send_payload_to_control(struct xreal_air_hmd *hmd, uint16_t msgid, const uint8_t
 	// Reserved
 	memset(payload + 17, 0, 5);
 
-	memcpy(payload + 22, data, len);
+	if (data) {
+		memcpy(payload + 22, data, len);
+	}
 
 	const uint32_t checksum = crc32_checksum(payload + 5, packet_len);
 
