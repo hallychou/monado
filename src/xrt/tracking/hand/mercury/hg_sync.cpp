@@ -510,10 +510,6 @@ predict_new_regions_of_interest(struct HandTracking *hgt)
 	xrt_device_masks_sample masks{}; // Zero initialization
 
 	for (int hand_idx = 0; hand_idx < 2; hand_idx++) {
-		// If we don't have the past two frames, this code doesn't do what we want.
-		// If we only have *one* frame, we just reuse the same bounding box and hope the hand
-		// hasn't moved too much. @todo
-
 		auto &hh = hgt->history_hands[hand_idx];
 
 
@@ -526,29 +522,15 @@ predict_new_regions_of_interest(struct HandTracking *hgt)
 		// model.
 		hgt->this_frame_hand_detected[hand_idx] = hgt->last_frame_hand_detected[hand_idx];
 
-		uint64_t time_two_frames_ago = *hgt->history_timestamps.get_at_age(1);
-		uint64_t time_one_frame_ago = *hgt->history_timestamps.get_at_age(0);
-		uint64_t time_now = hgt->current_frame_timestamp;
+		// history_hands get_at_age(0) is actually the current hand because prediction runs after optimization
+		// for the current hand has pushed to the history
+		const Eigen::Array<float, 3, 21> &previous_pose = *hh.get_at_age(1);
+		const Eigen::Array<float, 3, 21> &current_pose = *hh.get_at_age(0);
 
+		Eigen::Array<float, 3, 21> add = current_pose - previous_pose;
+		add *= hgt->tuneable_values.amount_to_lerp_prediction.val;
 
-
-		// double dt_past = (double)() / (double)U_TIME_1S_IN_NS;
-		double dt_past = time_ns_to_s(time_one_frame_ago - time_two_frames_ago);
-
-		double dt_now = time_ns_to_s(time_now - time_one_frame_ago);
-
-
-		Eigen::Array<float, 3, 21> &n_minus_two = *hh.get_at_age(1);
-		Eigen::Array<float, 3, 21> &n_minus_one = *hh.get_at_age(0);
-
-
-		Eigen::Array<float, 3, 21> add;
-
-		add = n_minus_one - n_minus_two;
-
-		add *= (dt_now * hgt->tuneable_values.amount_to_lerp_prediction.val) / dt_past;
-
-		hgt->pose_predicted_keypoints[hand_idx] = n_minus_one + add;
+		hgt->pose_predicted_keypoints[hand_idx] = current_pose + add;
 
 
 		int num_outside[2];
