@@ -529,14 +529,17 @@ update_imu(struct vive_device *d, const void *buffer)
 
 		d->imu.sequence = seq;
 
-		rel.relation_flags =
-		    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT;
+		rel.relation_flags = XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
+		                     XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+		                     XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
 
 		os_mutex_lock(&d->fusion.mutex);
 		m_imu_3dof_update(&d->fusion.i3dof, d->imu.last_sample_ts_ns, &acceleration, &angular_velocity);
 		rel.pose.orientation = d->fusion.i3dof.rot;
 		os_mutex_unlock(&d->fusion.mutex);
 
+		// Relation velocities are in tracking space, while the gyro is in head space.
+		math_quat_rotate_derivative(&rel.pose.orientation, &angular_velocity, &rel.angular_velocity);
 		have_sample = true;
 
 		assert(j > 0);
