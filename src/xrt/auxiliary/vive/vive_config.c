@@ -457,6 +457,13 @@ vive_config_parse(struct vive_config *d, char *json_string, enum u_logging_level
 	}
 
 
+	// Beyond has square displays and omits physical_aspect_x_over_y from its
+	// calibration. Do not inherit the Vive's non-square distortion coordinates.
+	if (d->variant == VIVE_VARIANT_BEYOND) {
+		d->distortion.values[0].aspect_x_over_y = 1.0f;
+		d->distortion.values[1].aspect_x_over_y = 1.0f;
+	}
+
 	_get_imu(json, &d->imu);
 	const cJSON *head_json = u_json_get(json, "head");
 	if (head_json) {
