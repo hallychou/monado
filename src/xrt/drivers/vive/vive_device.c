@@ -421,6 +421,8 @@ update_imu(struct vive_device *d, const void *buffer)
 	const struct vive_imu_report *report = buffer;
 	const struct vive_imu_sample *sample = report->sample;
 	uint8_t last_seq = d->imu.sequence;
+	struct xrt_space_relation rel = {0};
+	bool have_sample = false;
 	int i;
 	int j;
 
@@ -527,7 +529,6 @@ update_imu(struct vive_device *d, const void *buffer)
 
 		d->imu.sequence = seq;
 
-		struct xrt_space_relation rel = {0};
 		rel.relation_flags =
 		    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT;
 
@@ -536,12 +537,18 @@ update_imu(struct vive_device *d, const void *buffer)
 		rel.pose.orientation = d->fusion.i3dof.rot;
 		os_mutex_unlock(&d->fusion.mutex);
 
-		m_relation_history_push(d->fusion.relation_hist, &rel, now_ns);
+		have_sample = true;
 
 		assert(j > 0);
 		uint32_t age = j <= 0 ? 0 : (uint32_t)(j - 1);
 
 		vive_source_push_imu_packet(d->source, age, d->imu.last_sample_ts_ns, raw_accel, raw_gyro);
+	}
+
+	// Integrate every new sample, but publish only the newest pose at the packet's
+	// host timestamp. Equal timestamps cause the history to reject later entries.
+	if (have_sample) {
+		m_relation_history_push(d->fusion.relation_hist, &rel, now_ns);
 	}
 }
 
