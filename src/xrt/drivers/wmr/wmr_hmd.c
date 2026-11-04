@@ -583,9 +583,15 @@ control_read_packets(struct wmr_hmd *wh)
 	os_mutex_unlock(&wh->hid_lock);
 
 	if (size < 0) {
-		WMR_ERROR(wh, "Error reading from companion (HMD control) device. Call to os_hid_read returned %i",
+		// The companion device can transiently drop off and re-enumerate while the
+		// headset display is powering up. Don't kill the whole read thread over a
+		// read error here: the same thread also reads the hololens sensors device
+		// (IMU and tunnelled controller packets), which is typically still healthy.
+		// No extra pacing: a failing read is one cheap syscall, and each loop
+		// iteration is already paced by the blocking hololens read.
+		WMR_DEBUG(wh, "Error reading from companion (HMD control) device. Call to os_hid_read returned %i",
 		          size);
-		return false;
+		return true;
 	}
 	if (size == 0) {
 		WMR_TRACE(wh, "No more data to read");
@@ -775,6 +781,11 @@ wmr_hmd_activate_reverb(struct wmr_hmd *wh)
 	// Get the sleep amount, then sleep. One or two seconds was not enough.
 	uint64_t seconds = debug_get_num_option_sleep_seconds();
 	os_nanosleep(U_TIME_1S_IN_NS * seconds);
+
+	// The companion HID device can transiently drop off and re-enumerate right around
+	// activation, which can silently lose the screen-enable command sent above. Resend it
+	// now that things have had time to settle, so the panel doesn't stay stuck off/blank.
+	wmr_hmd_screen_enable_reverb(wh, wh->hmd_screen_enable);
 
 	return 0;
 }
@@ -2018,12 +2029,32 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
 
 		os_mutex_lock(&wh->controller_status_lock);
 		if (wmr_hmd_request_controller_status(wh)) {
-			/* @todo: Add a timed version of os_cond_wait and a timeout? */
-			/* This will be signalled from the reader thread */
-			while (!wh->have_left_controller_status && !wh->have_right_controller_status) {
-				os_cond_wait(&wh->controller_status_cond, &wh->controller_status_lock);
+			/* The reader thread sets one flag per processed status report (which
+			 * includes creating that controller when it is online) and signals the
+			 * cond once both are set. Wait for BOTH - exiting on the first would
+			 * routinely lose the second controller.
+			 *
+			 * Bounded: a lost status reply used to hang startup forever here
+			 * (resolving the @todo that was in this spot). Polling instead of a
+			 * cond wait because os_threading has no timed cond wait yet; while
+			 * waiting, re-request the status every second so one lost
+			 * request/reply doesn't cost the whole window. The deadline covers
+			 * two worst-case controller creations incl. fw-read retries. */
+			const int64_t deadline_ns = os_monotonic_get_ns() + (int64_t)10 * U_TIME_1S_IN_NS;
+			int64_t next_request_ns = os_monotonic_get_ns() + U_TIME_1S_IN_NS;
+			while (!(wh->have_left_controller_status && wh->have_right_controller_status) &&
+			       os_monotonic_get_ns() < deadline_ns) {
+				os_mutex_unlock(&wh->controller_status_lock);
+				os_nanosleep(U_TIME_1MS_IN_NS * 20);
+				os_mutex_lock(&wh->controller_status_lock);
+
+				int64_t now_ns = os_monotonic_get_ns();
+				if (now_ns >= next_request_ns) {
+					wmr_hmd_request_controller_status(wh);
+					next_request_ns = now_ns + U_TIME_1S_IN_NS;
+				}
 			}
-			have_controller_status = true;
+			have_controller_status = wh->have_left_controller_status && wh->have_right_controller_status;
 		}
 		os_mutex_unlock(&wh->controller_status_lock);
 
