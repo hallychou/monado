@@ -223,9 +223,15 @@ vive_device_get_view_poses(struct xrt_device *xdev,
 	// Only supports two views.
 	assert(view_count <= 2);
 
+	struct vive_device *d = vive_device(xdev);
+	struct xrt_vec3 eye_relation = *default_eye_relation;
+	if (d->config.variant == VIVE_VARIANT_BEYOND && d->config.display.lens_separation > 0.0) {
+		eye_relation.x = d->config.display.lens_separation;
+	}
+
 	xrt_result_t xret = u_device_get_view_poses( //
 	    xdev,                                    //
-	    default_eye_relation,                    //
+	    &eye_relation,                           //
 	    at_timestamp_ns,                         //
 	    view_type,                               //
 	    view_count,                              //
@@ -237,7 +243,6 @@ vive_device_get_view_poses(struct xrt_device *xdev,
 	}
 
 	// This is for the Index' canted displays, on the Vive [Pro] they are identity.
-	struct vive_device *d = vive_device(xdev);
 	for (uint32_t i = 0; i < view_count && i < ARRAY_SIZE(d->config.display.rot); i++) {
 		out_poses[i].orientation = d->config.display.rot[i];
 	}
@@ -391,6 +396,12 @@ convert_imu_to_openxr(struct vive_device *d, struct xrt_vec3 *gyro, struct xrt_v
 		gyro_fixed.z = -gyro->z;
 		*gyro = gyro_fixed;
 
+		break;
+	}
+	case VIVE_VARIANT_BEYOND: {
+		// The Beyond IMU is tilted relative to the head: use its factory calibration.
+		math_quat_rotate_vec3(&d->config.display.imuref.orientation, accel, accel);
+		math_quat_rotate_vec3(&d->config.display.imuref.orientation, gyro, gyro);
 		break;
 	}
 	default: {
@@ -1258,11 +1269,13 @@ vive_device_create(struct os_hid_device *mainboard_dev,
 		return NULL;
 	}
 
-	ret = os_thread_helper_start(&d->watchman_thread, vive_watchman_run_thread, d);
-	if (ret != 0) {
-		VIVE_ERROR(d, "Failed to start watchman thread!");
-		vive_device_destroy((struct xrt_device *)d);
-		return NULL;
+	if (d->watchman_dev != NULL) {
+		ret = os_thread_helper_start(&d->watchman_thread, vive_watchman_run_thread, d);
+		if (ret != 0) {
+			VIVE_ERROR(d, "Failed to start watchman thread!");
+			vive_device_destroy((struct xrt_device *)d);
+			return NULL;
+		}
 	}
 
 	vive_device_setup_ui(d);
