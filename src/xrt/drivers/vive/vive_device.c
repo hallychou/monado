@@ -1160,10 +1160,6 @@ vive_device_create(struct os_hid_device *mainboard_dev,
 	          d->config.firmware.hardware_version_major, d->config.firmware.hardware_version_minor,
 	          d->config.firmware.hardware_version_micro);
 
-	vive_get_imu_range_report(d->sensors_dev, &d->config.imu.gyro_range, &d->config.imu.acc_range);
-	VIVE_INFO(d, "Vive gyroscope range     %f", d->config.imu.gyro_range);
-	VIVE_INFO(d, "Vive accelerometer range %f", d->config.imu.acc_range);
-
 	char *config = vive_read_config(d->sensors_dev);
 
 	// Set logging level for the config we are about to fill out.
@@ -1177,6 +1173,12 @@ vive_device_create(struct os_hid_device *mainboard_dev,
 		vive_config_parse(&d->config, config, d->log_level);
 		free(config);
 	}
+
+	// Parsing the config initializes default IMU ranges. Read the hardware ranges
+	// afterwards so those defaults do not overwrite the actual sensor scaling.
+	vive_get_imu_range_report(d->sensors_dev, &d->config.imu.gyro_range, &d->config.imu.acc_range);
+	VIVE_INFO(d, "Vive gyroscope range     %f", d->config.imu.gyro_range);
+	VIVE_INFO(d, "Vive accelerometer range %f", d->config.imu.acc_range);
 
 	// FoV values from config.
 	d->base.hmd->distortion.fov[0] = d->config.distortion.fov[0];
