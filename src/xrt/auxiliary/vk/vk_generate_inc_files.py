@@ -198,6 +198,11 @@ def get_device_cmds():
         Cmd("vkWaitForPresent2KHR", requires=("VK_KHR_present_wait2",)),
         None,
         Cmd("vkGetSwapchainStatusKHR", requires=("VK_KHR_shared_presentable_image",)),
+        None,
+        Cmd("vkGetPastPresentationTimingEXT", requires=("VK_EXT_present_timing",)),
+        Cmd("vkGetSwapchainTimeDomainPropertiesEXT", requires=("VK_EXT_present_timing",)),
+        Cmd("vkGetSwapchainTimingPropertiesEXT", requires=("VK_EXT_present_timing",)),
+        Cmd("vkSetSwapchainPresentTimingQueueSizeEXT", requires=("VK_EXT_present_timing",)),
     ]
 
 
@@ -245,6 +250,11 @@ def get_instance_cmds():
         Cmd(
             "vkGetPhysicalDeviceCalibrateableTimeDomainsEXT",
             requires=("VK_EXT_calibrated_timestamps",),
+        ),
+        None,
+        Cmd(
+            "vkGetPhysicalDeviceCalibrateableTimeDomainsKHR",
+            requires=("VK_KHR_calibrated_timestamps",),
         ),
         None,
         Cmd(
@@ -340,6 +350,7 @@ DEVICE_EXTENSIONS_TO_CHECK = [
     "VK_EXT_image_drm_format_modifier",
     "VK_EXT_image_tiling_control",
     "VK_EXT_metal_objects",
+    "VK_EXT_present_timing",
     "VK_EXT_robustness2",
     "VK_ANDROID_external_format_resolve",
     "VK_GOOGLE_display_timing",

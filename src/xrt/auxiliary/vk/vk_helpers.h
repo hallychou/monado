@@ -211,6 +211,19 @@ struct vk_bundle
 		//! Was KHR_present_wait2 requested, available, and enabled?
 		bool present_wait2;
 
+		//! What EXT_present_timing features are available?
+		struct
+		{
+			//! Is the vkGetPastPresentationTimingEXT function supported?
+			bool get_present_timing;
+
+			//! Is specifying absolute target present times supported?
+			bool at_absolute_time;
+
+			//! Is specifying relative target present times supported?
+			bool at_relative_time;
+		} present_timing;
+
 		//! Was KHR_video_maintenance1 requested, available, and enabled?
 		bool video_maintenance_1;
 
@@ -254,6 +267,10 @@ struct vk_bundle
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
 	PFN_vkCreateInstance vkCreateInstance;
 	PFN_vkEnumerateInstanceExtensionProperties vkEnumerateInstanceExtensionProperties;
+
+	VkTimeDomainEXT *calibrated_time_domains;
+	uint32_t calibrated_time_domain_count;
+	bool has_calibrated_cpu_time;
 
 	// Include the generated function pointers fields.
 #include "vk_helpers_h_funcs.h.inc"
@@ -446,6 +463,15 @@ vk_surface_transform_flag_string(VkSurfaceTransformFlagBitsKHR bits, bool null_o
  */
 XRT_CHECK_RESULT const char *
 vk_display_plane_alpha_flag_string(VkDisplayPlaneAlphaFlagBitsKHR bits, bool null_on_unknown);
+#endif
+
+#ifdef VK_EXT_present_timing
+/*!
+ * Returns the present stage flag if one valid bit is set,
+ * if multiple bits are set, will return 'MULTIPLE BIT SET'.
+ */
+XRT_CHECK_RESULT const char *
+vk_present_stage_flag_string(VkPresentStageFlagsEXT bits, bool null_on_unknown);
 #endif
 
 
@@ -780,6 +806,12 @@ struct vk_device_features
 	bool present_id2;
 	bool present_wait;
 	bool present_wait2;
+	struct
+	{
+		bool get_present_timing;
+		bool at_absolute_time;
+		bool at_relative_time;
+	} present_timing;
 	bool video_maintenance_1;
 	bool image_tiling_control;
 };
@@ -1350,6 +1382,27 @@ vk_create_timeline_semaphore_from_native(struct vk_bundle *vk, xrt_graphics_sync
  */
 
 #if defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps) || defined(XRT_DOXYGEN)
+
+#if defined(XRT_OS_LINUX) || defined(XRT_OS_OSX)
+#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT
+#elif defined(XRT_OS_WINDOWS)
+#define CPU_TIME_DOMAIN VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT
+#else
+#error "Vulkan timestamp domain needs porting"
+#endif
+
+/*!
+ * Get the list of calibrateable time domains from the physical device.
+ *
+ * @param vk                The Vulkan bundle.
+ * @param[out] out_count    Receives the number of calibrateable time domains.
+ * @param[out] out_domains  Populated with the list of calibrateable time domains on successful return.
+ *
+ * @ingroup aux_vk
+ */
+XRT_CHECK_RESULT VkResult
+vk_get_calibrateable_time_domains(struct vk_bundle *vk, uint32_t *out_count, VkTimeDomainEXT **out_domains);
+
 /*!
  * Convert timestamps in GPU ticks (as return by VkQueryPool timestamp queries)
  * into host CPU nanoseconds, same time domain as @ref os_monotonic_get_ns.
@@ -1370,8 +1423,87 @@ vk_create_timeline_semaphore_from_native(struct vk_bundle *vk, xrt_graphics_sync
  * @ingroup aux_vk
  */
 XRT_CHECK_RESULT VkResult
-vk_convert_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, uint64_t *in_out_timestamps);
-#endif
+vk_convert_device_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, uint64_t *in_out_timestamps);
+
+/*!
+ * Convert timestamps from an arbitrary domain into host CPU timestamps, in
+ * nanoseconds.
+ *
+ * Must only be used for source domains that are in nanosecond scale and do not
+ * require any pNext chain.
+ *
+ * @param vk                The Vulkan bundle.
+ * @param source_domain     Time domain to convert from.
+ * @param count             Number of timestamps to be converted.
+ * @param[in,out] in_out_timestamps Array of timestamps to be converted, done in place.
+ *
+ * @ingroup aux_vk
+ */
+XRT_CHECK_RESULT VkResult
+vk_convert_timestamps_to_host(struct vk_bundle *vk,
+                              VkTimeDomainEXT source_domain,
+                              uint32_t count,
+                              uint64_t *in_out_timestamps);
+
+/*!
+ * Convert timestamps from host CPU domain into an arbitrary domain, in
+ * nanoseconds.
+ *
+ * Must only be used for target domains that are in nanosecond scale and do not
+ * require any pNext chain.
+ *
+ * @param vk                The Vulkan bundle.
+ * @param target_domain     Time domain to convert into.
+ * @param count             Number of timestamps to be converted.
+ * @param[in,out] in_out_timestamps Array of timestamps to be converted, done in place.
+ *
+ * @ingroup aux_vk
+ */
+XRT_CHECK_RESULT VkResult
+vk_convert_timestamps_from_host(struct vk_bundle *vk,
+                                VkTimeDomainEXT target_domain,
+                                uint32_t count,
+                                uint64_t *in_out_timestamps);
+
+#if defined(VK_EXT_present_timing) || defined(XRT_DOXYGEN)
+
+/*!
+ * Convert swapchain present stage timestamps into host CPU timestamps, in
+ * nanoseconds.
+ *
+ * @param vk                The Vulkan bundle.
+ * @param swapchain         The swapchain info to use for conversion.
+ * @param count             Number of timestamps to be converted.
+ * @param[in,out] in_out_timestamps Array of timestamps to be converted, done in place.
+ *
+ * @ingroup aux_vk
+ */
+XRT_CHECK_RESULT VkResult
+vk_convert_present_stage_timestamps_to_host(struct vk_bundle *vk,
+                                            const VkSwapchainCalibratedTimestampInfoEXT *swapchain,
+                                            uint32_t count,
+                                            uint64_t *in_out_timestamps);
+
+/*!
+ * Convert host CPU timestamps into swapchain present stage timestamps, in
+ * nanoseconds.
+ *
+ * @param vk                The Vulkan bundle.
+ * @param swapchain         The swapchain info to use for conversion.
+ * @param count             Number of timestamps to be converted.
+ * @param[in,out] in_out_timestamps Array of timestamps to be converted, done in place.
+ *
+ * @ingroup aux_vk
+ */
+XRT_CHECK_RESULT VkResult
+vk_convert_host_timestamps_to_present_stage(struct vk_bundle *vk,
+                                            const VkSwapchainCalibratedTimestampInfoEXT *swapchain,
+                                            uint32_t count,
+                                            uint64_t *in_out_timestamps);
+
+#endif // defined(VK_EXT_present_timing) || defined(XRT_DOXYGEN)
+
+#endif // defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps) || defined(XRT_DOXYGEN)
 
 
 #ifdef __cplusplus

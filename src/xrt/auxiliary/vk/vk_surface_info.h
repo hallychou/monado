@@ -46,6 +46,10 @@ struct vk_surface_info
 	VkSurfaceCapabilitiesPresentWait2KHR present_wait2_caps;
 #endif
 
+#ifdef VK_EXT_present_timing
+	VkPresentTimingSurfaceCapabilitiesEXT present_timing_surface_caps;
+#endif
+
 #ifdef VK_KHR_shared_presentable_image
 	VkSharedPresentSurfaceCapabilitiesKHR shared_present_caps;
 #endif

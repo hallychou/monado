@@ -420,6 +420,9 @@ vk_result_string(VkResult code)
 #ifdef VK_EXT_image_compression_control
 		ENUM_TO_STR(VK_ERROR_COMPRESSION_EXHAUSTED_EXT);
 #endif
+#ifdef VK_EXT_present_timing
+		ENUM_TO_STR(VK_ERROR_PRESENT_TIMING_QUEUE_FULL_EXT);
+#endif
 #if defined(VK_KHR_maintenance1) && !defined(VK_VERSION_1_1)
 		ENUM_TO_STR(VK_ERROR_OUT_OF_POOL_MEMORY_KHR);
 #endif
@@ -1075,6 +1078,27 @@ vk_display_plane_alpha_flag_string(VkDisplayPlaneAlphaFlagBitsKHR bits, bool nul
 			return "DISPLAY PLANE ALPHA: MULTIPLE BITS SET";
 		} else {
 			return null_on_unknown ? NULL : "DISPLAY PLANE ALPHA: UNKNOWN BIT";
+		}
+	}
+}
+#endif
+
+#ifdef VK_EXT_present_timing
+XRT_CHECK_RESULT const char *
+vk_present_stage_flag_string(VkPresentStageFlagsEXT bits, bool null_on_unknown)
+{
+	switch (bits) {
+		ENUM_TO_STR(VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT);
+		ENUM_TO_STR(VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT);
+		ENUM_TO_STR(VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT);
+		ENUM_TO_STR(VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT);
+	default:
+		if (bits == 0) {
+			return "PRESENT STAGE: NO BITS SET";
+		} else if (bits & (bits - 1)) {
+			return "PRESENT STAGE: MULTIPLE BITS SET";
+		} else {
+			return null_on_unknown ? NULL : "PRESENT STAGE: UNKNOWN BIT";
 		}
 	}
 }

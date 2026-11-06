@@ -17,6 +17,8 @@
 #include "util/u_pretty_print.h"
 #include "util/u_thread_priority.h"
 
+#include "math/m_api.h"
+
 #include "vk/vk_surface_info.h"
 
 #include "main/comp_compositor.h"
@@ -55,6 +57,18 @@ get_vk(struct comp_target_swapchain *cts)
 {
 	return &cts->base.c->base.vk;
 }
+
+#ifdef VK_EXT_present_timing
+static struct comp_target_swapchain_frame_info *
+get_frame(struct comp_target_swapchain *cts, uint64_t frame_id)
+{
+	assert((uint64_t)frame_id <= (uint64_t)SIZE_MAX);
+
+	size_t index = (size_t)(frame_id % COMP_TARGET_SWAPCHAIN_NUM_PAST_FRAMES);
+
+	return &cts->past_frames[index];
+}
+#endif
 
 static inline bool
 is_shared_present_mode(struct vk_bundle *vk, VkPresentModeKHR present_mode)
@@ -377,6 +391,313 @@ done:
 	return true;
 }
 
+#ifdef VK_EXT_present_timing
+static inline bool
+is_within_of_each_other(int64_t l, int64_t r, int64_t range)
+{
+	int64_t t = (int64_t)l - (int64_t)r;
+	return (-(int64_t)range < t) && (t < (int64_t)range);
+}
+
+static inline bool
+is_within_half_ms(int64_t l, int64_t r)
+{
+	return is_within_of_each_other(l, r, U_TIME_HALF_MS_IN_NS);
+}
+
+static bool
+reject_buggy_frame_info(struct comp_target_swapchain *cts,
+                        uint64_t frame_id,
+                        int64_t prev_actual_present_time_ns,
+                        int64_t actual_present_time_ns)
+{
+	int64_t now_ns = os_monotonic_get_ns();
+
+	// With Mesa on Xorg or KHR_display, the first few timestamps are often
+	// wrong. With Mesa on Wayland (Weston), the timestamp is occasionally wrong
+	// after missing vblank. Skip processing the frame if the current or
+	// previous frame's present time is more than a second in the past.
+	if (!is_within_of_each_other(now_ns, actual_present_time_ns, U_TIME_1S_IN_NS) ||
+	    !is_within_of_each_other(now_ns, prev_actual_present_time_ns, U_TIME_1S_IN_NS)) {
+		COMP_WARN(cts->base.c,                                 //
+		          "Discarding timing for frame 0x%08" PRIx64   //
+		          "\n\tnow_ns: %" PRId64                       //
+		          "\n\tactual_present_time_ns: %" PRId64       //
+		          "\n\tprev_actual_present_time_ns: %" PRId64, //
+		          frame_id,                                    //
+		          now_ns,                                      //
+		          actual_present_time_ns,                      //
+		          prev_actual_present_time_ns);                //
+
+		return true;
+	}
+
+	return false;
+}
+
+static void
+calculate_present_timings(struct comp_target_swapchain *cts,
+                          struct comp_target_swapchain_frame_info *prev_f,
+                          struct comp_target_swapchain_frame_info *f,
+                          int64_t *out_earliest_present_time_ns,
+                          int64_t *out_target_vblank_time_ns)
+{
+	uint64_t diff_id = f->frame_id - prev_f->frame_id;
+
+	int64_t actual_present_time_ns = f->actual_present_time_ns;
+	int64_t prev_actual_present_time_ns = prev_f->actual_present_time_ns;
+
+	int64_t min_earliest_present_time_ns =
+	    MIN(prev_actual_present_time_ns + cts->base.c->frame_interval_ns * (int64_t)diff_id - U_TIME_HALF_MS_IN_NS,
+	        actual_present_time_ns - cts->present_timing.frame_interval_ns + U_TIME_HALF_MS_IN_NS);
+
+	*out_earliest_present_time_ns = prev_actual_present_time_ns;
+	while (*out_earliest_present_time_ns < min_earliest_present_time_ns) {
+		*out_earliest_present_time_ns += cts->present_timing.frame_interval_ns;
+
+		// Use hardware timestamp if possible.
+		if (is_within_half_ms(*out_earliest_present_time_ns, actual_present_time_ns)) {
+			*out_earliest_present_time_ns = actual_present_time_ns;
+		}
+	}
+
+	int64_t min_target_vblank_time_ns =
+	    prev_actual_present_time_ns + cts->base.c->frame_interval_ns * (int64_t)diff_id - U_TIME_HALF_MS_IN_NS;
+
+	*out_target_vblank_time_ns = prev_actual_present_time_ns;
+	do {
+		*out_target_vblank_time_ns += cts->present_timing.frame_interval_ns;
+
+		// Use hardware timestamp if possible.
+		if (is_within_half_ms(*out_target_vblank_time_ns, actual_present_time_ns)) {
+			*out_target_vblank_time_ns = actual_present_time_ns;
+		}
+	} while (*out_target_vblank_time_ns < min_target_vblank_time_ns);
+}
+
+static void
+do_process_frame_info(struct comp_target_swapchain *cts, struct comp_target_swapchain_frame_info *f)
+{
+	// Do not process the same frame twice.
+	if (f->processed) {
+		return;
+	}
+
+	int64_t queue_present_time_ns = f->queue_present_time_ns;
+	int64_t actual_present_time_ns = f->actual_present_time_ns;
+	int64_t gpu_end_ns = f->gpu_end_ns;
+
+	// Only process frame if info is complete.
+	if (queue_present_time_ns == 0 || actual_present_time_ns == 0 || gpu_end_ns == 0) {
+		return;
+	}
+
+	// Get frame info for previous frame.
+	uint64_t prev_frame_id = f->frame_id - cts->base.image_count + 1;
+	struct comp_target_swapchain_frame_info *prev_f = get_frame(cts, prev_frame_id);
+	if (prev_f->frame_id == 0 || prev_f->frame_id != prev_frame_id) {
+		return;
+	}
+
+	int64_t prev_queue_present_time_ns = prev_f->queue_present_time_ns;
+	int64_t prev_actual_present_time_ns = prev_f->actual_present_time_ns;
+	int64_t prev_gpu_end_ns = prev_f->gpu_end_ns;
+
+	// Only process frame if previous frame info is complete.
+	if (prev_queue_present_time_ns == 0 || prev_actual_present_time_ns == 0 || prev_gpu_end_ns == 0) {
+		return;
+	}
+
+	// Reject invalid timestamps from buggy drivers.
+	if (reject_buggy_frame_info(cts, f->frame_id, prev_actual_present_time_ns, actual_present_time_ns)) {
+		f->processed = true;
+		return;
+	}
+
+	int64_t earliest_present_time_ns;
+	int64_t target_vblank_time_ns;
+	calculate_present_timings(cts, prev_f, f, &earliest_present_time_ns, &target_vblank_time_ns);
+
+	// Calculate present margin as time until target vblank.
+	int64_t present_margin_ns = target_vblank_time_ns - gpu_end_ns;
+	// Pacer cannot handle negative present margin, zero it out here if negative.
+	if (present_margin_ns < 0) {
+		present_margin_ns = 0;
+	}
+
+	// Send timestamps to pacer.
+	int64_t now_ns = os_monotonic_get_ns();
+	u_pc_info(cts->upc,                   //
+	          f->frame_id,                //
+	          f->desired_present_time_ns, //
+	          actual_present_time_ns,     //
+	          earliest_present_time_ns,   //
+	          present_margin_ns,          //
+	          now_ns);                    //
+
+	// Mark frame as processed.
+	f->processed = true;
+}
+
+static VkResult
+convert_timestamp_to_host_ns(struct comp_target_swapchain *cts,
+                             VkTimeDomainEXT time_domain,
+                             uint64_t time_domain_id,
+                             VkPresentStageFlagsEXT present_stage,
+                             uint64_t *in_out_timestamp)
+{
+	struct vk_bundle *vk = get_vk(cts);
+
+	VkSwapchainCalibratedTimestampInfoEXT swapchain = {
+	    .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CALIBRATED_TIMESTAMP_INFO_EXT,
+	    .pNext = NULL,
+	    .swapchain = cts->swapchain.handle,
+	    .presentStage = present_stage,
+	    .timeDomainId = time_domain_id,
+	};
+
+	switch (time_domain) {
+	case VK_TIME_DOMAIN_DEVICE_EXT: return vk_convert_device_timestamps_to_host_ns(vk, 1, in_out_timestamp);
+	case VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT:
+		return vk_convert_present_stage_timestamps_to_host(vk, &swapchain, 1, in_out_timestamp);
+	default: return vk_convert_timestamps_to_host(vk, time_domain, 1, in_out_timestamp);
+	}
+}
+
+static VkResult
+convert_timestamp_to_device_ns(struct comp_target_swapchain *cts,
+                               VkTimeDomainEXT time_domain,
+                               uint64_t time_domain_id,
+                               VkPresentStageFlagsEXT present_stage,
+                               uint64_t *in_out_timestamp)
+{
+	struct vk_bundle *vk = get_vk(cts);
+
+	VkSwapchainCalibratedTimestampInfoEXT swapchain = {
+	    .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CALIBRATED_TIMESTAMP_INFO_EXT,
+	    .pNext = NULL,
+	    .swapchain = cts->swapchain.handle,
+	    .presentStage = present_stage,
+	    .timeDomainId = time_domain_id,
+	};
+
+	switch (time_domain) {
+	case VK_TIME_DOMAIN_DEVICE_EXT: return VK_ERROR_FEATURE_NOT_PRESENT;
+	case VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT:
+		return vk_convert_host_timestamps_to_present_stage(vk, &swapchain, 1, in_out_timestamp);
+	default: return vk_convert_timestamps_from_host(vk, time_domain, 1, in_out_timestamp);
+	}
+}
+
+static void
+handle_past_presentation_timing(struct comp_target_swapchain *cts, const VkPastPresentationTimingEXT *timing)
+{
+	VkResult res;
+
+	struct comp_target_swapchain_frame_info *f = get_frame(cts, timing->presentId);
+	if (f->frame_id != timing->presentId) {
+		return;
+	}
+
+	VkPresentStageFlagsEXT stage = timing->pPresentStages[0].stage;
+	uint64_t timestamp = timing->pPresentStages[0].time;
+
+	if (timing->timeDomain != CPU_TIME_DOMAIN) {
+		res = convert_timestamp_to_host_ns(cts, timing->timeDomain, timing->timeDomainId, stage, &timestamp);
+
+		if (res != VK_SUCCESS) {
+			return;
+		}
+	}
+
+	f->actual_present_time_ns = (int64_t)timestamp;
+	do_process_frame_info(cts, f);
+
+	// The driver may update the time domain id at any time.
+	if (timing->timeDomain == cts->present_timing.time_domain) {
+		cts->present_timing.time_domain_id = timing->timeDomainId;
+	}
+}
+
+static void
+do_update_timings_ext_present_timing(struct comp_target_swapchain *cts)
+{
+	struct vk_bundle *vk = get_vk(cts);
+
+	if (!vk->has_EXT_present_timing || !cts->present_timing.use_for_info) {
+		return;
+	}
+
+	if (cts->swapchain.handle == VK_NULL_HANDLE) {
+		return;
+	}
+
+	VkPastPresentationTimingInfoEXT info = {
+	    .sType = VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_INFO_EXT,
+	    .pNext = NULL,
+	    .flags = VK_PAST_PRESENTATION_TIMING_ALLOW_OUT_OF_ORDER_RESULTS_BIT_EXT,
+	    .swapchain = cts->swapchain.handle,
+	};
+
+	VkPastPresentationTimingPropertiesEXT properties = {
+	    .sType = VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_PROPERTIES_EXT,
+	    .pNext = NULL,
+	    .presentationTimingCount = 0,
+	    .pPresentationTimings = NULL,
+	};
+
+	VkResult res = vk->vkGetPastPresentationTimingEXT( //
+	    vk->device,                                    //
+	    &info,                                         //
+	    &properties);                                  //
+	if (res != VK_SUCCESS || properties.presentationTimingCount <= 0) {
+		return;
+	}
+
+	VkPresentStageTimeEXT *stage_times =
+	    U_TYPED_ARRAY_CALLOC(VkPresentStageTimeEXT, properties.presentationTimingCount);
+	if (!stage_times) {
+		return;
+	}
+
+	properties.pPresentationTimings =
+	    U_TYPED_ARRAY_CALLOC(VkPastPresentationTimingEXT, properties.presentationTimingCount);
+	if (!properties.pPresentationTimings) {
+		free(stage_times);
+		return;
+	}
+
+	for (uint32_t i = 0; i < properties.presentationTimingCount; i++) {
+		VkPastPresentationTimingEXT *timing = &properties.pPresentationTimings[i];
+		timing->sType = VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_EXT;
+		timing->presentStageCount = 1;
+		timing->pPresentStages = &stage_times[i];
+	}
+
+	res = vk->vkGetPastPresentationTimingEXT( //
+	    vk->device,                           //
+	    &info,                                //
+	    &properties);                         //
+	if (res != VK_SUCCESS || properties.presentationTimingCount <= 0) {
+		free(properties.pPresentationTimings);
+		free(stage_times);
+		return;
+	}
+
+	for (uint32_t i = 0; i < properties.presentationTimingCount; i++) {
+		VkPastPresentationTimingEXT *timing = &properties.pPresentationTimings[i];
+		if (timing->presentId == 0 || timing->presentStageCount < 1) {
+			continue;
+		}
+
+		handle_past_presentation_timing(cts, timing);
+	}
+
+	free(properties.pPresentationTimings);
+	free(stage_times);
+}
+#endif
+
 static void
 do_update_timings_google_display_timing(struct comp_target_swapchain *cts)
 {
@@ -641,6 +962,182 @@ create_vblank_event_thread(struct comp_target *ct)
 }
 #endif
 
+#ifdef VK_EXT_present_timing
+static void
+check_swapchain_time_domain_properties(struct comp_target_swapchain *cts,
+                                       const VkSwapchainTimeDomainPropertiesEXT *time_domain_properties)
+{
+	struct vk_bundle *vk = get_vk(cts);
+
+	if (time_domain_properties->timeDomainCount == 0) {
+		return;
+	}
+
+	for (uint32_t i = 0; i < time_domain_properties->timeDomainCount; i++) {
+		if (time_domain_properties->pTimeDomains[i] == CPU_TIME_DOMAIN) {
+			cts->present_timing.has_usable_time_domain = true;
+			cts->present_timing.time_domain = CPU_TIME_DOMAIN;
+			cts->present_timing.time_domain_id = time_domain_properties->pTimeDomainIds[i];
+			cts->present_timing.relative = !cts->surface.present_timing_caps.presentAtAbsoluteTimeSupported;
+			return;
+		}
+	}
+
+	if (!vk->has_calibrated_cpu_time) {
+		return;
+	}
+
+	if (cts->surface.present_timing_caps.presentAtAbsoluteTimeSupported) {
+		for (uint32_t i = 0; i < time_domain_properties->timeDomainCount; i++) {
+			for (uint32_t j = 0; j < vk->calibrated_time_domain_count; j++) {
+				if (time_domain_properties->pTimeDomains[i] == vk->calibrated_time_domains[j]) {
+					cts->present_timing.has_usable_time_domain = true;
+					cts->present_timing.time_domain = time_domain_properties->pTimeDomains[i];
+					cts->present_timing.time_domain_id = time_domain_properties->pTimeDomainIds[i];
+					cts->present_timing.relative = false;
+					return;
+				}
+			}
+		}
+	}
+
+	for (uint32_t i = 0; i < time_domain_properties->timeDomainCount; i++) {
+		// Cannot handle relative timestamps in device period, only in nanosecond period.
+		if (time_domain_properties->pTimeDomains[i] == VK_TIME_DOMAIN_DEVICE_KHR) {
+			continue;
+		}
+
+		for (uint32_t j = 0; j < vk->calibrated_time_domain_count; j++) {
+			if (time_domain_properties->pTimeDomains[i] == vk->calibrated_time_domains[j]) {
+				cts->present_timing.has_usable_time_domain = true;
+				cts->present_timing.time_domain = time_domain_properties->pTimeDomains[i];
+				cts->present_timing.time_domain_id = time_domain_properties->pTimeDomainIds[i];
+				cts->present_timing.relative = true;
+				return;
+			}
+		}
+	}
+}
+
+static bool
+check_swapchain_time_domains(struct comp_target_swapchain *cts)
+{
+	struct vk_bundle *vk = get_vk(cts);
+
+	if (!vk->has_EXT_present_timing || !cts->surface.present_timing_supported ||
+	    (!cts->surface.present_timing_caps.presentAtAbsoluteTimeSupported &&
+	     !cts->surface.present_timing_caps.presentAtRelativeTimeSupported)) {
+		return true;
+	}
+
+	VkSwapchainTimeDomainPropertiesEXT time_domain_properties = {
+	    .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_TIME_DOMAIN_PROPERTIES_EXT,
+	    .timeDomainCount = 0,
+	    .pTimeDomains = NULL,
+	    .pTimeDomainIds = NULL,
+	};
+	uint64_t time_domains_counter = 0;
+
+	VkResult ret = vk->vkGetSwapchainTimeDomainPropertiesEXT(vk->device, cts->swapchain.handle,
+	                                                         &time_domain_properties, &time_domains_counter);
+	if (ret != VK_SUCCESS) {
+		COMP_ERROR(cts->base.c, "vkGetSwapchainTimeDomainPropertiesEXT: %s", vk_result_string(ret));
+		return false;
+	}
+
+	if (time_domain_properties.timeDomainCount == 0) {
+		return true;
+	}
+
+	time_domain_properties.pTimeDomains =
+	    U_TYPED_ARRAY_CALLOC(VkTimeDomainEXT, time_domain_properties.timeDomainCount);
+	time_domain_properties.pTimeDomainIds = U_TYPED_ARRAY_CALLOC(uint64_t, time_domain_properties.timeDomainCount);
+
+	ret = vk->vkGetSwapchainTimeDomainPropertiesEXT(vk->device, cts->swapchain.handle, &time_domain_properties,
+	                                                &time_domains_counter);
+	if (ret != VK_SUCCESS) {
+		COMP_ERROR(cts->base.c, "vkGetSwapchainTimeDomainPropertiesEXT: %s", vk_result_string(ret));
+		free(time_domain_properties.pTimeDomainIds);
+		free(time_domain_properties.pTimeDomains);
+		return false;
+	}
+
+	check_swapchain_time_domain_properties(cts, &time_domain_properties);
+
+	free(time_domain_properties.pTimeDomainIds);
+	free(time_domain_properties.pTimeDomains);
+	return true;
+}
+
+static void
+init_present_timing_frame_interval(struct comp_target_swapchain *cts)
+{
+	struct vk_bundle *vk = get_vk(cts);
+
+	VkSwapchainTimingPropertiesEXT timing_props = {
+	    .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_TIMING_PROPERTIES_EXT,
+	    .pNext = NULL,
+	};
+
+	cts->present_timing.frame_interval_ns = cts->base.c->frame_interval_ns;
+	if (vk->has_EXT_present_timing && cts->surface.present_timing_supported) {
+		VkResult ret =
+		    vk->vkGetSwapchainTimingPropertiesEXT(vk->device, cts->swapchain.handle, &timing_props, NULL);
+		if (ret == VK_SUCCESS) {
+			if (timing_props.refreshInterval == UINT64_MAX) {
+				if (timing_props.refreshDuration != 0) {
+					cts->present_timing.frame_interval_ns = timing_props.refreshDuration;
+				}
+			} else if (timing_props.refreshInterval != 0) {
+				cts->present_timing.frame_interval_ns = timing_props.refreshInterval;
+			} else if (timing_props.refreshDuration != 0) {
+				cts->present_timing.frame_interval_ns = timing_props.refreshDuration;
+			}
+		}
+	}
+
+	if (is_within_half_ms(cts->base.c->frame_interval_ns, cts->present_timing.frame_interval_ns)) {
+		COMP_DEBUG(
+		    cts->base.c, "Updating compositor frame interval from %" PRIu64 " (%f Hz) to %" PRIu64 " (%f Hz)",
+		    cts->base.c->frame_interval_ns, 1000. * 1000. * 1000. / (float)cts->base.c->frame_interval_ns,
+		    cts->present_timing.frame_interval_ns,
+		    1000. * 1000. * 1000. / (float)cts->present_timing.frame_interval_ns);
+
+		cts->base.c->frame_interval_ns = cts->present_timing.frame_interval_ns;
+	}
+}
+
+static void
+init_present_timing(struct comp_target_swapchain *cts, bool use_display_timing_if_available)
+{
+	struct vk_bundle *vk = get_vk(cts);
+
+	if (cts->present_mode != VK_PRESENT_MODE_FIFO_KHR) {
+		return;
+	}
+
+	init_present_timing_frame_interval(cts);
+
+	if (!check_swapchain_time_domains(cts)) {
+		COMP_ERROR(cts->base.c, "Failed to query present timing time domains");
+	}
+
+	cts->present_timing.use_for_target_time = cts->present_timing.has_usable_time_domain;
+	cts->present_timing.use_for_info =
+	    cts->surface.present_id2_supported && cts->present_timing.has_usable_time_domain &&
+	    (cts->surface.present_timing_caps.presentStageQueries & VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT) &&
+	    use_display_timing_if_available;
+
+	if (cts->present_timing.use_for_info) {
+		VkResult ret = vk->vkSetSwapchainPresentTimingQueueSizeEXT(vk->device, cts->swapchain.handle,
+		                                                           COMP_TARGET_SWAPCHAIN_NUM_PAST_FRAMES);
+		if (ret != VK_SUCCESS) {
+			cts->present_timing.use_for_info = false;
+		}
+	}
+}
+#endif
+
 static void
 target_fini_semaphores(struct comp_target_swapchain *cts)
 {
@@ -705,16 +1202,9 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 
 	assert(present_queue != NULL);
 
-	int64_t now_ns = os_monotonic_get_ns();
 	// Some platforms really don't like the pacing_compositor code.
 	bool use_display_timing_if_available =
 	    debug_get_bool_option_use_display_timing() && cts->timing_usage == COMP_TARGET_USE_DISPLAY_IF_AVAILABLE;
-	if (cts->upc == NULL && use_display_timing_if_available && vk->has_GOOGLE_display_timing) {
-		struct u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
-		u_pc_display_timing_create(ct->c->frame_interval_ns, &config, &cts->upc);
-	} else if (cts->upc == NULL) {
-		u_pc_fake_create(ct->c->frame_interval_ns, now_ns, &cts->upc);
-	}
 
 	// Free old image views.
 	destroy_image_views(cts);
@@ -748,6 +1238,10 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 #ifdef VK_KHR_present_wait2
 	cts->surface.present_wait2_supported =
 	    vk->features.present_wait2 && info.present_wait2_caps.presentWait2Supported;
+#endif
+#ifdef VK_EXT_present_timing
+	// Save the present timing surface caps.
+	cts->surface.present_timing_supported = info.present_timing_surface_caps.presentTimingSupported;
 #endif
 
 	// If we have the present wait extension, mark it as supported now
@@ -797,6 +1291,11 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 
 	// Get the caps first.
 	VkSurfaceCapabilitiesKHR surface_caps = info.caps;
+
+#ifdef VK_EXT_present_timing
+	// Save the present timing surface caps.
+	cts->surface.present_timing_caps = info.present_timing_surface_caps;
+#endif
 
 	// Now we can free the info.
 	vk_surface_info_destroy(&info);
@@ -865,10 +1364,21 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 	    .oldSwapchain = old_swapchain_handle,
 	};
 
-#if defined(VK_KHR_present_id2) && defined(VK_KHR_present_wait2)
-	if (cts->surface.present_id2_supported && cts->surface.present_wait2_supported) {
+#ifdef VK_KHR_present_id2
+	if (cts->surface.present_id2_supported &&
+	    (cts->surface.present_wait2_supported || cts->surface.present_timing_supported)) {
 		swapchain_info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR;
-		swapchain_info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
+#ifdef VK_KHR_present_wait2
+		if (cts->surface.present_wait2_supported) {
+			swapchain_info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
+		}
+#endif
+	}
+#endif
+
+#ifdef VK_EXT_present_timing
+	if (vk->has_EXT_present_timing && cts->surface.present_timing_supported) {
+		swapchain_info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT;
 	}
 #endif
 
@@ -926,6 +1436,19 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 		COMP_INFO(ct->c, "Not using vblank event thread!");
 	}
 #endif
+
+#ifdef VK_EXT_present_timing
+	init_present_timing(cts, use_display_timing_if_available);
+#endif
+
+	int64_t now_ns = os_monotonic_get_ns();
+	if (cts->upc == NULL && use_display_timing_if_available &&
+	    (vk->has_GOOGLE_display_timing || cts->present_timing.use_for_info)) {
+		struct u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
+		u_pc_display_timing_create(ct->c->frame_interval_ns, &config, &cts->upc);
+	} else if (cts->upc == NULL) {
+		u_pc_fake_create(ct->c->frame_interval_ns, now_ns, &cts->upc);
+	}
 
 	// Done now.
 	return;
@@ -992,6 +1515,7 @@ comp_target_swapchain_present(struct comp_target *ct,
 {
 	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
 	struct vk_bundle *vk = get_vk(cts);
+	VkResult ret = VK_SUCCESS;
 
 	assert(present_queue != NULL);
 	assert(cts->current_frame_id > 0);
@@ -1007,20 +1531,67 @@ comp_target_swapchain_present(struct comp_target *ct,
 	    .pImageIndices = &index,
 	};
 
+#ifdef VK_EXT_present_timing
+	VkPresentTimingInfoEXT times_ext = {
+	    .sType = VK_STRUCTURE_TYPE_PRESENT_TIMING_INFO_EXT,
+	    .flags = VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT,
+	    .targetTime = cts->present_timing.use_for_target_time ? desired_present_time_ns : 0,
+	    .timeDomainId = cts->present_timing.time_domain_id,
+	    .presentStageQueries =
+	        cts->present_timing.use_for_info ? VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT : 0,
+	    .targetTimeDomainPresentStage = VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT,
+	};
+
+	VkPresentTimingsInfoEXT timings_ext = {
+	    .sType = VK_STRUCTURE_TYPE_PRESENT_TIMINGS_INFO_EXT,
+	    .swapchainCount = 1,
+	    .pTimingInfos = &times_ext,
+	};
+#endif
+
 #ifdef VK_GOOGLE_display_timing
-	VkPresentTimeGOOGLE times = {
+	VkPresentTimeGOOGLE times_google = {
 	    .presentID = (uint32_t)cts->current_frame_id,
 	    .desiredPresentTime = desired_present_time_ns - present_slop_ns,
 	};
 
-	VkPresentTimesInfoGOOGLE timings = {
+	VkPresentTimesInfoGOOGLE timings_google = {
 	    .sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE,
 	    .swapchainCount = 1,
-	    .pTimes = &times,
+	    .pTimes = &times_google,
 	};
+#endif
 
-	if (vk->has_GOOGLE_display_timing) {
-		vk_append_to_pnext_chain((VkBaseInStructure *)&present_info, (VkBaseInStructure *)&timings);
+#ifdef VK_EXT_present_timing
+	if (cts->present_timing.use_for_target_time && !cts->present_timing.relative) {
+		if (cts->present_timing.time_domain != CPU_TIME_DOMAIN) {
+			ret = convert_timestamp_to_device_ns(
+			    cts, cts->present_timing.time_domain, cts->present_timing.time_domain_id,
+			    VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT, &times_ext.targetTime);
+
+			if (ret != VK_SUCCESS) {
+				times_ext.targetTime = 0;
+			}
+		}
+	} else if (cts->present_timing.use_for_target_time && cts->present_timing.relative) {
+		uint64_t now_ns = (uint64_t)os_monotonic_get_ns();
+		times_ext.targetTime = times_ext.targetTime > now_ns ? times_ext.targetTime - now_ns : 0;
+		times_ext.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
+	}
+
+	if ((cts->present_timing.use_for_target_time && ret == VK_SUCCESS) || cts->present_timing.use_for_info) {
+		vk_append_to_pnext_chain((VkBaseInStructure *)&present_info, (VkBaseInStructure *)&timings_ext);
+	}
+
+	if (!cts->present_timing.use_for_target_time || ret != VK_SUCCESS)
+#endif
+
+#ifdef VK_GOOGLE_display_timing
+	{
+		if (vk->has_GOOGLE_display_timing) {
+			vk_append_to_pnext_chain((VkBaseInStructure *)&present_info,
+			                         (VkBaseInStructure *)&timings_google);
+		}
 	}
 #endif
 
@@ -1044,7 +1615,8 @@ comp_target_swapchain_present(struct comp_target *ct,
 #endif
 
 #ifdef VK_KHR_present_id2
-	if (cts->surface.present_id2_supported && cts->surface.present_wait2_supported) {
+	if (cts->surface.present_id2_supported &&
+	    (cts->surface.present_wait2_supported || cts->present_timing.use_for_info)) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&present_info, (VkBaseInStructure *)&vk_present_id2);
 	} else
 #endif
@@ -1062,7 +1634,8 @@ comp_target_swapchain_present(struct comp_target *ct,
 
 	// Need to take the queue lock for present.
 	vk_queue_lock(present_queue);
-	VkResult ret = vk->vkQueuePresentKHR(present_queue->queue, &present_info);
+	XRT_MAYBE_UNUSED int64_t queue_present_time_ns = os_monotonic_get_ns();
+	ret = vk->vkQueuePresentKHR(present_queue->queue, &present_info);
 	vk_queue_unlock(present_queue);
 
 
@@ -1074,6 +1647,18 @@ comp_target_swapchain_present(struct comp_target *ct,
 			os_thread_helper_signal_locked(&cts->vblank.event_thread);
 		}
 		os_thread_helper_unlock(&cts->vblank.event_thread);
+	}
+#endif
+
+#ifdef VK_EXT_present_timing
+	if (cts->present_timing.use_for_info) {
+		struct comp_target_swapchain_frame_info *f = get_frame(cts, present_id);
+		f->frame_id = present_id;
+		f->desired_present_time_ns = desired_present_time_ns;
+		f->queue_present_time_ns = queue_present_time_ns;
+		f->actual_present_time_ns = 0;
+		f->gpu_end_ns = 0;
+		f->processed = false;
 	}
 #endif
 
@@ -1204,6 +1789,9 @@ comp_target_swapchain_update_timings(struct comp_target *ct)
 
 	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
 
+#ifdef VK_EXT_present_timing
+	do_update_timings_ext_present_timing(cts);
+#endif
 	do_update_timings_google_display_timing(cts);
 	do_update_timings_vblank_thread(cts);
 
@@ -1217,6 +1805,16 @@ comp_target_swapchain_info_gpu(
 	COMP_TRACE_MARKER();
 
 	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
+
+#ifdef VK_EXT_present_timing
+	if (cts->present_timing.use_for_info) {
+		struct comp_target_swapchain_frame_info *f = get_frame(cts, (uint64_t)frame_id);
+		if (f->frame_id == (uint64_t)frame_id) {
+			f->gpu_end_ns = gpu_end_ns;
+			do_process_frame_info(cts, f);
+		}
+	}
+#endif
 
 	u_pc_info_gpu(cts->upc, frame_id, gpu_start_ns, gpu_end_ns, when_ns);
 }
