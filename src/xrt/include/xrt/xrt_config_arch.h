@@ -32,6 +32,16 @@
 #define XRT_ARCH_WAS_AUTODETECTED
 #endif
 
+#if defined(__powerpc__)
+#if defined(LITTLE_ENDIAN)
+#define XRT_ARCH_PPC64LE
+#define XRT_ARCH_WAS_AUTODETECTED
+#else
+#define XRT_ARCH_PPC64
+#define XRT_ARCH_WAS_AUTODETECTED
+#endif
+#endif
+
 #ifndef XRT_ARCH_WAS_AUTODETECTED
 #error "Arch could not be detected!"
 #endif

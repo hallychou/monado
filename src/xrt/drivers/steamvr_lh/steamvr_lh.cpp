@@ -77,6 +77,8 @@ namespace {
 #define OVR_PLAT_SUBDIR "linuxarm64"
 #elif defined(XRT_ARCH_X86_64)
 #define OVR_PLAT_SUBDIR "linux64"
+#elif defined(XRT_ARCH_PPC64LE)
+#define OVR_PLAT_SUBDIR "linuxppc64le"
 #else
 #error "steamvr_lh: Unknown Linux Architecture"
 #endif
