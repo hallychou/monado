@@ -541,60 +541,27 @@ pimax_p2_delete_mesh_set(struct pimax_p2_device *dev)
 }
 
 static size_t
-pimax_p2_get_mesh_path(struct pimax_p2_device *dev, size_t max_len, char *out_path)
+pimax_p2_get_mesh_path(struct pimax_p2_device *dev, char *out_path, size_t out_path_size)
 {
-	size_t outlen = 0;
-	// directory
+	char directory[4096] = {0};
 	if (getenv(PIMAX_MESHES_PATH_ENV_VAR) != NULL) {
-		strncpy(out_path, getenv(PIMAX_MESHES_PATH_ENV_VAR), max_len);
-		outlen += strlen(getenv(PIMAX_MESHES_PATH_ENV_VAR));
-		if (max_len > outlen) {
-			out_path[outlen] = '/';
+		int n = snprintf(directory, sizeof(directory), "%s", getenv(PIMAX_MESHES_PATH_ENV_VAR));
+		if (n < 0) {
+			return n;
 		}
-		outlen++;
 	} else {
-		strncpy(out_path, getenv("HOME"), max_len);
-		outlen += strlen(getenv("HOME"));
-		if (max_len > outlen) {
-			out_path[outlen] = '/';
+		int n = snprintf(directory, sizeof(directory), "%s/%s", getenv("HOME"), PIMAX_MESHES_DEFAULT_PATH);
+		if (n < 0) {
+			return n;
 		}
-		outlen++;
-		if (max_len > outlen) {
-			strncpy(out_path + outlen, PIMAX_MESHES_DEFAULT_PATH,
-			        (strlen(PIMAX_MESHES_DEFAULT_PATH) > (max_len - outlen)) ? 0 : (max_len - outlen));
-		}
-		outlen += strlen(PIMAX_MESHES_DEFAULT_PATH);
-		if (max_len > outlen) {
-			out_path[outlen] = '/';
-		}
-		outlen++;
 	}
 
 	// file
-	if (getenv(PIMAX_MESH_NAME_ENV_VAR)) {
-		if (max_len > outlen) {
-			size_t remaining =
-			    (strlen(getenv(PIMAX_MESH_NAME_ENV_VAR)) > (max_len - outlen)) ? 0 : (max_len - outlen);
-			strncpy(out_path + outlen, getenv(PIMAX_MESH_NAME_ENV_VAR), remaining);
-		}
-		outlen += strlen(getenv(PIMAX_MESH_NAME_ENV_VAR));
-	} else {
-		if (max_len > outlen) {
-			size_t remaining =
-			    (strlen(dev->default_mesh_name) > (max_len - outlen)) ? 0 : (max_len - outlen);
-			strncpy(out_path + outlen, dev->default_mesh_name, remaining);
-		}
-		outlen += strlen(dev->default_mesh_name);
+	if (getenv(PIMAX_MESH_NAME_ENV_VAR) != NULL) {
+		return snprintf(out_path, out_path_size, "%s/%s", directory, getenv(PIMAX_MESH_NAME_ENV_VAR));
 	}
 
-	if (max_len > outlen) {
-		out_path[outlen] = 0;
-	}
-	outlen++;
-	if (max_len > 0) {
-		out_path[max_len - 1] = 0;
-	}
-	return outlen;
+	return snprintf(out_path, out_path_size, "%s/%s", directory, dev->default_mesh_name);
 }
 
 static void
@@ -784,12 +751,10 @@ init_p2_pimax8kx(struct hid_device_info *devinfo, struct pimax_p2_device **pdev)
 	 * Distortion mesh stuff
 	 */
 
-	size_t mesh_path_len = pimax_p2_get_mesh_path(dev, 0, NULL);
-	char *meshpath = U_TYPED_ARRAY_CALLOC(char, mesh_path_len);
-	pimax_p2_get_mesh_path(dev, mesh_path_len, meshpath);
+	char meshpath[4096] = {0};
+	pimax_p2_get_mesh_path(dev, meshpath, sizeof(meshpath));
 	U_LOG_I("Using distortion meshes from: %s", meshpath);
 	pimax_p2_load_meshes_from_file(dev, meshpath);
-	free(meshpath);
 
 	/*
 	 * Start the polling thread. Currently, this only handles IPD adjustments

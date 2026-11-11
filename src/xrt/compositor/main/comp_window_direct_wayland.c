@@ -405,7 +405,7 @@ get_named_connector_or_first(struct comp_window_direct_wayland *w, const char *n
 			// If no connector is chosen, we're done.
 			conn = dev->connectors;
 			while (conn) {
-				if (!strcmp(name, conn->name)) {
+				if (name && strcmp(name, conn->name) == 0) {
 					w->selected_device = dev;
 					w->selected_connector = conn;
 					return true;
