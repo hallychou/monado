@@ -162,6 +162,8 @@ wmr_controller_og_packet_parse(struct wmr_controller_og *ctrl, const unsigned ch
 		last_input->thumbstick.values.y = 1.0f;
 	}
 
+	wmr_controller_base_apply_stick_deadzone(&last_input->thumbstick.values);
+
 	// Read trigger value (0x00 - 0xFF)
 	last_input->trigger = (float)read8(&p) / 0xFF;
 
@@ -262,6 +264,10 @@ wmr_controller_og_update_inputs(struct xrt_device *xdev)
 	xrt_inputs[WMR_CONTROLLER_INDEX_TRACKPAD_TOUCH].value.boolean = cur_inputs->trackpad.touch;
 	xrt_inputs[WMR_CONTROLLER_INDEX_TRACKPAD].value.vec2 = cur_inputs->trackpad.values;
 
+	for (uint32_t i = 0; i < xdev->input_count; i++) {
+		xrt_inputs[i].timestamp = (int64_t)wcb->last_imu_timestamp_ns;
+	}
+
 	os_mutex_unlock(&wcb->data_lock);
 
 	return XRT_SUCCESS;
@@ -337,7 +343,7 @@ wmr_controller_og_create(struct wmr_controller_connection *conn,
 	}
 
 	for (uint32_t i = 0; i < wcb->base.input_count; i++) {
-		wcb->base.inputs[0].active = true;
+		wcb->base.inputs[i].active = true;
 	}
 
 	ctrl->last_inputs.imu.timestamp_ticks = 0;
@@ -349,8 +355,8 @@ wmr_controller_og_create(struct wmr_controller_connection *conn,
 	u_var_add_f32(wcb, &ctrl->last_inputs.trigger, "input.trigger");
 	u_var_add_u8(wcb, &ctrl->last_inputs.battery, "input.battery");
 	u_var_add_bool(wcb, &ctrl->last_inputs.thumbstick.click, "input.thumbstick.click");
-	u_var_add_f32(wcb, &ctrl->last_inputs.thumbstick.values.x, "input.thumbstick.values.y");
-	u_var_add_f32(wcb, &ctrl->last_inputs.thumbstick.values.y, "input.thumbstick.values.x");
+	u_var_add_f32(wcb, &ctrl->last_inputs.thumbstick.values.x, "input.thumbstick.values.x");
+	u_var_add_f32(wcb, &ctrl->last_inputs.thumbstick.values.y, "input.thumbstick.values.y");
 	u_var_add_bool(wcb, &ctrl->last_inputs.trackpad.click, "input.trackpad.click");
 	u_var_add_bool(wcb, &ctrl->last_inputs.trackpad.touch, "input.trackpad.touch");
 	u_var_add_f32(wcb, &ctrl->last_inputs.trackpad.values.x, "input.trackpad.values.x");

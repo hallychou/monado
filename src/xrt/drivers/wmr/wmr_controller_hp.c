@@ -167,6 +167,8 @@ wmr_controller_hp_packet_parse(struct wmr_controller_hp *ctrl, const unsigned ch
 		last_input->thumbstick.values.y = 1.0f;
 	}
 
+	wmr_controller_base_apply_stick_deadzone(&last_input->thumbstick.values);
+
 	// Read trigger value (0x00 - 0xFF)
 	last_input->trigger = (float)read8(&p) / 0xFF;
 
@@ -264,11 +266,15 @@ wmr_controller_hp_update_inputs(struct xrt_device *xdev)
 	xrt_inputs[WMR_CONTROLLER_INDEX_HOME_CLICK].value.boolean = cur_inputs->home;
 	xrt_inputs[WMR_CONTROLLER_INDEX_X_A_CLICK].value.boolean = cur_inputs->x_a;
 	xrt_inputs[WMR_CONTROLLER_INDEX_Y_B_CLICK].value.boolean = cur_inputs->y_b;
-	xrt_inputs[WMR_CONTROLLER_INDEX_SQUEEZE_CLICK].value.boolean = cur_inputs->squeeze;
+	xrt_inputs[WMR_CONTROLLER_INDEX_SQUEEZE_CLICK].value.boolean = cur_inputs->squeeze_click;
 	xrt_inputs[WMR_CONTROLLER_INDEX_SQUEEZE_VALUE].value.vec1.x = cur_inputs->squeeze;
 	xrt_inputs[WMR_CONTROLLER_INDEX_TRIGGER_VALUE].value.vec1.x = cur_inputs->trigger;
 	xrt_inputs[WMR_CONTROLLER_INDEX_THUMBSTICK_CLICK].value.boolean = cur_inputs->thumbstick.click;
 	xrt_inputs[WMR_CONTROLLER_INDEX_THUMBSTICK].value.vec2 = cur_inputs->thumbstick.values;
+
+	for (uint32_t i = 0; i < xdev->input_count; i++) {
+		xrt_inputs[i].timestamp = (int64_t)wcb->last_imu_timestamp_ns;
+	}
 
 	os_mutex_unlock(&wcb->data_lock);
 
@@ -332,12 +338,12 @@ wmr_controller_hp_create(struct wmr_controller_connection *conn,
 	}
 
 	for (uint32_t i = 0; i < wcb->base.input_count; i++) {
-		wcb->base.inputs[0].active = true;
+		wcb->base.inputs[i].active = true;
 	}
 
 	ctrl->last_inputs.imu.timestamp_ticks = 0;
 
-	wcb->base.outputs[0].name = XRT_OUTPUT_NAME_WMR_HAPTIC;
+	wcb->base.outputs[0].name = XRT_OUTPUT_NAME_G2_CONTROLLER_HAPTIC;
 
 	u_var_add_bool(wcb, &ctrl->last_inputs.menu, "input.menu");
 	u_var_add_bool(wcb, &ctrl->last_inputs.home, "input.home");
@@ -347,8 +353,8 @@ wmr_controller_hp_create(struct wmr_controller_connection *conn,
 	u_var_add_f32(wcb, &ctrl->last_inputs.trigger, "input.trigger");
 	u_var_add_u8(wcb, &ctrl->last_inputs.battery, "input.battery");
 	u_var_add_bool(wcb, &ctrl->last_inputs.thumbstick.click, "input.thumbstick.click");
-	u_var_add_f32(wcb, &ctrl->last_inputs.thumbstick.values.x, "input.thumbstick.values.y");
-	u_var_add_f32(wcb, &ctrl->last_inputs.thumbstick.values.y, "input.thumbstick.values.x");
+	u_var_add_f32(wcb, &ctrl->last_inputs.thumbstick.values.x, "input.thumbstick.values.x");
+	u_var_add_f32(wcb, &ctrl->last_inputs.thumbstick.values.y, "input.thumbstick.values.y");
 	if (controller_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER) {
 		u_var_add_bool(wcb, &ctrl->last_inputs.x_a, "input.x");
 		u_var_add_bool(wcb, &ctrl->last_inputs.y_b, "input.y");
