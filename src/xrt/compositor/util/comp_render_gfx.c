@@ -493,7 +493,7 @@ do_quad_layer(struct render_gfx *render,
 	return VK_SUCCESS;
 }
 
-static void
+static inline void
 crg_clear_output(struct render_gfx *render, const struct comp_render_dispatch_data *d)
 {
 	render_gfx_begin_target(     //
@@ -604,8 +604,8 @@ err_no_memory:
 }
 
 /// For use after squashing layers
-static void
-crg_distortion_after_squash(struct render_gfx *render, const struct comp_render_dispatch_data *d)
+static inline void
+crg_distortion_after_squash(struct render_gfx *render, const struct comp_render_dispatch_data *d, bool do_timewarp)
 {
 
 	// Shared between all views.
@@ -630,13 +630,13 @@ crg_distortion_after_squash(struct render_gfx *render, const struct comp_render_
 
 	crg_distortion_common( //
 	    render,            //
-	    d->do_timewarp,    //
+	    do_timewarp,       //
 	    &md,               //
 	    d);                //
 }
 
 /// Fast path
-static void
+static inline void
 crg_distortion_fast_path(struct render_gfx *render,
                          const struct comp_render_dispatch_data *d,
                          const struct comp_layer *layer,
@@ -966,8 +966,8 @@ comp_render_gfx_dispatch(struct render_gfx *render,
 		/*
 		 * Distortion.
 		 */
-		crg_distortion_after_squash( //
-		    render,                  //
+		comp_render_gfx_distortion_after_squash( //
+		    render,                              //
 		    d);
 
 	} else {
@@ -976,4 +976,84 @@ comp_render_gfx_dispatch(struct render_gfx *render,
 		    render,       //
 		    d);           //
 	}
+}
+
+void
+comp_render_gfx_distortion_after_squash(struct render_gfx *render, const struct comp_render_dispatch_data *d)
+{
+	crg_distortion_after_squash( //
+	    render,                  //
+	    d,                       //
+	    d->do_timewarp);         //
+}
+
+void
+comp_render_gfx_distortion_fast_path(struct render_gfx *render,
+                                     const struct comp_layer *single_layer,
+                                     const struct comp_render_dispatch_data *d)
+{
+	assert(render && single_layer && d);
+	assert(d->target.initialized);
+	assert(d->fast_path);
+
+	const struct xrt_layer_projection_view_data *vds[XRT_MAX_VIEWS] = {0};
+
+	switch (single_layer->data.type) {
+	case XRT_LAYER_PROJECTION: {
+		const struct xrt_layer_projection_data *proj = &single_layer->data.proj;
+		for (uint32_t view = 0; view < d->target.view_count; ++view) {
+			vds[view] = &proj->v[view];
+		}
+		break;
+	}
+	case XRT_LAYER_PROJECTION_DEPTH: {
+		const struct xrt_layer_projection_depth_data *depth = &single_layer->data.depth;
+		for (uint32_t view = 0; view < d->target.view_count; ++view) {
+			vds[view] = &depth->v[view];
+		}
+		break;
+	}
+	default: {
+		//! unsupported layer type for fast path.
+		assert(false);
+		return;
+	}
+	}
+
+	crg_distortion_fast_path( //
+	    render,               //
+	    d,                    //
+	    single_layer,         //
+	    vds);                 //
+}
+
+void
+comp_render_gfx_clear(struct render_gfx *render, const struct comp_render_dispatch_data *d)
+{
+	assert(render && d);
+
+	if (d->target.gfx.rtr->rgrp->load_op == VK_ATTACHMENT_LOAD_OP_CLEAR) {
+		crg_clear_output(render, d);
+		return;
+	}
+
+	render_gfx_begin_target(     //
+	    render,                  //
+	    d->target.gfx.rtr,       //
+	    &background_color_idle); //
+
+	/*!
+	 * This is not best practice and the vk validation layer with
+	 * "Best Practices" enabled will print perf warning messages
+	 * about using vkCmdClearAttachments but this function is only
+	 * used when we have no layers to render and we just want to
+	 * clear the screen, so it should not matter.
+	 *
+	 * The other alternative is to use vkCmdClearColorImage but
+	 * this requires VK_IMAGE_USAGE_TRANSFER_DST_BIT flag set on
+	 * the comp target images.
+	 */
+	render_gfx_clear_color_attachment(render, &background_color_idle);
+
+	render_gfx_end_target(render);
 }

@@ -22,6 +22,7 @@
 extern "C" {
 #endif
 
+struct xrt_vsync_event;
 
 /*!
  * For marking timepoints on a frame's lifetime, not a async event.
@@ -103,6 +104,16 @@ struct comp_target_semaphores
 	 * Optional semaphore the target should signal when present is complete.
 	 */
 	VkSemaphore present_complete;
+
+	/*!
+	 * Optional Semaphore the renderer (consuming this target)
+	 *
+	 * Only used in cases where the compositor stages are split up
+	 * such as with single-buffer strip rendering
+	 *
+	 * When used, should signal when layer squashing is complete.
+	 */
+	VkSemaphore layer_squash_complete;
 
 	/*!
 	 * Semaphore the renderer (consuming this target)
@@ -362,6 +373,19 @@ struct comp_target
 	VkResult (*queue_supports_present)(struct comp_target *ct,
 	                                   struct vk_bundle_queue *queue,
 	                                   VkBool32 *out_supported);
+
+	/*!
+	 * Blocking wait until the next vsync event.
+	 *
+	 * @param ct              The compositor target.
+	 * @param out_vsync_event The vsync event result.
+	 *
+	 * @return
+	 * - @p XRT_SUCCESS when a new event was produced.
+	 * - @p XRT_NO_MORE_VSYNC_EVENTS when the source is being torn down.
+	 * - @p XRT_ERROR_NOT_IMPLEMENTED when this target doesn't support this function.
+	 */
+	xrt_result_t (*wait_next_vsync)(struct comp_target *ct, struct xrt_vsync_event *out_vsync_event);
 
 	/*!
 	 * Destroys this target.
@@ -706,6 +730,23 @@ comp_target_queue_supports_present(struct comp_target *ct, struct vk_bundle_queu
 {
 	COMP_TRACE_MARKER();
 	return ct->queue_supports_present(ct, queue, out_supported);
+}
+
+/*!
+ * @copydoc comp_target::wait_next_vsync
+ *
+ * @public @memberof comp_target
+ * @ingroup comp_main
+ */
+static inline xrt_result_t
+comp_target_wait_next_vsync(struct comp_target *ct, struct xrt_vsync_event *ve)
+{
+	COMP_TRACE_MARKER();
+
+	if (ct->wait_next_vsync == NULL) {
+		return XRT_ERROR_NOT_IMPLEMENTED;
+	}
+	return ct->wait_next_vsync(ct, ve);
 }
 
 /*!

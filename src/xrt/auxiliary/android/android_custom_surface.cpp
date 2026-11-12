@@ -274,3 +274,25 @@ android_custom_surface_get_display_refresh_rate(struct _JavaVM *vm, void *contex
 		return 0;
 	}
 }
+
+int64_t
+android_custom_surface_get_app_vsync_offset_ns(struct _JavaVM *vm, void *context, int32_t display_id)
+{
+	jni::init(vm);
+	try {
+		auto clazz = loadClassFromRuntimeApk((jobject)context, MonadoView::getFullyQualifiedTypeName());
+		if (clazz.isNull()) {
+			U_LOG_E("Could not load class '%s' from package '%s'", MonadoView::getFullyQualifiedTypeName(),
+			        XRT_ANDROID_PACKAGE);
+			return 0;
+		}
+
+		// Teach the wrapper our class before we start to use it.
+		MonadoView::staticInitClass((jclass)clazz.object().getHandle());
+
+		return MonadoView::getAppVsyncOffsetNanos(Context((jobject)context), display_id);
+	} catch (std::exception const &e) {
+		U_LOG_E("Could not get display refresh rate: %s", e.what());
+		return 0;
+	}
+}

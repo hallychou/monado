@@ -44,6 +44,16 @@ typedef enum xrt_result
 	XRT_OPERATION_CANCELLED = 4,
 
 	/*!
+	 * No vsync event has been produced yet. A later call may succeed.
+	 */
+	XRT_VSYNC_EVENT_UNAVAILABLE = 5,
+
+	/*!
+	 * A vsync source has stopped / no longer will emit vsync events.
+	 */
+	XRT_NO_MORE_VSYNC_EVENTS = 6,
+
+	/*!
 	 * A problem occurred either with the IPC transport itself, with invalid commands from the client, or with
 	 * invalid responses from the server.
 	 */

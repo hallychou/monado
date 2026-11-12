@@ -29,6 +29,11 @@ inline std::string Display::getName() const {
     return object().call<std::string>(Meta::data().getName);
 }
 
+inline int64_t Display::getAppVsyncOffsetNanos() const {
+    assert(!isNull());
+    return static_cast<int64_t>(object().call<long long>(Meta::data().getAppVsyncOffsetNanos));
+}
+
 inline hardware::display::DeviceProductInfo
 Display::getDeviceProductInfo() const {
     assert(!isNull());

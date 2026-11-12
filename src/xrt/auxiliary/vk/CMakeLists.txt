@@ -45,6 +45,8 @@ add_library(
 	vk_compositor_flags.c
 	vk_compositor_flags.h
 	vk_debug.c
+	vk_display_control_vsync_source.c
+	vk_display_control_vsync_source.h
 	vk_documentation.h
 	vk_enumerate.c
 	vk_extensions_helpers.c

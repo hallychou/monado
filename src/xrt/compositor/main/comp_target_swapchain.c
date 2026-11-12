@@ -8,6 +8,7 @@
  * @author Jakob Bornecrantz <jakob@collabora.com>
  * @ingroup comp_main
  */
+#include "xrt/xrt_vsync_source.h"
 
 #include "os/os_threading.h"
 
@@ -20,6 +21,7 @@
 #include "vk/vk_surface_info.h"
 
 #include "main/comp_compositor.h"
+#include "main/comp_vsync_source_factory.h"
 #include "main/comp_target_swapchain.h"
 
 #include <assert.h>
@@ -423,223 +425,55 @@ do_update_timings_google_display_timing(struct comp_target_swapchain *cts)
 static void
 do_update_timings_vblank_thread(struct comp_target_swapchain *cts)
 {
-	if (!cts->vblank.thread_running) {
+	if (cts->vsync_source == NULL) {
 		return;
 	}
 
-	int64_t last_vblank_ns;
+	int64_t last_vblank_ns = 0;
 
-	os_thread_helper_lock(&cts->vblank.event_thread);
-	last_vblank_ns = cts->vblank.last_vblank_ns;
-	cts->vblank.last_vblank_ns = 0;
-	os_thread_helper_unlock(&cts->vblank.event_thread);
+	struct xrt_vsync_event vsync_event = {0};
+	const xrt_result_t res = xrt_vsync_source_peek_last(cts->vsync_source, &vsync_event);
+	if (res == XRT_SUCCESS && //
+	    vsync_event.vsync_count != cts->last_vsync_count) {
+
+		last_vblank_ns = vsync_event.timestamp_ns;
+		cts->last_vsync_count = vsync_event.vsync_count;
+	}
 
 	if (last_vblank_ns) {
 		u_pc_update_vblank_from_display_control(cts->upc, last_vblank_ns);
 	}
 }
 
-#if defined(VK_EXT_display_surface_counter) && defined(VK_EXT_display_control)
-static bool
-check_surface_counter_caps(struct comp_target *ct, struct vk_bundle *vk, struct comp_target_swapchain *cts)
+static void
+create_vblank_event_thread(struct comp_target_swapchain *cts)
 {
-	if (!vk->has_EXT_display_surface_counter) {
-		return true;
+	assert(cts != NULL);
+	struct comp_target *ct = &cts->base;
+
+	if (cts->vsync_source != NULL) {
+		COMP_DEBUG(ct->c, "vblank event thread is already started");
+		return;
 	}
 
-	VkSurfaceCapabilities2EXT caps = {
-	    .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES2_EXT,
-	};
-
-	VkResult ret = vk->vkGetPhysicalDeviceSurfaceCapabilities2EXT(vk->physical_device, cts->surface.handle, &caps);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(ct->c, "vkGetPhysicalDeviceSurfaceCapabilities2EXT: %s", vk_str_result(ret));
-		return false;
+	struct xrt_vsync_source *new_vsync_src = NULL;
+	xrt_result_t res = comp_vsync_source_factory_create(cts, &new_vsync_src);
+	switch (res) {
+	case XRT_SUCCESS: {
+		cts->vsync_source = new_vsync_src;
+		COMP_INFO(ct->c, "Started vblank event thread!");
+		break;
 	}
-
-	cts->surface.surface_counter_flags = caps.supportedSurfaceCounters;
-	COMP_DEBUG(ct->c, "Supported surface counter flags: %d", caps.supportedSurfaceCounters);
-
-	return true;
+	case XRT_ERROR_FEATURE_NOT_SUPPORTED: {
+		COMP_INFO(ct->c, "Not using vblank event thread!");
+		break;
+	}
+	default: {
+		COMP_ERROR(ct->c, "Failed to start vblank event thread!, error-code: %d", res);
+		break;
+	}
+	}
 }
-
-static uint64_t
-get_surface_counter_val(struct comp_target *ct)
-{
-	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
-	struct vk_bundle *vk = get_vk(cts);
-	VkResult ret;
-
-	if ((cts->surface.surface_counter_flags & VK_SURFACE_COUNTER_VBLANK_EXT) == 0) {
-		return 0;
-	}
-
-	uint64_t counter_val = 0;
-	ret = vk->vkGetSwapchainCounterEXT( //
-	    vk->device,                     // device
-	    cts->swapchain.handle,          // swapchain
-	    VK_SURFACE_COUNTER_VBLANK_EXT,  // counter
-	    &counter_val);                  // pCounterValue
-
-	if (ret == VK_SUCCESS) {
-		COMP_SPEW(cts->base.c, "vkGetSwapchainCounterEXT: %" PRIu64, counter_val);
-	} else if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
-		COMP_ERROR(cts->base.c, "vkGetSwapchainCounterEXT: Swapchain out of date!");
-	} else {
-		COMP_ERROR(cts->base.c, "vkGetSwapchainCounterEXT: %s", vk_str_result(ret));
-	}
-
-	return counter_val;
-}
-
-static bool
-vblank_event_func(struct comp_target *ct, int64_t *out_timestamp_ns)
-{
-	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
-
-	struct vk_bundle *vk = get_vk(cts);
-	VkResult ret;
-
-
-	VkDisplayEventInfoEXT event_info = {
-	    .sType = VK_STRUCTURE_TYPE_DISPLAY_EVENT_INFO_EXT,
-	    .displayEvent = VK_DISPLAY_EVENT_TYPE_FIRST_PIXEL_OUT_EXT,
-	};
-
-	VkFence vblank_event_fence = VK_NULL_HANDLE;
-	ret = vk->vkRegisterDisplayEventEXT(vk->device, cts->display, &event_info, NULL, &vblank_event_fence);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(ct->c, "vkRegisterDisplayEventEXT: %s", vk_str_result(ret));
-		return false;
-	}
-
-	// Name for debugging.
-	VK_NAME_FENCE(vk, vblank_event_fence, "Comp VBlank");
-
-	// Not scoped to not effect timing.
-	COMP_TRACE_IDENT(vblank);
-
-	// Do the wait
-	ret = vk->vkWaitForFences(vk->device, 1, &vblank_event_fence, true, time_s_to_ns(1));
-
-	// As quickly as possible after the fence has fired.
-	int64_t now_ns = os_monotonic_get_ns();
-
-	bool valid = false;
-	if (ret == VK_SUCCESS) {
-		/*
-		 * Causes a lot of multiple thread access validation warnings
-		 * and is currently not used by the code so skip for now.
-		 */
-#if 0
-		uint64_t counter_val = get_surface_counter_val(ct);
-
-		static uint64_t last_ns = 0;
-		uint64_t diff_ns = now_ns - last_ns;
-		last_ns = now_ns;
-
-		double now_ms_f = time_ns_to_ms_f(now_ns);
-		double diff_ms_f = time_ns_to_ms_f(diff_ns);
-
-		COMP_DEBUG(ct->c, "vblank event at os time %fms, diff: %fms, vblank: #%lu", now_ms_f, diff_ms_f,
-		           counter_val);
-#else
-		(void)&get_surface_counter_val;
-#endif
-
-		*out_timestamp_ns = now_ns;
-		valid = true;
-
-	} else if (ret == VK_TIMEOUT) {
-		COMP_WARN(ct->c, "vkWaitForFences: VK_TIMEOUT");
-	} else {
-		COMP_ERROR(ct->c, "vkWaitForFences: %s", vk_str_result(ret));
-	}
-
-	vk->vkDestroyFence(vk->device, vblank_event_fence, NULL);
-
-	return valid;
-}
-
-static void *
-run_vblank_event_thread(void *ptr)
-{
-	struct comp_target *ct = (struct comp_target *)ptr;
-	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
-
-	COMP_DEBUG(ct->c, "Surface thread starting");
-
-	os_thread_name_self("VBlank Events");
-	U_TRACE_SET_THREAD_NAME("VBlank Events");
-
-	// Try to raise priority of this thread.
-	u_try_to_set_realtime_priority_on_thread(U_LOGGING_INFO, "VBlank Events");
-
-	os_thread_helper_lock(&cts->vblank.event_thread);
-
-	while (os_thread_helper_is_running_locked(&cts->vblank.event_thread)) {
-
-		if (!cts->vblank.should_wait) {
-			// Wait to be woken up.
-			os_thread_helper_wait_locked(&cts->vblank.event_thread);
-
-			/*
-			 * Loop back to the top to check if we should stop,
-			 * also handles spurious wakeups by re-checking the
-			 * condition in the if case. Essentially two loops.
-			 */
-			continue;
-		}
-
-		// We should wait for a vblank event.
-		cts->vblank.should_wait = false;
-
-		if (!cts->vblank.event_active) {
-			cts->vblank.event_active = true;
-			continue;
-		}
-
-		// Unlock while waiting.
-		os_thread_helper_unlock(&cts->vblank.event_thread);
-
-		int64_t when_ns = 0;
-		bool valid = vblank_event_func(ct, &when_ns);
-
-		// Just keep swimming.
-		os_thread_helper_lock(&cts->vblank.event_thread);
-
-		if (valid) {
-			cts->vblank.last_vblank_ns = when_ns;
-		}
-	}
-
-	os_thread_helper_unlock(&cts->vblank.event_thread);
-
-	return NULL;
-}
-
-static bool
-create_vblank_event_thread(struct comp_target *ct)
-{
-	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
-	if (cts->display == VK_NULL_HANDLE) {
-		return true;
-	}
-
-	int thread_ret = os_thread_helper_start(&cts->vblank.event_thread, run_vblank_event_thread, ct);
-	if (thread_ret != 0) {
-		COMP_ERROR(ct->c, "Failed to start vblank (first pixel out) event thread");
-		return false;
-	}
-
-	COMP_DEBUG(ct->c, "Started vblank (first pixel out) event thread.");
-
-	// Set this here.
-	cts->vblank.thread_running = true;
-
-	return true;
-}
-#endif
 
 static void
 target_fini_semaphores(struct comp_target_swapchain *cts)
@@ -654,6 +488,11 @@ target_fini_semaphores(struct comp_target_swapchain *cts)
 	if (cts->base.semaphores.render_complete != VK_NULL_HANDLE) {
 		vk->vkDestroySemaphore(vk->device, cts->base.semaphores.render_complete, NULL);
 		cts->base.semaphores.render_complete = VK_NULL_HANDLE;
+	}
+
+	if (cts->base.semaphores.layer_squash_complete != VK_NULL_HANDLE) {
+		vk->vkDestroySemaphore(vk->device, cts->base.semaphores.layer_squash_complete, NULL);
+		cts->base.semaphores.layer_squash_complete = VK_NULL_HANDLE;
 	}
 }
 
@@ -684,6 +523,14 @@ target_init_semaphores(struct comp_target_swapchain *cts)
 	}
 
 	VK_NAME_SEMAPHORE(vk, cts->base.semaphores.render_complete, "comp_target_swapchain semaphore render complete");
+
+	ret = vk->vkCreateSemaphore(vk->device, &info, NULL, &cts->base.semaphores.layer_squash_complete);
+	if (ret != VK_SUCCESS) {
+		COMP_ERROR(cts->base.c, "vkCreateSemaphore: %s", vk_str_result(ret));
+	}
+
+	VK_NAME_SEMAPHORE(vk, cts->base.semaphores.layer_squash_complete,
+	                  "comp_target_swapchain::semaphore::layer_squash_complete");
 }
 
 
@@ -909,23 +756,7 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 
 	create_image_views(cts);
 
-#ifdef VK_EXT_display_control
-	if (!check_surface_counter_caps(ct, vk, cts)) {
-		COMP_ERROR(ct->c, "Failed to query surface counter capabilities");
-	}
-
-	if (vk->has_EXT_display_control && cts->display != VK_NULL_HANDLE) {
-		if (cts->vblank.thread_running) {
-			// Already running.
-		} else if (create_vblank_event_thread(ct)) {
-			COMP_INFO(ct->c, "Started vblank event thread!");
-		} else {
-			COMP_ERROR(ct->c, "Failed to start vblank event thread!");
-		}
-	} else {
-		COMP_INFO(ct->c, "Not using vblank event thread!");
-	}
-#endif
+	create_vblank_event_thread(cts);
 
 	// Done now.
 	return;
@@ -1064,18 +895,6 @@ comp_target_swapchain_present(struct comp_target *ct,
 	vk_queue_lock(present_queue);
 	VkResult ret = vk->vkQueuePresentKHR(present_queue->queue, &present_info);
 	vk_queue_unlock(present_queue);
-
-
-#ifdef VK_EXT_display_control
-	if (cts->vblank.thread_running) {
-		os_thread_helper_lock(&cts->vblank.event_thread);
-		if (!cts->vblank.should_wait) {
-			cts->vblank.should_wait = true;
-			os_thread_helper_signal_locked(&cts->vblank.event_thread);
-		}
-		os_thread_helper_unlock(&cts->vblank.event_thread);
-	}
-#endif
 
 	return ret;
 }
@@ -1221,6 +1040,18 @@ comp_target_swapchain_info_gpu(
 	u_pc_info_gpu(cts->upc, frame_id, gpu_start_ns, gpu_end_ns, when_ns);
 }
 
+static xrt_result_t
+comp_target_swapchain_wait_next_vsync(struct comp_target *ct, struct xrt_vsync_event *vsync_event)
+{
+	COMP_TRACE_MARKER();
+	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
+	if (cts->vsync_source == NULL) {
+		return XRT_ERROR_NOT_IMPLEMENTED;
+	}
+	return xrt_vsync_source_wait_next(cts->vsync_source, vsync_event);
+}
+
+
 
 /*
  *
@@ -1253,11 +1084,7 @@ comp_target_swapchain_cleanup(struct comp_target_swapchain *cts)
 	struct vk_bundle *vk = get_vk(cts);
 
 	// Thread if it has been started must be stopped first.
-	if (cts->vblank.thread_running) {
-		// Destroy also stops the thread.
-		os_thread_helper_destroy(&cts->vblank.event_thread);
-		cts->vblank.thread_running = false;
-	}
+	xrt_vsync_source_destroy(&cts->vsync_source);
 
 	destroy_image_views(cts);
 
@@ -1319,6 +1146,5 @@ comp_target_swapchain_init_and_set_fnptrs(struct comp_target_swapchain *cts,
 	cts->base.update_timings = comp_target_swapchain_update_timings;
 	cts->base.info_gpu = comp_target_swapchain_info_gpu;
 	cts->base.queue_supports_present = comp_target_swapchain_queue_supports_present;
-
-	os_thread_helper_init(&cts->vblank.event_thread);
+	cts->base.wait_next_vsync = comp_target_swapchain_wait_next_vsync;
 }

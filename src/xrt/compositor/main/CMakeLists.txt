@@ -23,6 +23,8 @@ add_library(
 	comp_window_debug_image.c
 	comp_mirror_to_debug_gui.c
 	comp_mirror_to_debug_gui.h
+	comp_vsync_source_factory.c
+	comp_vsync_source_factory.h
 	)
 target_link_libraries(
 	comp_main
