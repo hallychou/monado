@@ -16,3 +16,10 @@ if(XRT_MODULE_IPC)
 	add_subdirectory(ipc)
 endif()
 add_subdirectory(targets)
+
+if(XRT_FORCE_RUST)
+	rust_add_library(force CRATE force)
+endif()
+
+# Must be last, every Rust rlib registered above is compiled to one staticlib
+monado_rust_finalize()

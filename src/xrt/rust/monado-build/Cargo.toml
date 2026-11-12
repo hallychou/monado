@@ -1,0 +1,9 @@
+# Copyright 2026, UltraDev.
+# SPDX-License-Identifier: BSL-1.0
+
+[package]
+name = "monado-build"
+version = "0.1.0"
+description = "Build-script helper for exposing Monado's build options as Rust cfgs"
+edition.workspace = true
+license.workspace = true

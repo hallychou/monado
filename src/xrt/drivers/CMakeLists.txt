@@ -691,6 +691,16 @@ if(XRT_BUILD_DRIVER_SOLARXR)
 	list(APPEND ENABLED_DRIVERS solarxr)
 endif()
 
+# Example of how a rust driver is added, will be replaced with the first rust driver
+#if(XRT_BUILD_DRIVER_EXAMPLE)
+#	rust_add_library(drv_example CRATE example)
+#	rust_link_libraries(constellation drv_multi)
+# 	if(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE)
+#		rust_link_libraries(drv_steamvr_lh)
+# 	endif()
+# 	list(APPEND ENABLED_HEADSET_DRIVERS example)
+#endif()
+
 if(XRT_BUILD_SAMPLES)
 	# We build the sample driver to make sure it stays valid,
 	# but it never gets linked into a final target.

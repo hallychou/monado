@@ -1,0 +1,23 @@
+# Copyright 2026, UltraDev.
+# SPDX-License-Identifier: BSL-1.0
+
+[workspace]
+resolver = "3"
+members = [
+	"src/xrt/rust/monado-build",
+	"src/xrt/rust/monado-sys",
+	"src/xrt/rust/monado-rust",
+	# "drivers/example",
+]
+
+[workspace.package]
+edition = "2024"
+license = "BSL-1.0"
+
+[workspace.dependencies]
+monado-build = { path = "src/xrt/rust/monado-build" }
+monado-sys = { path = "src/xrt/rust/monado-sys" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
