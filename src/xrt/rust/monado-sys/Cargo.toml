@@ -12,6 +12,12 @@ links = "monado"
 [lib]
 doctest = false
 
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+
 [build-dependencies]
 bindgen = "0.73.2"
 cc = "1.4.5"

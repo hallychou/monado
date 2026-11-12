@@ -19,6 +19,22 @@ impl bindgen::callbacks::ParseCallbacks for ConfigDir {
     }
 }
 
+/// Structs that get serde (de)serializers when the feature is used
+const SERDE_TYPES: &[&str] = &["xrt_vec3", "xrt_quat", "xrt_pose"];
+
+#[derive(Debug)]
+struct SerdeDerives;
+
+impl bindgen::callbacks::ParseCallbacks for SerdeDerives {
+    fn add_derives(&self, info: &bindgen::callbacks::DeriveInfo<'_>) -> Vec<String> {
+        if SERDE_TYPES.contains(&info.name) {
+            vec!["serde::Serialize".into(), "serde::Deserialize".into()]
+        } else {
+            vec![]
+        }
+    }
+}
+
 const HEADERS: &[(&str, &str)] = &[
     ("include/xrt", "*.h"),
     ("auxiliary/util", "*.h"),
@@ -99,7 +115,12 @@ fn main() {
     let config_dir = ConfigDir::default();
     let found_config_dir = Rc::clone(&config_dir.0);
 
-    let bindings = bindgen::Builder::default()
+    let mut builder = bindgen::Builder::default();
+    if env::var_os("CARGO_FEATURE_SERDE").is_some() {
+        builder = builder.parse_callbacks(Box::new(SerdeDerives));
+    }
+
+    let bindings = builder
         .header(header.to_str().unwrap())
         .clang_arg("-std=gnu11")
         .clang_args(&args)
