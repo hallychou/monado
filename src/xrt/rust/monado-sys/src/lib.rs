@@ -12,3 +12,4 @@
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 pub mod math;
+pub mod logging;
