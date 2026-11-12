@@ -231,13 +231,22 @@ ipc_send_handles(
 		                            DUPLICATE_SAME_ACCESS)) {
 			DWORD err = GetLastError();
 			IPC_ERROR(imc, "DuplicateHandle(%p) failed: %lu %s", handles[i], err, ipc_winerror(err));
-			CloseHandle(client_process);
-			return XRT_ERROR_IPC_FAILURE;
+			break;
 		}
 		v.push_back(handle);
 	}
+
+	xret = v.size() == handle_count ? ipc_send(imc, v.data(), v.size() * sizeof(*v.data())) : XRT_ERROR_IPC_FAILURE;
+	if (xret != XRT_SUCCESS) {
+		// Close the copies the client didn't get.
+		for (HANDLE h : v) {
+			if (!((size_t)h & 1)) {
+				DuplicateHandle(client_process, h, NULL, NULL, 0, false, DUPLICATE_CLOSE_SOURCE);
+			}
+		}
+	}
 	CloseHandle(client_process);
-	return ipc_send(imc, v.data(), v.size() * sizeof(*v.data()));
+	return xret;
 }
 
 
