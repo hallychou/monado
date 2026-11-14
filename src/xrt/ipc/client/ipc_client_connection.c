@@ -59,6 +59,13 @@
 
 DEBUG_GET_ONCE_BOOL_OPTION(ipc_ignore_version, "IPC_IGNORE_VERSION", false)
 
+
+/*
+ *
+ * Helpers.
+ *
+ */
+
 #ifdef XRT_OS_ANDROID
 
 static bool
@@ -106,6 +113,35 @@ ipc_open_pipe(const char *pipe_name)
 	return pipe_inst;
 }
 
+static bool
+ipc_launch_service(struct ipc_connection *ipc_c,
+                   const char *dir,
+                   const char *extra_folder,
+                   const char *service_executable,
+                   PROCESS_INFORMATION *out_pi)
+{
+	char service_path[MAX_PATH] = {0};
+	if (extra_folder != NULL) {
+		snprintf(service_path, sizeof(service_path), "%s\\%s\\%s", dir, extra_folder, service_executable);
+	} else {
+		snprintf(service_path, sizeof(service_path), "%s\\%s", dir, service_executable);
+	}
+
+	STARTUPINFOA si = {.cb = sizeof(si)};
+	/*!
+	 * @todo This gets the path as an unquoted command line, which can start the wrong program if the path
+	 * contains spaces. Pass it as lpApplicationName instead.
+	 */
+	if (!CreateProcessA(NULL, service_path, NULL, NULL, false, 0, NULL, NULL, &si, out_pi)) {
+		DWORD err = GetLastError();
+		IPC_INFO(ipc_c, "Failed to start %s: %lu %s", service_path, err, ipc_winerror(err));
+		return false;
+	}
+
+	IPC_INFO(ipc_c, "Launched %s (pid %lu)", service_path, out_pi->dwProcessId);
+	return true;
+}
+
 static HANDLE
 ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name, const char *service_executable)
 {
@@ -137,38 +173,14 @@ ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name, const char
 		IPC_ERROR(ipc_c, "failed to parse the path %s", current_path);
 		return INVALID_HANDLE_VALUE;
 	}
+	*p = 0;
 
-	/*!
-	 * @todo This tries <module file>\<exe> and then <module dir>\service\<exe>,
-	 * but never <module dir>\<exe>, so a service next to the runtime isn't found.
-	 */
-	char service_path[MAX_PATH] = {0};
-	snprintf(service_path, MAX_PATH, "%s\\%s", current_path, service_executable);
-	STARTUPINFOA si = {.cb = sizeof(si)};
 	PROCESS_INFORMATION pi;
-	/*!
-	 * @todo Both CreateProcessA calls get the path as an unquoted command line, which can start the wrong program
-	 * if the path contains spaces. Pass it as lpApplicationName instead.
-	 */
-	if (!CreateProcessA(NULL, service_path, NULL, NULL, false, 0, NULL, NULL, &si, &pi)) {
-		*p = 0;
-		p = strrchr(service_path, '\\');
-		if (!p) {
-			err = GetLastError();
-			IPC_INFO(ipc_c, "%s not found in %s: %lu %s", service_executable, service_path, err,
-			         ipc_winerror(err));
-			return INVALID_HANDLE_VALUE;
-		}
-
-		snprintf(service_path, MAX_PATH, "%s\\service\\%s", current_path, service_executable);
-		if (!CreateProcessA(NULL, service_path, NULL, NULL, false, 0, NULL, NULL, &si, &pi)) {
-			err = GetLastError();
-			IPC_INFO(ipc_c, "%s not found at %s: %lu %s", service_executable, service_path, err,
-			         ipc_winerror(err));
-			return INVALID_HANDLE_VALUE;
-		}
+	if (!ipc_launch_service(ipc_c, current_path, NULL, service_executable, &pi) &&
+	    !ipc_launch_service(ipc_c, current_path, "service", service_executable, &pi)) {
+		return INVALID_HANDLE_VALUE;
 	}
-	IPC_INFO(ipc_c, "Launched %s (pid %lu)... Waiting for %s...", service_path, pi.dwProcessId, pipe_name);
+	IPC_INFO(ipc_c, "Waiting for %s...", pipe_name);
 	CloseHandle(pi.hThread);
 	int64_t start_ns = os_monotonic_get_ns();
 	for (int i = 0;; i++) {
