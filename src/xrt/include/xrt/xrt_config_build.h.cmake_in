@@ -34,6 +34,7 @@
 /* keep sorted */
 
 #cmakedefine XRT_FEATURE_CLIENT_DEBUG_GUI
+#cmakedefine XRT_FEATURE_CLIENT_LAUNCH_SERVICE
 #cmakedefine XRT_FEATURE_CLIENT_WITHOUT_SERVICE
 #cmakedefine XRT_FEATURE_COLOR_LOG
 #cmakedefine XRT_FEATURE_DEBUG_GUI
