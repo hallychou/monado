@@ -127,12 +127,12 @@ ipc_launch_service(struct ipc_connection *ipc_c,
 		snprintf(service_path, sizeof(service_path), "%s\\%s", dir, service_executable);
 	}
 
+	char command_line[MAX_PATH + 2];
+	snprintf(command_line, sizeof(command_line), "\"%s\"", service_path);
+
 	STARTUPINFOA si = {.cb = sizeof(si)};
-	/*!
-	 * @todo This gets the path as an unquoted command line, which can start the wrong program if the path
-	 * contains spaces. Pass it as lpApplicationName instead.
-	 */
-	if (!CreateProcessA(NULL, service_path, NULL, NULL, false, 0, NULL, NULL, &si, out_pi)) {
+	// Path as lpApplicationName, so a space in it can't start another program.
+	if (!CreateProcessA(service_path, command_line, NULL, NULL, false, 0, NULL, NULL, &si, out_pi)) {
 		DWORD err = GetLastError();
 		IPC_INFO(ipc_c, "Failed to start %s: %lu %s", service_path, err, ipc_winerror(err));
 		return false;
