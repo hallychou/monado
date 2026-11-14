@@ -139,13 +139,14 @@ create_pipe_instance(struct ipc_server_mainloop *ml, bool first)
 	 * https://learn.microsoft.com/en-us/windows/win32/secbp/creating-a-dacl
 	 * https://learn.microsoft.com/en-us/windows/win32/secauthz/sid-strings
 	 */
-	const TCHAR *str =               //
-	    TEXT("D:")                   // Discretionary ACL
-	    TEXT("(D;OICI;GA;;;BG)")     // Guest: deny
-	    TEXT("(D;OICI;GA;;;AN)")     // Anonymous: deny
-	    TEXT("(A;OICI;GRGWGX;;;AC)") // UWP/AppContainer packages: read/write/execute
-	    TEXT("(A;OICI;GRGWGX;;;AU)") // Authenticated user: read/write/execute
-	    TEXT("(A;OICI;GA;;;BA)");    // Administrator: full control
+	const TCHAR *str =                            //
+	    TEXT("D:")                                // Discretionary ACL
+	    TEXT("(D;OICI;GA;;;BG)")                  // Guest: deny
+	    TEXT("(D;OICI;GA;;;AN)")                  // Anonymous: deny
+	    TEXT("(A;OICI;" PIPE_READ_WRITE ";;;AC)") // UWP/AppContainer packages: read/write
+	    TEXT("(A;OICI;" PIPE_READ_WRITE ";;;AU)") // Authenticated user: read/write
+	    TEXT("(A;OICI;GA;;;OW)")                  // Owner: full control
+	    TEXT("(A;OICI;GA;;;BA)");                 // Administrator: full control
 
 	BOOL bret = ConvertStringSecurityDescriptorToSecurityDescriptor( //
 	    str,                                                         // StringSecurityDescriptor
