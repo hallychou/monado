@@ -21,7 +21,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) uniform sampler2D source[k_view_count];
 layout(set = 0, binding = 1) uniform sampler2D distortion[3 * k_view_count];
-layout(set = 0, binding = 2) uniform writeonly restrict image2D target;
+layout(set = 0, binding = 2) uniform writeonly restrict image2D target[2];
 layout(set = 0, binding = 3, std140) uniform restrict Config
 {
 	ivec4 views[2];
@@ -29,6 +29,7 @@ layout(set = 0, binding = 3, std140) uniform restrict Config
 	vec4 post_transform[2];
 	mat4 transform_timewarp_scanout_begin[2];
 	mat4 transform_timewarp_scanout_end[2];
+	uint image_view_count;
 }ubo;
 
 
@@ -138,5 +139,5 @@ void main()
 	// Do colour correction here since there are no automatic conversion in hardware available.
 	colour = vec4(from_linear_to_srgb(colour.rgb), 1);
 
-	imageStore(target, ivec2(offset.x + ix, offset.y + iy), colour);
+	imageStore(target[iz % ubo.image_view_count], ivec2(offset.x + ix, offset.y + iy), colour);
 }

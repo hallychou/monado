@@ -53,6 +53,8 @@ struct comp_settings
 	VkFormat formats[XRT_MAX_SWAPCHAIN_FORMATS];
 	uint32_t format_count;
 
+	uint32_t image_view_count;
+
 	VkColorSpaceKHR color_space;
 	VkPresentModeKHR present_mode;
 

@@ -185,6 +185,8 @@ struct xrt_hmd_parts
 	struct xrt_view views[XRT_MAX_VIEWS];
 
 	size_t view_count;
+	uint32_t image_view_count;
+
 	/*!
 	 * Array of supported blend modes.
 	 */

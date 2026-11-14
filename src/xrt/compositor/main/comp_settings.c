@@ -11,6 +11,8 @@
 #include "util/u_debug.h"
 #include "comp_settings.h"
 
+#include "math/m_api.h"
+
 #ifdef XRT_OS_ANDROID
 #define USE_COMPUTE_DEFAULT false
 #else
@@ -161,6 +163,7 @@ comp_settings_init(struct comp_settings *s, struct xrt_device *xdev)
 		add_format(s, VK_FORMAT_A8B8G8R8_SRGB_PACK32);
 	}
 
+	s->image_view_count = MAX(1, xdev->hmd->image_view_count);
 	s->display = debug_get_num_option_xcb_display();
 	s->color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 	s->present_mode = get_desired_present_mode();

@@ -111,14 +111,16 @@ chl_frame_state_gfx_set_views(struct chl_frame_state *frame_state,
 }
 
 void
-chl_frame_state_gfx_set_target(struct chl_frame_state *frame_state,
-                               struct render_gfx_target_resources *target_rtr,
-                               const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
-                               const render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS],
-                               const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS])
+chl_frame_state_gfx_set_targets(struct chl_frame_state *frame_state,
+                                struct render_gfx_target_image_resources *target_rtir,
+                                const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
+                                const render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS],
+                                const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS])
 {
 	// Add the target info.
-	comp_render_gfx_add_target(&frame_state->data, target_rtr);
+	comp_render_gfx_add_target(&frame_state->data, NULL);
+
+	frame_state->data.target.image_view_count = target_rtir->rtr_count;
 
 	for (uint32_t i = 0; i < frame_state->view_count; i++) {
 		// Which image of the scratch images for this view are we using.
@@ -132,13 +134,14 @@ chl_frame_state_gfx_set_target(struct chl_frame_state *frame_state,
 
 		VkImageView sample_view = comp_scratch_single_images_get_sample_view(scratch_view, scratch_index);
 
-		comp_render_gfx_add_target_view( //
-		    &frame_state->data,          //
-		    sample_view,                 // squash_as_src_sample_view
-		    &layer_norm_rect,            // squash_as_src_norm_rect
-		    &vertex_rots[i],             // target_vertex_rot
-		    &target_viewport_datas[i],   // target_viewport_data
-		    &target_scissor_datas[i]);   // target_scissor_data
+		comp_render_gfx_add_target_view(                         //
+		    &frame_state->data,                                  //
+		    sample_view,                                         // squash_as_src_sample_view
+		    &layer_norm_rect,                                    // squash_as_src_norm_rect
+		    &vertex_rots[i],                                     // target_vertex_rot
+		    &target_viewport_datas[i],                           // target_viewport_data
+		    &target_rtir->rtr_array[i % target_rtir->rtr_count], // target_rtr
+		    &target_scissor_datas[i]);                           // target_scissor_data
 	}
 }
 
@@ -198,7 +201,8 @@ chl_frame_state_cs_set_views(struct chl_frame_state *frame_state,
 void
 chl_frame_state_cs_set_target(struct chl_frame_state *frame_state,
                               VkImage target_image,
-                              VkImageView target_storage_view,
+                              VkImageView *target_storage_views,
+                              uint32_t target_storage_view_count,
                               VkImageLayout target_final_layout,
                               const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
@@ -206,8 +210,9 @@ chl_frame_state_cs_set_target(struct chl_frame_state *frame_state,
 	comp_render_cs_add_target( //
 	    &frame_state->data,    // data
 	    target_image,          // target_image
-	    target_storage_view,   // target_unorm_view
-	    target_final_layout);  // target_final_layout
+	    target_storage_views,  // target_unorm_view
+	    target_storage_view_count,
+	    target_final_layout); // target_final_layout
 
 	for (uint32_t i = 0; i < frame_state->view_count; i++) {
 		// Which image of the scratch images for this view are we using.

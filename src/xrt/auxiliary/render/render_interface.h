@@ -799,6 +799,12 @@ struct render_gfx_target_resources
 	VkFramebuffer framebuffer;
 };
 
+struct render_gfx_target_image_resources
+{
+	uint32_t rtr_count;
+	struct render_gfx_target_resources rtr_array[2];
+};
+
 /*!
  * Init a target resource struct, caller has to keep target alive until closed.
  *
@@ -1391,6 +1397,7 @@ struct render_compute_distortion_ubo_data
 	struct xrt_normalized_rect post_transforms[XRT_MAX_VIEWS];
 	struct xrt_matrix_4x4 transform_timewarp_scanout_begin[XRT_MAX_VIEWS];
 	struct xrt_matrix_4x4 transform_timewarp_scanout_end[XRT_MAX_VIEWS];
+	uint32_t image_view_count;
 };
 
 /*!
@@ -1463,7 +1470,8 @@ render_compute_projection_timewarp(struct render_compute *render,
                                    const struct xrt_pose new_poses_scanout_begin[XRT_MAX_VIEWS],
                                    const struct xrt_pose new_poses_scanout_end[XRT_MAX_VIEWS],
                                    VkImage target_image,
-                                   VkImageView target_image_view,
+                                   VkImageView *target_image_views,
+                                   uint32_t target_image_view_count,
                                    VkImageLayout target_final_layout,
                                    const struct render_viewport_data views[XRT_MAX_VIEWS]);
 
@@ -1479,7 +1487,8 @@ render_compute_projection_scanout_compensation(struct render_compute *render,
                                                const struct xrt_pose new_poses_scanout_begin[XRT_MAX_VIEWS],
                                                const struct xrt_pose new_poses_scanout_end[XRT_MAX_VIEWS],
                                                VkImage target_image,
-                                               VkImageView target_image_view,
+                                               VkImageView *target_image_views,
+                                               uint32_t target_image_view_count,
                                                VkImageLayout target_final_layout,
                                                const struct render_viewport_data views[XRT_MAX_VIEWS]);
 
@@ -1492,7 +1501,8 @@ render_compute_projection_no_timewarp(struct render_compute *render,
                                       VkImageView src_image_views[XRT_MAX_VIEWS],
                                       const struct xrt_normalized_rect src_rects[XRT_MAX_VIEWS],
                                       VkImage target_image,
-                                      VkImageView target_image_view,
+                                      VkImageView *target_image_views,
+                                      uint32_t num_image_views,
                                       VkImageLayout target_final_layout,
                                       const struct render_viewport_data views[XRT_MAX_VIEWS]);
 
@@ -1502,7 +1512,8 @@ render_compute_projection_no_timewarp(struct render_compute *render,
 void
 render_compute_clear(struct render_compute *render,
                      VkImage target_image,
-                     VkImageView target_image_view,
+                     VkImageView *target_image_views,
+                     uint32_t target_image_view_count,
                      VkImageLayout target_final_layout,
                      const struct render_viewport_data views[XRT_MAX_VIEWS]);
 
