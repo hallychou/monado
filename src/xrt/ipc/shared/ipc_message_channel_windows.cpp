@@ -25,6 +25,7 @@
 #include "shared/ipc_message_channel.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
@@ -74,9 +75,21 @@ open_client_process_dup_handle(struct ipc_message_channel *imc)
 		return GetCurrentProcess();
 	}
 
-	HANDLE h = OpenProcess(PROCESS_DUP_HANDLE, false, pid);
-	if (!h) {
+	// Open as the client, so a wrong PID gives nothing the client couldn't open itself.
+	if (!ImpersonateNamedPipeClient(imc->ipc_handle)) {
 		DWORD err = GetLastError();
+		IPC_ERROR(imc, "ImpersonateNamedPipeClient(%p) failed: %lu %s", imc->ipc_handle, err,
+		          ipc_winerror(err));
+		return NULL;
+	}
+	HANDLE h = OpenProcess(PROCESS_DUP_HANDLE, false, pid);
+	DWORD err = GetLastError();
+	if (!RevertToSelf()) {
+		DWORD revert_err = GetLastError();
+		IPC_ERROR(imc, "RevertToSelf failed: %lu %s", revert_err, ipc_winerror(revert_err));
+		abort(); // Must not go on as the client.
+	}
+	if (!h) {
 		IPC_ERROR(imc, "OpenProcess(PROCESS_DUP_HANDLE, pid %lu) failed: %lu %s", pid, err, ipc_winerror(err));
 	}
 
