@@ -1042,7 +1042,7 @@ static void
 integrateToTimestampHistory(const double world_gravity_mag,
                             DeviceSolveState &inout_solve,
                             const std::span<const xrt_imu_sample> imu_samples,
-                            m_relation_history *relation_history)
+                            RelationHistory &relation_history)
 {
 	assert(imu_samples.size() > 0);
 
@@ -1097,7 +1097,7 @@ integrateToTimestampHistory(const double world_gravity_mag,
 		map_vec3(relation.angular_velocity) =
 		    (Q_world_imu * (map_vec3_f64(sample.gyro_rad_secs) - gyro_bias)).cast<float>();
 
-		m_relation_history_push_or_update(relation_history, &relation, pose_ns);
+		relation_history.pushOrUpdate({relation, pose_ns}, true);
 	}
 
 	map_vec3(inout_solve.Tcv_world_device.position) = T_world_device.cast<float>();
@@ -1872,6 +1872,7 @@ struct SensorFusionProblem
 		snapshot.num_keyframes = fusion.num_keyframes;
 		for (uint32_t age = 0; age < fusion.num_keyframes; age++) {
 			const Keyframe &keyframe = fusion.keyframeLocked(age);
+			const auto &preintegration = fusion.preintegrationLocked(age);
 			SnapshotKeyframe &out = snapshot.keyframes[age];
 
 			out.timestamp_ns = keyframe.timestamp_ns;
@@ -1906,21 +1907,30 @@ struct SensorFusionProblem
 			const uint32_t block_idx = fusion.keyframeIdxLocked(age);
 			const auto &pose_block = blocks.keyframes[block_idx];
 			const auto &bias_block = blocks.keyframe_imu_biases[block_idx];
+			const auto &extrinsics_block = blocks.imu_extrinsics;
 
 			/*
 			 * The mask says the solve reached this state, so both blocks were seeded on the way in.
-			 * Checking anyway keeps a logging path from being the thing that trips an assert.
 			 */
-			if (!pose_block.seeded || !bias_block.seeded) {
+			if (!pose_block.seeded || !bias_block.seeded || !extrinsics_block.seeded) {
+				assert(false);                            // unreachable
+				out_device.keyframe_mask &= ~(1u << age); // release mode fallback
 				continue;
 			}
 
 			const PoseWithVelocity<double> pose{pose_block.vec};
 			const ImuBias<double> bias{bias_block.vec};
+			const ImuExtrinsics<double> extrinsics{extrinsics_block.vec};
 
 			SolvedDeviceKeyframe &solved = out.device;
 			solved.Tcv_world_device = pose.toXrtPose();
-			map_vec3_f64(solved.velocity) = pose.velocity;
+			map_vec3_f64(solved.linear_velocity) = pose.velocity;
+			solved.angular_velocity_valid = preintegration.imu_preintegration.body_angular_velocity_valid;
+			map_vec3_f64(solved.angular_velocity) =
+			    // Q_world_model * Q_model_imu = Q_world_imu
+			    (pose.rotation * extrinsics.Q_model_imu) *
+			    // Q_world_imu * Q_imu_vel = Q_world_vel
+			    (preintegration.imu_preintegration.body_angular_velocity - bias.gyro_bias);
 			map_vec3_f64(solved.accel_bias) = bias.accel_bias;
 			map_vec3_f64(solved.gyro_bias) = bias.gyro_bias;
 			map_vec3_f64(solved.accel_scale) = bias.accel_scale;
@@ -2187,24 +2197,21 @@ struct SensorFusionProblem
  *
  */
 
-Device::Device(t_constellation_device_id_t id, const t_constellation_tracker_led_model *led_model)
+Device::Device(t_constellation_device_id_t id,
+               const t_constellation_tracker_led_model *led_model)
     : id(id),                          //
       led_model(led_model),            //
       latest_solve(std::nullopt),      //
       latest_imu_reckon(std::nullopt), //
+      imu_relation_history(),          //
       stored_imu_calibration(),        //
       imu_write_count(0),              //
       imu_samples()                    //
 {
-	m_relation_history_create(&this->relation_history);
-
 	this->resetLocked();
 }
 
-Device::~Device()
-{
-	m_relation_history_destroy(&this->relation_history);
-}
+Device::~Device() = default;
 
 const DeviceImuCalibration &
 Device::getLatestImuCalibration() const
@@ -2219,7 +2226,8 @@ Device::getLatestImuCalibration() const
 void
 Device::resetLocked()
 {
-	m_relation_history_clear(this->relation_history);
+	this->imu_relation_history.clear();
+	this->keyframe_relation_history.clear();
 
 	this->latest_solve = std::nullopt;
 	this->latest_imu_reckon = std::nullopt;
@@ -2755,8 +2763,15 @@ void
 SensorFusion::getTrackedPose(timepoint_ns requested_time_ns, xrt_space_relation &out_relation)
 {
 	out_relation = XRT_SPACE_RELATION_ZERO;
-	m_relation_history_get(this->device.relation_history, requested_time_ns, &out_relation);
-	SF_TRACE(this, "Used relation history for pose at ts %" PRIi64, requested_time_ns);
+
+	RelationHistoryEntry entry{};
+	auto result = this->device.imu_relation_history.get(requested_time_ns, entry);
+	if (result != M_RELATION_HISTORY_RESULT_INVALID) {
+		out_relation = entry.relation;
+	}
+
+	SF_TRACE(this, "Used IMU relation history for pose at ts %" PRIi64 ", got result %d", requested_time_ns,
+	         static_cast<int>(result));
 
 	// Convert to OpenXR coordinate space before outputting
 	math_pose_convert_from_opencv(&out_relation.pose, &out_relation.pose);
@@ -2765,6 +2780,40 @@ SensorFusion::getTrackedPose(timepoint_ns requested_time_ns, xrt_space_relation 
 
 	SF_TRACE(this,
 	         "Pose get from %" PRIi64
+	         " succeeded.\n"
+	         "Pose: %f,%f,%f\t%f,%f,%f,%f\n"
+	         "Velocity: %f,%f,%f\t%f,%f,%f",
+	         requested_time_ns, out_relation.pose.position.x, out_relation.pose.position.y,
+	         out_relation.pose.position.z, out_relation.pose.orientation.x, out_relation.pose.orientation.y,
+	         out_relation.pose.orientation.z, out_relation.pose.orientation.w, out_relation.linear_velocity.x,
+	         out_relation.linear_velocity.y, out_relation.linear_velocity.z, out_relation.angular_velocity.x,
+	         out_relation.angular_velocity.y, out_relation.angular_velocity.z);
+
+	return;
+}
+
+void
+SensorFusion::getKeyframeTrackedPose(timepoint_ns requested_time_ns, xrt_space_relation &out_relation)
+{
+	out_relation = XRT_SPACE_RELATION_ZERO;
+
+	if (auto keyframe_relation = this->device.keyframe_relation_history.getNearest( //
+	        requested_time_ns,                                                      //
+	        kKeyframeGroupingToleranceNs - 1)) {                                    //
+		out_relation = keyframe_relation->relation;
+
+		SF_TRACE(this, "Used keyframe relation history for pose at ts %" PRIi64, requested_time_ns);
+	} else {
+		return this->getTrackedPose(requested_time_ns, out_relation);
+	}
+
+	// Convert to OpenXR coordinate space before outputting
+	math_pose_convert_from_opencv(&out_relation.pose, &out_relation.pose);
+	math_vec3_convert_from_opencv(&out_relation.linear_velocity, &out_relation.linear_velocity);
+	math_vec3_convert_from_opencv(&out_relation.angular_velocity, &out_relation.angular_velocity);
+
+	SF_TRACE(this,
+	         "Keyframe pose get from %" PRIi64
 	         " succeeded.\n"
 	         "Pose: %f,%f,%f\t%f,%f,%f,%f\n"
 	         "Velocity: %f,%f,%f\t%f,%f,%f",
@@ -2955,7 +3004,7 @@ SensorFusion::reckonToLatestImu(DeviceSolveState &inout_solve)
 	integrateToTimestampHistory(this->snapshot.world_gravity_mag,                                 //
 	                            inout_solve,                                                      //
 	                            std::span<const xrt_imu_sample>(samples_buf.data(), num_samples), //
-	                            device.relation_history);                                         //
+	                            device.imu_relation_history);                                     //
 
 	SF_TRACE(this, "Filled relation history for device %d from %" PRIi64 " to %" PRIi64, device.id, start_ns,
 	         samples_buf[num_samples - 1].timestamp_ns);
@@ -3093,24 +3142,57 @@ SensorFusion::tickLocked(bool have_new_input)
 	}
 #endif
 
-	bool device_updated = false;
-	for (uint32_t i = 0; i < snapshot.num_keyframes; i++) {
+	for (uint32_t n = snapshot.num_keyframes; n-- > 0;) {
+		const uint32_t i = n;
+
 		const auto &keyframe = snapshot.keyframes[i];
 
-		// Device has already been updated
-		if (device_updated) {
+		// If the device isn't in this keyframe, skip it
+		if (!(snapshot.device.keyframe_mask & (1u << i))) {
 			continue;
 		}
 
+		xrt_space_relation relation = {
+		    .relation_flags = static_cast<xrt_space_relation_flags>(
+		        XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_VALID_BIT |
+		        XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT | XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT |
+		        XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT),
+		    .pose = keyframe.device.Tcv_world_device,
+		    .linear_velocity = {},
+		    .angular_velocity = {},
+		};
+		map_vec3(relation.linear_velocity) = map_vec3_f64(keyframe.device.linear_velocity).cast<float>();
+		map_vec3(relation.angular_velocity) = map_vec3_f64(keyframe.device.angular_velocity).cast<float>();
+
+		// If this keyframe has no exact angular velocity, just rely on the IMU relation history.
+		if (!keyframe.device.angular_velocity_valid) {
+			continue;
+		}
+
+		bool success = this->device.keyframe_relation_history.pushOrUpdate(
+		    {
+		        .relation = relation,
+		        .timestamp = keyframe.timestamp_ns,
+		    },
+		    true);
+
+		if (!success) {
+			SF_DEBUG(this, "Failed to write keyframe relation at ts %" PRId64, keyframe.timestamp_ns);
+		}
+	}
+
+	for (uint32_t i = 0; i < snapshot.num_keyframes; i++) {
+		const auto &keyframe = snapshot.keyframes[i];
+
 		// If the device isn't in this keyframe, skip it
-		if (!(snapshot.device.keyframe_mask & (1 << i))) {
+		if (!(snapshot.device.keyframe_mask & (1u << i))) {
 			continue;
 		}
 
 		this->device.latest_solve = DeviceSolveState{
 		    .time_ns = keyframe.timestamp_ns,
 		    .Tcv_world_device = keyframe.device.Tcv_world_device,
-		    .world_velocity = keyframe.device.velocity,
+		    .world_velocity = keyframe.device.linear_velocity,
 		    .imu_calibration =
 		        {
 		            .accel_bias = keyframe.device.accel_bias,
@@ -3138,9 +3220,9 @@ SensorFusion::tickLocked(bool have_new_input)
 			        this->device.id, keyframe.timestamp_ns);
 		}
 
-		device_updated = true;
-
 		SF_DEBUG(this, "Got new solved pose for device %d at %" PRIi64, this->device.id, keyframe.timestamp_ns);
+
+		break;
 	}
 
 	SF_DEBUG(this, "Solved system in %zu iterations, %.3f -> %.3f sigma RMS over %d residuals (%s). Report: %s",
