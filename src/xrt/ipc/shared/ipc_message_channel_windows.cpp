@@ -52,7 +52,7 @@
  */
 
 static HANDLE
-open_target_process_dup_handle(struct ipc_message_channel *imc)
+open_client_process_dup_handle(struct ipc_message_channel *imc)
 {
 	DWORD flags;
 	if (!GetNamedPipeInfo(imc->ipc_handle, &flags, NULL, NULL, NULL)) {
@@ -70,12 +70,8 @@ open_target_process_dup_handle(struct ipc_message_channel *imc)
 			return NULL;
 		}
 	} else {
-		if (!GetNamedPipeServerProcessId(imc->ipc_handle, &pid)) {
-			DWORD err = GetLastError();
-			IPC_ERROR(imc, "GetNamedPipeServerProcessId(%p) failed: %lu %s", imc->ipc_handle, err,
-			          ipc_winerror(err));
-			return NULL;
-		}
+		// The server duplicates both ways, as an unelevated client can't open an elevated server.
+		return GetCurrentProcess();
 	}
 
 	HANDLE h = OpenProcess(PROCESS_DUP_HANDLE, false, pid);
@@ -85,6 +81,53 @@ open_target_process_dup_handle(struct ipc_message_channel *imc)
 	}
 
 	return h;
+}
+
+static xrt_result_t
+receive_handles(struct ipc_message_channel *imc,
+                void *out_data,
+                size_t size,
+                HANDLE *out_handles,
+                uint32_t handle_count,
+                bool pass_odd)
+{
+	auto rc = ipc_receive(imc, out_data, size);
+	if (rc != XRT_SUCCESS) {
+		return rc;
+	}
+	rc = ipc_receive(imc, out_handles, handle_count * sizeof(*out_handles));
+	if (rc != XRT_SUCCESS || handle_count == 0) {
+		return rc;
+	}
+
+	HANDLE client_process = open_client_process_dup_handle(imc);
+	if (!client_process) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	HANDLE current_process = GetCurrentProcess();
+	if (client_process == current_process) {
+		return XRT_SUCCESS;
+	}
+
+	for (uint32_t i = 0; i < handle_count; i++) {
+		HANDLE handle = out_handles[i];
+		if (!(pass_odd && ((size_t)handle & 1)) &&
+		    !DuplicateHandle(client_process, handle, current_process, &out_handles[i], 0, false,
+		                     DUPLICATE_SAME_ACCESS)) {
+			DWORD err = GetLastError();
+			IPC_ERROR(imc, "DuplicateHandle(%p) failed: %lu %s", handle, err, ipc_winerror(err));
+			for (uint32_t k = 0; k < i; k++) {
+				if (!((size_t)out_handles[k] & 1)) {
+					CloseHandle(out_handles[k]);
+				}
+			}
+			CloseHandle(client_process);
+			return XRT_ERROR_IPC_FAILURE;
+		}
+	}
+	CloseHandle(client_process);
+	return XRT_SUCCESS;
 }
 
 
@@ -138,11 +181,7 @@ xrt_result_t
 ipc_receive_handles(
     struct ipc_message_channel *imc, void *out_data, size_t size, HANDLE *out_handles, uint32_t handle_count)
 {
-	auto rc = ipc_receive(imc, out_data, size);
-	if (rc != XRT_SUCCESS) {
-		return rc;
-	}
-	return ipc_receive(imc, out_handles, handle_count * sizeof(*out_handles));
+	return receive_handles(imc, out_data, size, out_handles, handle_count, false);
 }
 
 xrt_result_t
@@ -158,14 +197,16 @@ ipc_send_handles(
 		return ipc_send(imc, nullptr, 0);
 	}
 
-	HANDLE target_process = open_target_process_dup_handle(imc);
-	if (!target_process) {
-		DWORD err = GetLastError();
-		IPC_ERROR(imc, "open_target_process_dup_handle failed: %lu %s", err, ipc_winerror(err));
+	HANDLE client_process = open_client_process_dup_handle(imc);
+	if (!client_process) {
 		return XRT_ERROR_IPC_FAILURE;
 	}
 
 	HANDLE current_process = GetCurrentProcess();
+	if (client_process == current_process) {
+		return ipc_send(imc, handles, handle_count * sizeof(*handles));
+	}
+
 	std::vector<HANDLE> v;
 	v.reserve(handle_count);
 	for (uint32_t i = 0; i < handle_count; i++) {
@@ -173,16 +214,16 @@ ipc_send_handles(
 		if ((size_t)handles[i] & 1) {
 			// This handle cannot be duplicated.
 			handle = handles[i];
-		} else if (!DuplicateHandle(current_process, handles[i], target_process, &handle, 0, false,
+		} else if (!DuplicateHandle(current_process, handles[i], client_process, &handle, 0, false,
 		                            DUPLICATE_SAME_ACCESS)) {
 			DWORD err = GetLastError();
 			IPC_ERROR(imc, "DuplicateHandle(%p) failed: %lu %s", handles[i], err, ipc_winerror(err));
-			CloseHandle(target_process);
+			CloseHandle(client_process);
 			return XRT_ERROR_IPC_FAILURE;
 		}
 		v.push_back(handle);
 	}
-	CloseHandle(target_process);
+	CloseHandle(client_process);
 	return ipc_send(imc, v.data(), v.size() * sizeof(*v.data()));
 }
 
@@ -240,7 +281,7 @@ ipc_receive_handles_graphics_buffer(struct ipc_message_channel *imc,
                                     xrt_graphics_buffer_handle_t *out_handles,
                                     uint32_t handle_count)
 {
-	return ipc_receive_handles(imc, out_data, size, out_handles, handle_count);
+	return receive_handles(imc, out_data, size, out_handles, handle_count, true);
 }
 
 xrt_result_t
