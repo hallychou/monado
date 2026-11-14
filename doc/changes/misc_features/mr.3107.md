@@ -1,0 +1,1 @@
+cmake: Add XRT_FEATURE_CLIENT_LAUNCH_SERVICE and XRT_FEATURE_CLIENT_LAUNCH_SERVICE_NEW_CONSOLE, on by default on Windows, and default XRT_SERVICE_EXECUTABLE to monado-service there. monado_set_options() turns both off, so projects using it must enable XRT_FEATURE_CLIENT_LAUNCH_SERVICE for the built-in runtimes to start the service.

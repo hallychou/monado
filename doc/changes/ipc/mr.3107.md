@@ -1,0 +1,1 @@
+ipc: On Windows, look for the service next to the runtime before the service subfolder, start it with a quoted path, and by default in a console of its own so Ctrl+C in a console app doesn't also end it. The service_executable in ipc_client_connection_info must now include .exe, and the new service_new_console field chooses the console.
