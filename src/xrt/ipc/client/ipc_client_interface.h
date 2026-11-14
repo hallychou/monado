@@ -13,6 +13,8 @@
 
 #include "xrt/xrt_results.h"
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -33,6 +35,9 @@ struct ipc_client_connection_info
 
 	//! Windows only: service executable, with .exe, to launch if no service is running, NULL disables launching.
 	const char *service_executable;
+
+	//! Windows only: start the launched service in a console of its own.
+	bool service_new_console;
 };
 
 /*!

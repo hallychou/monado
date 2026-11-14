@@ -37,6 +37,7 @@
 { symbol: ["XRT_MODULE_MONADO_GUI", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_CLIENT_DEBUG_GUI", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_CLIENT_LAUNCH_SERVICE", "public", "\"xrt/xrt_config_build.h\"", "public"] },
+{ symbol: ["XRT_FEATURE_CLIENT_LAUNCH_SERVICE_NEW_CONSOLE", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_CLIENT_WITHOUT_SERVICE", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_COLOR_LOG", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_DEBUG_GUI", "public", "\"xrt/xrt_config_build.h\"", "public"] },

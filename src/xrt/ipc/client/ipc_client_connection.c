@@ -118,6 +118,7 @@ ipc_launch_service(struct ipc_connection *ipc_c,
                    const char *dir,
                    const char *extra_folder,
                    const char *service_executable,
+                   bool new_console,
                    PROCESS_INFORMATION *out_pi)
 {
 	char service_path[MAX_PATH] = {0};
@@ -130,9 +131,10 @@ ipc_launch_service(struct ipc_connection *ipc_c,
 	char command_line[MAX_PATH + 2];
 	snprintf(command_line, sizeof(command_line), "\"%s\"", service_path);
 
+	DWORD flags = new_console ? CREATE_NEW_CONSOLE : 0;
 	STARTUPINFOA si = {.cb = sizeof(si)};
 	// Path as lpApplicationName, so a space in it can't start another program.
-	if (!CreateProcessA(service_path, command_line, NULL, NULL, false, 0, NULL, NULL, &si, out_pi)) {
+	if (!CreateProcessA(service_path, command_line, NULL, NULL, false, flags, NULL, NULL, &si, out_pi)) {
 		DWORD err = GetLastError();
 		IPC_INFO(ipc_c, "Failed to start %s: %lu %s", service_path, err, ipc_winerror(err));
 		return false;
@@ -143,7 +145,7 @@ ipc_launch_service(struct ipc_connection *ipc_c,
 }
 
 static HANDLE
-ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name, const char *service_executable)
+ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name, const char *service_executable, bool new_console)
 {
 	HANDLE pipe_inst = ipc_open_pipe(pipe_name);
 	if (pipe_inst != INVALID_HANDLE_VALUE) {
@@ -176,8 +178,8 @@ ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name, const char
 	*p = 0;
 
 	PROCESS_INFORMATION pi;
-	if (!ipc_launch_service(ipc_c, current_path, NULL, service_executable, &pi) &&
-	    !ipc_launch_service(ipc_c, current_path, "service", service_executable, &pi)) {
+	if (!ipc_launch_service(ipc_c, current_path, NULL, service_executable, new_console, &pi) &&
+	    !ipc_launch_service(ipc_c, current_path, "service", service_executable, new_console, &pi)) {
 		return INVALID_HANDLE_VALUE;
 	}
 	IPC_INFO(ipc_c, "Waiting for %s...", pipe_name);
@@ -213,7 +215,7 @@ ipc_client_socket_connect(struct ipc_connection *ipc_c, const struct ipc_client_
 		return false;
 	}
 
-	HANDLE pipe_inst = ipc_connect_pipe(ipc_c, pipe_name, icci->service_executable);
+	HANDLE pipe_inst = ipc_connect_pipe(ipc_c, pipe_name, icci->service_executable, icci->service_new_console);
 	if (pipe_inst == INVALID_HANDLE_VALUE) {
 		return false;
 	}

@@ -333,6 +333,7 @@ else()
 endif()
 
 option_with_deps(XRT_FEATURE_CLIENT_LAUNCH_SERVICE "Have the runtimes start XRT_SERVICE_EXECUTABLE if no service is running" DEPENDS WIN32 XRT_FEATURE_IPC_CLIENT)
+option_with_deps(XRT_FEATURE_CLIENT_LAUNCH_SERVICE_NEW_CONSOLE "Start the service in a console of its own" DEPENDS XRT_FEATURE_CLIENT_LAUNCH_SERVICE)
 
 # systemd detailed config
 option_with_deps(XRT_INSTALL_SYSTEMD_UNIT_FILES "Install user unit files for systemd socket activation on installation" DEPENDS XRT_HAVE_SYSTEMD)
@@ -680,6 +681,7 @@ message(STATUS "#")
 message(STATUS "#    FEATURE_AHARDWARE_BUFFER:                      ${XRT_FEATURE_AHARDWARE_BUFFER}")
 message(STATUS "#    FEATURE_CLIENT_DEBUG_GUI:                      ${XRT_FEATURE_CLIENT_DEBUG_GUI}")
 message(STATUS "#    FEATURE_CLIENT_LAUNCH_SERVICE:                 ${XRT_FEATURE_CLIENT_LAUNCH_SERVICE}")
+message(STATUS "#    FEATURE_CLIENT_LAUNCH_SERVICE_NEW_CONSOLE:     ${XRT_FEATURE_CLIENT_LAUNCH_SERVICE_NEW_CONSOLE}")
 message(STATUS "#    FEATURE_COLOR_LOG:                             ${XRT_FEATURE_COLOR_LOG}")
 message(STATUS "#    FEATURE_DEBUG_GUI:                             ${XRT_FEATURE_DEBUG_GUI}")
 message(STATUS "#    FEATURE_OPENVR:                                ${XRT_FEATURE_OPENVR}")
