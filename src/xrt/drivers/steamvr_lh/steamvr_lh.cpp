@@ -21,6 +21,9 @@
 #include "util/u_time.h"
 
 #include "math/m_api.h"
+#include <cstddef>
+#include <sstream>
+#include <string>
 
 #ifdef XRT_BUILD_DRIVER_PIMAX_P2
 #include "pimax_p2/pimax_p2.h"
@@ -89,6 +92,7 @@ namespace {
 #endif
 
 DEBUG_GET_ONCE_LOG_OPTION(lh_log, "LIGHTHOUSE_LOG", U_LOGGING_INFO)
+DEBUG_GET_ONCE_OPTION(lh_driver_path, "LH_DRIVER_PATH", NULL)
 DEBUG_GET_ONCE_BOOL_OPTION(lh_load_slimevr, "LH_LOAD_SLIMEVR", false)
 DEBUG_GET_ONCE_NUM_OPTION(lh_discover_wait_ms, "LH_DISCOVER_WAIT_MS", 3000)
 DEBUG_GET_ONCE_FLOAT_OPTION(lh_stick_deadzone, "LH_STICK_DEADZONE", 0)
@@ -134,6 +138,31 @@ find_steamvr_install()
 		}
 	}
 	return std::string();
+}
+
+// Locate named drivers in `<individual_root>/<driver_name>/bin/<platform>/driver_<driver_name>.so`
+// Colon separated list parsing of driver locations.
+// TODO: Windows .dll support
+std::string
+find_driver(const std::string &steamvr_path, const std::string &driver_name)
+{
+	std::vector<std::string> root_paths;
+	if (const char *env = debug_get_option_lh_driver_path(); env != nullptr) {
+		std::stringstream list(env);
+		for (std::string dir; std::getline(list, dir, ':');) {
+			if (!dir.empty())
+				root_paths.push_back(dir);
+		}
+	}
+	root_paths.push_back(steamvr_path + "/drivers");
+
+	for (const std::string &individual_root : root_paths) {
+		std::string driver_path = individual_root + "/" + driver_name + "/bin/" OVR_PLAT_SUBDIR "/driver_" +
+		                          driver_name + OVR_PLAT_EXT;
+		if (std::filesystem::exists(driver_path))
+			return driver_path;
+	}
+	return {};
 }
 
 } // namespace
@@ -1027,9 +1056,16 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 	U_LOG_IFL_I(level, "Found SteamVR install: %s", steamvr.c_str());
 
 	std::vector<vr::IServerTrackedDeviceProvider *> drivers = {};
-	const auto loadDriver = [&](const std::string &soPath, bool require) {
-		// TODO: support windows?
-		void *driver_lib = dlopen((steamvr + soPath).c_str(), RTLD_LAZY);
+	const auto loadDriver = [&](const std::string &name, bool require) {
+		const std::string path = find_driver(steamvr, name);
+
+		if (path.empty()) {
+			U_LOG_IFL_E(level, "Couldn't find the %s driver", name.c_str());
+			return !require;
+		}
+
+		U_LOG_IFL_I(level, "Loading the %s driver: %s", name.c_str(), path.c_str());
+		void *driver_lib = dlopen(path.c_str(), RTLD_LAZY);
 		if (!driver_lib) {
 			U_LOG_IFL_E(level, "Couldn't open driver lib: %s", dlerror());
 			return !require;
@@ -1052,10 +1088,9 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 		}
 		return true;
 	};
-	if (!loadDriver("/drivers/lighthouse/bin/" OVR_PLAT_SUBDIR "/driver_lighthouse" OVR_PLAT_EXT, true))
+	if (!loadDriver("lighthouse", true))
 		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
-	if (debug_get_bool_option_lh_load_slimevr() &&
-	    !loadDriver("/drivers/slimevr/bin/" OVR_PLAT_SUBDIR "/driver_slimevr" OVR_PLAT_EXT, false))
+	if (debug_get_bool_option_lh_load_slimevr() && !loadDriver("slimevr", false))
 		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
 	auto ctx = Context::create(STEAM_INSTALL_DIR, steamvr, std::move(drivers));
 	if (ctx == nullptr)
