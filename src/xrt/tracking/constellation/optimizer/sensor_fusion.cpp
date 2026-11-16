@@ -27,6 +27,7 @@
 #include <atomic>
 #include <bit>
 #include <cassert>
+#include <ceres/covariance.h>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -1844,14 +1845,14 @@ struct SensorFusionProblem
 	/*!
 	 * Copies the window and the solved parameter blocks out into the snapshot, once Ceres has returned.
 	 */
-	void
-	fillSnapshotLocked(SensorFusion &fusion)
+	bool
+	fillSnapshotLocked(SensorFusion *fusion)
 	{
 		const ParameterBlocks &blocks = this->parameter_blocks;
-		const Device &device = fusion.device;
-		SolveSnapshot &snapshot = fusion.snapshot;
+		const Device &device = fusion->device;
+		SolveSnapshot &snapshot = fusion->snapshot;
 
-		snapshot.num_late_samples_dropped = fusion.num_late_samples_dropped;
+		snapshot.num_late_samples_dropped = fusion->num_late_samples_dropped;
 
 		snapshot.world_gravity_mag =
 		    blocks.world_gravity.seeded ? WorldGravity<double>(blocks.world_gravity.vec).gravity_mag : 0.0;
@@ -1869,10 +1870,10 @@ struct SensorFusionProblem
 			    ImuExtrinsics<double>(blocks.imu_extrinsics.vec).Q_model_imu.coeffs().cast<float>();
 		}
 
-		snapshot.num_keyframes = fusion.num_keyframes;
-		for (uint32_t age = 0; age < fusion.num_keyframes; age++) {
-			const Keyframe &keyframe = fusion.keyframeLocked(age);
-			const auto &preintegration = fusion.preintegrationLocked(age);
+		snapshot.num_keyframes = fusion->num_keyframes;
+		for (uint32_t age = 0; age < fusion->num_keyframes; age++) {
+			const Keyframe &keyframe = fusion->keyframeLocked(age);
+			const auto &preintegration = fusion->preintegrationLocked(age);
 			SnapshotKeyframe &out = snapshot.keyframes[age];
 
 			out.timestamp_ns = keyframe.timestamp_ns;
@@ -1883,7 +1884,7 @@ struct SensorFusionProblem
 			for (uint32_t i = 0; i < keyframe.num_observations; i++) {
 				const DeviceObservation &observation = keyframe.observations[i];
 				const CameraDescription &camera =
-				    fusion.cameras[keyframe.mosaic_idx][observation.camera_idx];
+				    fusion->cameras[keyframe.mosaic_idx][observation.camera_idx];
 
 				SnapshotObservation snapshot_observation{};
 				snapshot_observation.mosaic_idx = keyframe.mosaic_idx;
@@ -1904,7 +1905,7 @@ struct SensorFusionProblem
 				continue;
 			}
 
-			const uint32_t block_idx = fusion.keyframeIdxLocked(age);
+			const uint32_t block_idx = fusion->keyframeIdxLocked(age);
 			const auto &pose_block = blocks.keyframes[block_idx];
 			const auto &bias_block = blocks.keyframe_imu_biases[block_idx];
 			const auto &extrinsics_block = blocks.imu_extrinsics;
@@ -1935,6 +1936,61 @@ struct SensorFusionProblem
 			map_vec3_f64(solved.gyro_bias) = bias.gyro_bias;
 			map_vec3_f64(solved.accel_scale) = bias.accel_scale;
 		}
+
+#ifdef XRT_FEATURE_RERUN
+		// We only use the covariance when rerun logging is enabled.
+		if (fusion->rerun_context != nullptr) {
+			ceres::Covariance::Options cov_options{};
+			cov_options.num_threads = 1; //! @todo measure if more threads is needed
+			cov_options.null_space_rank = -1;
+			cov_options.algorithm_type = ceres::CovarianceAlgorithmType::DENSE_SVD;
+			ceres::Covariance cov(cov_options);
+
+			std::vector<const double *> covariance_blocks;
+			// Collect the covariance blocks
+			for (uint32_t age = 0; age < snapshot.num_keyframes; age++) {
+				// If the device isn't in this keyframe, skip it
+				if (!(snapshot.device.keyframe_mask & (1u << age))) {
+					continue;
+				}
+
+				const auto keyframe_ring_idx = fusion->keyframeIdxLocked(age);
+				const auto &keyframe_pose_vec = blocks.keyframes[keyframe_ring_idx];
+				covariance_blocks.push_back(keyframe_pose_vec.data());
+			}
+
+			if (!cov.Compute(covariance_blocks, &problem)) {
+				SF_ERROR(fusion, "Failed to compute covariance matrix");
+				//! @todo is failure a common case? try to find recovery strategy maybe?
+				return false;
+			}
+
+			for (uint32_t age = 0; age < snapshot.num_keyframes; age++) {
+				// If the device isn't in this keyframe, skip it
+				if (!(snapshot.device.keyframe_mask & (1u << age))) {
+					continue;
+				}
+
+				SnapshotKeyframe &out = snapshot.keyframes[age];
+
+				const auto keyframe_ring_idx = fusion->keyframeIdxLocked(age);
+				const auto &keyframe_pose_parameters = blocks.keyframes[keyframe_ring_idx].data();
+
+				bool success = cov.GetCovarianceBlockInTangentSpace( //
+				    keyframe_pose_parameters,                        //
+				    keyframe_pose_parameters,                        //
+				    out.device.covariance.data());                   //
+				if (!success) {
+					SF_ERROR(fusion, "Failed to get covariance matrix for keyframe with age %u",
+					         age);
+					//! @todo is failure a common case?
+					return false;
+				}
+			}
+		}
+#endif // XRT_FEATURE_RERUN
+
+		return true;
 	}
 
 	/*!
@@ -3119,7 +3175,11 @@ SensorFusion::tickLocked(bool have_new_input)
 		return;
 	}
 
-	this->problem->fillSnapshotLocked(*this);
+	if (!this->problem->fillSnapshotLocked(this)) {
+		this->resetLocked();
+		return;
+	}
+
 	SolveSnapshot &snapshot = this->snapshot;
 
 #ifdef XRT_FEATURE_RERUN
@@ -3142,13 +3202,11 @@ SensorFusion::tickLocked(bool have_new_input)
 	}
 #endif
 
-	for (uint32_t n = snapshot.num_keyframes; n-- > 0;) {
-		const uint32_t i = n;
-
-		const auto &keyframe = snapshot.keyframes[i];
+	for (uint32_t age = snapshot.num_keyframes; age-- > 0;) {
+		const auto &keyframe = snapshot.keyframes[age];
 
 		// If the device isn't in this keyframe, skip it
-		if (!(snapshot.device.keyframe_mask & (1u << i))) {
+		if (!(snapshot.device.keyframe_mask & (1u << age))) {
 			continue;
 		}
 

@@ -350,6 +350,14 @@ struct SolvedDeviceKeyframe
 	xrt_vec3_f64 gyro_bias;
 	//! Solved per-axis accelerometer scale, unitless.
 	xrt_vec3_f64 accel_scale;
+#ifdef XRT_FEATURE_RERUN
+	/*!
+	 * The covariance matrix of this solve's keyframe parameters of the pose
+	 *
+	 * @see PoseCovarianceIndex
+	 */
+	PoseCovarianceMatrix covariance;
+#endif // XRT_FEATURE_RERUN
 };
 
 /*!
