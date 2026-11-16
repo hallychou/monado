@@ -235,8 +235,24 @@ target_flush(struct comp_target *ct)
 }
 
 static void
+target_allocate_frame(struct comp_target *ct, int64_t *out_frame_id)
+{
+	struct debug_image_target *dit = (struct debug_image_target *)ct;
+
+	u_pc_allocate_frame(dit->upc, out_frame_id);
+}
+
+static void
+target_update_present_offset(struct comp_target *ct, int64_t frame_id, int64_t present_to_display_offset_ns)
+{
+	struct debug_image_target *dit = (struct debug_image_target *)ct;
+
+	u_pc_update_present_offset(dit->upc, frame_id, present_to_display_offset_ns);
+}
+
+static void
 target_calc_frame_pacing(struct comp_target *ct,
-                         int64_t *out_frame_id,
+                         int64_t frame_id,
                          int64_t *out_wake_up_time_ns,
                          int64_t *out_desired_present_time_ns,
                          int64_t *out_present_slop_ns,
@@ -244,7 +260,6 @@ target_calc_frame_pacing(struct comp_target *ct,
 {
 	struct debug_image_target *dit = (struct debug_image_target *)ct;
 
-	int64_t frame_id = -1;
 	int64_t wake_up_time_ns = 0;
 	int64_t desired_present_time_ns = 0;
 	int64_t present_slop_ns = 0;
@@ -253,17 +268,16 @@ target_calc_frame_pacing(struct comp_target *ct,
 	int64_t min_display_period_ns = 0;
 	int64_t now_ns = os_monotonic_get_ns();
 
-	u_pc_predict(dit->upc,                     //
-	             now_ns,                       //
-	             &frame_id,                    //
-	             &wake_up_time_ns,             //
-	             &desired_present_time_ns,     //
-	             &present_slop_ns,             //
-	             &predicted_display_time_ns,   //
-	             &predicted_display_period_ns, //
-	             &min_display_period_ns);      //
+	u_pc_predict_frame(dit->upc,                     //
+	                   frame_id,                     //
+	                   now_ns,                       //
+	                   &wake_up_time_ns,             //
+	                   &desired_present_time_ns,     //
+	                   &present_slop_ns,             //
+	                   &predicted_display_time_ns,   //
+	                   &predicted_display_period_ns, //
+	                   &min_display_period_ns);      //
 
-	*out_frame_id = frame_id;
 	*out_wake_up_time_ns = wake_up_time_ns;
 	*out_desired_present_time_ns = desired_present_time_ns;
 	*out_predicted_display_time_ns = predicted_display_time_ns;
@@ -373,6 +387,8 @@ target_create(struct comp_compositor *c)
 	dit->base.present = target_present;
 	dit->base.wait_for_present = target_wait_for_present;
 	dit->base.flush = target_flush;
+	dit->base.allocate_frame = target_allocate_frame;
+	dit->base.update_present_offset = target_update_present_offset;
 	dit->base.calc_frame_pacing = target_calc_frame_pacing;
 	dit->base.mark_timing_point = target_mark_timing_point;
 	dit->base.update_timings = target_update_timings;

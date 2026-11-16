@@ -113,6 +113,22 @@ rift_get_display_info(struct rift_hmd *hmd, struct rift_display_info_report *dis
 }
 
 int
+rift_get_display_report(struct rift_hmd *hmd, struct rift_display_report *display)
+{
+	uint8_t buf[REPORT_MAX_SIZE] = {0};
+
+	int result = rift_get_report(hmd, false, FEATURE_REPORT_DISPLAY, buf, sizeof(buf));
+	if (result < 0) {
+		return result;
+	}
+
+	// FIXME: handle endian differences
+	memcpy(display, buf + 1, sizeof(*display));
+
+	return 0;
+}
+
+int
 rift_get_lens_distortion(struct rift_hmd *hmd, struct rift_lens_distortion_report *lens_distortion)
 {
 	uint8_t buf[REPORT_MAX_SIZE] = {0};

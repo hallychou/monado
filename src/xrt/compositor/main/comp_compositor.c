@@ -205,13 +205,25 @@ compositor_predict_frame(struct xrt_compositor *xc,
 	assert(comp_frame_is_invalid_locked(&c->frame.waited));
 
 	int64_t frame_id = -1;
+	comp_target_allocate_frame(c->target, &frame_id);
+
+	if (c->xdev != NULL && c->xdev->supported.compositor_info) {
+		struct xrt_device_compositor_info xdev_comp_info = {0};
+		xrt_result_t xret = xrt_device_get_compositor_info(c->xdev, &c->xdev_compositor_mode, &xdev_comp_info);
+		if (xret == XRT_SUCCESS && xdev_comp_info.has_first_pixel_out_to_photons &&
+		    xdev_comp_info.first_pixel_out_to_photons_ns) {
+			comp_target_update_present_offset(c->target, frame_id,
+			                                  xdev_comp_info.first_pixel_out_to_photons_ns);
+		}
+	}
+
 	int64_t wake_up_time_ns = 0;
 	int64_t present_slop_ns = 0;
 	int64_t desired_present_time_ns = 0;
 	int64_t predicted_display_time_ns = 0;
 	comp_target_calc_frame_pacing(   //
 	    c->target,                   //
-	    &frame_id,                   //
+	    frame_id,                    //
 	    &wake_up_time_ns,            //
 	    &desired_present_time_ns,    //
 	    &present_slop_ns,            //
@@ -399,8 +411,10 @@ compositor_request_display_refresh_rate(struct xrt_compositor *xc, float display
 	if (c->target && c->target->request_refresh_rate) {
 		xrt_result_t result = comp_target_request_refresh_rate(c->target, display_refresh_rate_hz);
 		// Assume refresh rate change is immediate
-		if (result == XRT_SUCCESS)
+		if (result == XRT_SUCCESS) {
 			c->frame_interval_ns = U_TIME_1S_IN_NS / display_refresh_rate_hz;
+			c->xdev_compositor_mode.frame_interval_ns = c->frame_interval_ns;
+		}
 		return result;
 	}
 #endif
@@ -1138,6 +1152,7 @@ comp_main_create_system_compositor(struct xrt_device *xdev,
 	chl_scratch_init(&c->scratch);
 
 	c->frame_interval_ns = c->settings.nominal_frame_interval_ns;
+	c->xdev_compositor_mode.frame_interval_ns = c->frame_interval_ns;
 
 	c->last_frame_time_ns = os_monotonic_get_ns();
 

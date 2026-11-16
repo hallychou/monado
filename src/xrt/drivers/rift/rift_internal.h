@@ -52,6 +52,10 @@
 #define SERIAL_NUMBER_LENGTH 14
 #define RIFT_USB_LATENCY_BIAS (U_TIME_1US_IN_NS * 200LL) // 200us latency bias over USB
 #define RIFT_RADIO_LATENCY_BIAS (U_TIME_1MS_IN_NS * 4LL) // 4ms bias over radio
+// used when the display report can't be read, the persistence fallback is the same one Oculus uses, and the
+// total rows (active + vertical blank) are from the CV1's EDID
+#define RIFT_CV1_FALLBACK_PERSISTENCE_NS (U_TIME_1MS_IN_NS * 2LL)
+#define RIFT_CV1_FALLBACK_TOTAL_ROWS 1472
 
 #define CALIBRATION_HASH_BYTE_OFFSET 0x1bf0
 #define CALIBRATION_HASH_BYTE_LENGTH 0x10
@@ -335,6 +339,8 @@ enum rift_display_limit
 
 enum rift_display_flags
 {
+	// read only, see rift_display_mode, follows RIFT_DISPLAY_USE_ROLLING on the DK2 but not the CV1
+	RIFT_DISPLAY_MODE_MASK = 0xF,
 	RIFT_DISPLAY_USE_ROLLING = 1 << 6,
 	RIFT_DISPLAY_REVERSE_ROLLING = 1 << 7,
 	RIFT_DISPLAY_HIGH_BRIGHTNESS = 1 << 8,
@@ -924,6 +930,8 @@ struct rift_hmd
 	enum rift_variant variant;
 	struct rift_config_report config;
 	struct rift_display_info_report display_info;
+	//! Panel timing (persistence and total rows), zeroed if it could not be read or was invalid.
+	struct rift_display_report display;
 
 	struct t_timing_event_sink *timing_event_sink;
 	struct t_timing_event_source *timing_event_source;

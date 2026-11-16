@@ -1150,8 +1150,31 @@ comp_target_swapchain_is_shared_presentable_image(struct comp_target *ct)
  */
 
 static void
+comp_target_swapchain_allocate_frame(struct comp_target *ct, int64_t *out_frame_id)
+{
+	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
+
+	int64_t frame_id = -1;
+	u_pc_allocate_frame(cts->upc, &frame_id);
+
+	cts->current_frame_id = frame_id;
+
+	*out_frame_id = frame_id;
+}
+
+static void
+comp_target_swapchain_update_present_offset(struct comp_target *ct,
+                                            int64_t frame_id,
+                                            int64_t present_to_display_offset_ns)
+{
+	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
+
+	u_pc_update_present_offset(cts->upc, frame_id, present_to_display_offset_ns);
+}
+
+static void
 comp_target_swapchain_calc_frame_pacing(struct comp_target *ct,
-                                        int64_t *out_frame_id,
+                                        int64_t frame_id,
                                         int64_t *out_wake_up_time_ns,
                                         int64_t *out_desired_present_time_ns,
                                         int64_t *out_present_slop_ns,
@@ -1159,7 +1182,6 @@ comp_target_swapchain_calc_frame_pacing(struct comp_target *ct,
 {
 	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
 
-	int64_t frame_id = -1;
 	int64_t wake_up_time_ns = 0;
 	int64_t desired_present_time_ns = 0;
 	int64_t present_slop_ns = 0;
@@ -1168,19 +1190,16 @@ comp_target_swapchain_calc_frame_pacing(struct comp_target *ct,
 	int64_t min_display_period_ns = 0;
 	int64_t now_ns = os_monotonic_get_ns();
 
-	u_pc_predict(cts->upc,                     //
-	             now_ns,                       //
-	             &frame_id,                    //
-	             &wake_up_time_ns,             //
-	             &desired_present_time_ns,     //
-	             &present_slop_ns,             //
-	             &predicted_display_time_ns,   //
-	             &predicted_display_period_ns, //
-	             &min_display_period_ns);      //
+	u_pc_predict_frame(cts->upc,                     //
+	                   frame_id,                     //
+	                   now_ns,                       //
+	                   &wake_up_time_ns,             //
+	                   &desired_present_time_ns,     //
+	                   &present_slop_ns,             //
+	                   &predicted_display_time_ns,   //
+	                   &predicted_display_period_ns, //
+	                   &min_display_period_ns);      //
 
-	cts->current_frame_id = frame_id;
-
-	*out_frame_id = frame_id;
 	*out_wake_up_time_ns = wake_up_time_ns;
 	*out_desired_present_time_ns = desired_present_time_ns;
 	*out_predicted_display_time_ns = predicted_display_time_ns;
@@ -1330,6 +1349,8 @@ comp_target_swapchain_init_and_set_fnptrs(struct comp_target_swapchain *cts,
 	cts->base.acquire = comp_target_swapchain_acquire_next_image;
 	cts->base.present = comp_target_swapchain_present;
 	cts->base.wait_for_present = comp_target_swapchain_wait_for_present;
+	cts->base.allocate_frame = comp_target_swapchain_allocate_frame;
+	cts->base.update_present_offset = comp_target_swapchain_update_present_offset;
 	cts->base.calc_frame_pacing = comp_target_swapchain_calc_frame_pacing;
 	cts->base.mark_timing_point = comp_target_swapchain_mark_timing_point;
 	cts->base.update_timings = comp_target_swapchain_update_timings;

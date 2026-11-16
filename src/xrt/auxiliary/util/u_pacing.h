@@ -13,6 +13,7 @@
 #include "xrt/xrt_compiler.h"
 #include "xrt/xrt_defines.h"
 
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -67,12 +68,25 @@ enum u_timing_point
 struct u_pacing_compositor
 {
 	/*!
-	 * Predict the next frame.
+	 * Allocate a new frame, this allocates a frame ID but does not make any predictions.
+	 *
+	 * Call @ref predict_frame afterwards with the returned ID. Between the two calls, the pacer may be given
+	 * information that will influence the prediction, like @ref update_present_offset.
+	 *
+	 * @param[in]  upc           The compositor pacing helper.
+	 * @param[out] out_frame_id  Id used to refer to this frame again.
+	 *
+	 * @see @ref frame-pacing.
+	 */
+	void (*allocate_frame)(struct u_pacing_compositor *upc, int64_t *out_frame_id);
+
+	/*!
+	 * Predict timings for a frame previously allocated with @ref allocate_frame.
 	 *
 	 * @param[in] upc                                The compositor pacing helper.
-	 * @param[in]  now_ns                            The current timestamp in nanoseconds, nominally from @ref
+	 * @param[in] frame_id                           The frame ID from @ref allocate_frame.
+	 * @param[in] now_ns                             The current timestamp in nanoseconds, nominally from @ref
 	 *                                               os_monotonic_get_ns
-	 * @param[out] out_frame_id                      Id used to refer to this frame again.
 	 * @param[out] out_wake_up_time_ns               When should the compositor wake up.
 	 * @param[out] out_desired_present_time_ns       The GPU should start scanning out at this time.
 	 * @param[out] out_present_slop_ns               Any looseness to the desired present timing.
@@ -82,15 +96,15 @@ struct u_pacing_compositor
 	 *
 	 * @see @ref frame-pacing.
 	 */
-	void (*predict)(struct u_pacing_compositor *upc,
-	                int64_t now_ns,
-	                int64_t *out_frame_id,
-	                int64_t *out_wake_up_time_ns,
-	                int64_t *out_desired_present_time_ns,
-	                int64_t *out_present_slop_ns,
-	                int64_t *out_predicted_display_time_ns,
-	                int64_t *out_predicted_display_period_ns,
-	                int64_t *out_min_display_period_ns);
+	void (*predict_frame)(struct u_pacing_compositor *upc,
+	                      int64_t frame_id,
+	                      int64_t now_ns,
+	                      int64_t *out_wake_up_time_ns,
+	                      int64_t *out_desired_present_time_ns,
+	                      int64_t *out_present_slop_ns,
+	                      int64_t *out_predicted_display_time_ns,
+	                      int64_t *out_predicted_display_period_ns,
+	                      int64_t *out_min_display_period_ns);
 
 	/*!
 	 * Mark a point on the frame's lifetime.
@@ -179,7 +193,8 @@ struct u_pacing_compositor
 	/*!
 	 * Provide an updated estimate of the present offset.
 	 *
-	 * This is usually used only for more complicated display systems.
+	 * This is usually used only for more complicated display systems. Call it after @ref allocate_frame and before
+	 * @ref predict_frame to have it affect that frame's prediction.
 	 *
 	 * @param[in] upc                           The compositor pacing helper.
 	 * @param[in] frame_id                      The frame ID to record for.
@@ -198,7 +213,7 @@ struct u_pacing_compositor
 };
 
 /*!
- * @copydoc u_pacing_compositor::predict
+ * @copydoc u_pacing_compositor::allocate_frame
  *
  * Helper for calling through the function pointer.
  *
@@ -206,25 +221,39 @@ struct u_pacing_compositor
  * @ingroup aux_pacing
  */
 static inline void
-u_pc_predict(struct u_pacing_compositor *upc,
-             int64_t now_ns,
-             int64_t *out_frame_id,
-             int64_t *out_wake_up_time_ns,
-             int64_t *out_desired_present_time_ns,
-             int64_t *out_present_slop_ns,
-             int64_t *out_predicted_display_time_ns,
-             int64_t *out_predicted_display_period_ns,
-             int64_t *out_min_display_period_ns)
+u_pc_allocate_frame(struct u_pacing_compositor *upc, int64_t *out_frame_id)
 {
-	upc->predict(upc,                             //
-	             now_ns,                          //
-	             out_frame_id,                    //
-	             out_wake_up_time_ns,             //
-	             out_desired_present_time_ns,     //
-	             out_present_slop_ns,             //
-	             out_predicted_display_time_ns,   //
-	             out_predicted_display_period_ns, //
-	             out_min_display_period_ns);      //
+	upc->allocate_frame(upc, out_frame_id);
+}
+
+/*!
+ * @copydoc u_pacing_compositor::predict_frame
+ *
+ * Helper for calling through the function pointer.
+ *
+ * @public @memberof u_pacing_compositor
+ * @ingroup aux_pacing
+ */
+static inline void
+u_pc_predict_frame(struct u_pacing_compositor *upc,
+                   int64_t frame_id,
+                   int64_t now_ns,
+                   int64_t *out_wake_up_time_ns,
+                   int64_t *out_desired_present_time_ns,
+                   int64_t *out_present_slop_ns,
+                   int64_t *out_predicted_display_time_ns,
+                   int64_t *out_predicted_display_period_ns,
+                   int64_t *out_min_display_period_ns)
+{
+	upc->predict_frame(upc,                             //
+	                   frame_id,                        //
+	                   now_ns,                          //
+	                   out_wake_up_time_ns,             //
+	                   out_desired_present_time_ns,     //
+	                   out_present_slop_ns,             //
+	                   out_predicted_display_time_ns,   //
+	                   out_predicted_display_period_ns, //
+	                   out_min_display_period_ns);      //
 }
 
 /*!
@@ -725,6 +754,10 @@ u_pc_display_timing_get_default_config(void);
  * Creates a new composition pacing helper that uses real display timing information.
  *
  * Meant to be used with `VK_GOOGLE_display_timing`.
+ *
+ * @param[in]  estimated_frame_period_ns The estimated duration/period of a frame in nanoseconds.
+ * @param[in]  config                    The configuration to use, see @ref u_pc_display_timing_get_default_config.
+ * @param[out] out_upc                   The pointer to populate with the created compositor pacing helper
  *
  * @ingroup aux_pacing
  * @see u_pacing_compositor

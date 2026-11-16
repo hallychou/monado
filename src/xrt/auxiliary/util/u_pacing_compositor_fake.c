@@ -115,9 +115,10 @@ struct fake_timing
 	int64_t last_present_time_ns;
 
 	/*!
-	 * Very often the present time that we get from the system is only when
-	 * the display engine starts scanning out from the buffers we provided,
-	 * and not when the pixels turned into photons that the user sees.
+	 * The present time we use in Monado is when the pixels of the active area
+	 * start scanning out. However, that's not always when photons are emitted,
+	 * this applies an offset so we predict when the photons are emitted to the
+	 * user.
 	 */
 	struct u_var_draggable_f32 present_to_display_offset_ms;
 
@@ -284,21 +285,31 @@ calc_gpu_stats(struct fake_timing *ft, struct frame *f, int64_t gpu_start_ns, in
  */
 
 static void
-pc_predict(struct u_pacing_compositor *upc,
-           int64_t now_ns,
-           int64_t *out_frame_id,
-           int64_t *out_wake_up_time_ns,
-           int64_t *out_desired_present_time_ns,
-           int64_t *out_present_slop_ns,
-           int64_t *out_predicted_display_time_ns,
-           int64_t *out_predicted_display_period_ns,
-           int64_t *out_min_display_period_ns)
+pc_allocate_frame(struct u_pacing_compositor *upc, int64_t *out_frame_id)
 {
 	struct fake_timing *ft = fake_timing(upc);
 
 	struct frame *f = get_new_frame(ft);
 
-	int64_t frame_id = f->frame_id;
+	*out_frame_id = f->frame_id;
+}
+
+static void
+pc_predict_frame(struct u_pacing_compositor *upc,
+                 int64_t frame_id,
+                 int64_t now_ns,
+                 int64_t *out_wake_up_time_ns,
+                 int64_t *out_desired_present_time_ns,
+                 int64_t *out_present_slop_ns,
+                 int64_t *out_predicted_display_time_ns,
+                 int64_t *out_predicted_display_period_ns,
+                 int64_t *out_min_display_period_ns)
+{
+	struct fake_timing *ft = fake_timing(upc);
+
+	struct frame *f = get_frame_or_null(ft, frame_id);
+	assert(f != NULL);
+
 	int64_t desired_present_time_ns = predict_next_frame_present_time(ft, now_ns);
 	int64_t predicted_display_time_ns = calc_display_time(ft, desired_present_time_ns);
 
@@ -313,7 +324,6 @@ pc_predict(struct u_pacing_compositor *upc,
 	f->predicted_display_time_ns = predicted_display_time_ns;
 	f->predicted_display_period_ns = predicted_display_period_ns;
 
-	*out_frame_id = frame_id;
 	*out_wake_up_time_ns = wake_up_time_ns;
 	*out_desired_present_time_ns = desired_present_time_ns;
 	*out_present_slop_ns = present_slop_ns;
@@ -460,7 +470,8 @@ xrt_result_t
 u_pc_fake_create(int64_t estimated_frame_period_ns, int64_t now_ns, struct u_pacing_compositor **out_upc)
 {
 	struct fake_timing *ft = U_TYPED_CALLOC(struct fake_timing);
-	ft->base.predict = pc_predict;
+	ft->base.allocate_frame = pc_allocate_frame;
+	ft->base.predict_frame = pc_predict_frame;
 	ft->base.mark_point = pc_mark_point;
 	ft->base.info = pc_info;
 	ft->base.info_gpu = pc_info_gpu;

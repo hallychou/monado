@@ -143,6 +143,23 @@ struct xrt_device_compositor_info
 	 * @note alignas for 32 bit client support, see @ref ipc-design
 	 */
 	XRT_ALIGNAS(8) int64_t scanout_time_ns;
+
+	/*!
+	 * Whether or not the device has an estimation on the @ref first_pixel_out_to_photons_ns field.
+	 */
+	bool has_first_pixel_out_to_photons;
+	/*!
+	 * The time between when the first pixel is scanned out, and when photons are emitted to the display.
+	 * A device may choose to update this at will, and so the value read here should be polled whenever it is needed
+	 * instead of being cached.
+	 *
+	 * This is used to fine-tune when poses are predicted for a display time.
+	 *
+	 * Any value 0 or higher is valid, with negative values being treated as if there was no value present.
+	 *
+	 * @note alignas for 32 bit client support, see @ref ipc-design
+	 */
+	XRT_ALIGNAS(8) int64_t first_pixel_out_to_photons_ns;
 };
 
 /*!

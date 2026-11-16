@@ -79,6 +79,9 @@ struct sdl_compositor
 	//! Base native compositor.
 	struct comp_base base;
 
+	//! The device being displayed to.
+	struct xrt_device *xdev;
+
 	//! The supported view configurations
 	struct xrt_view_config view_configs[XRT_MAX_COMPOSITOR_VIEW_CONFIGS_COUNT];
 

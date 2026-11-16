@@ -150,6 +150,8 @@ struct comp_target_swapchain
  * - comp_target::has_images
  * - comp_target::acquire
  * - comp_target::present
+ * - comp_target::allocate_frame
+ * - comp_target::update_present_offset
  * - comp_target::calc_frame_pacing
  * - comp_target::mark_timing_point
  * - comp_target::update_timings

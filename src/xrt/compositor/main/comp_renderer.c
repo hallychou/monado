@@ -281,13 +281,10 @@ calc_scanout_compensation_ns(struct comp_renderer *r)
 		return 0;
 	}
 
-	struct xrt_device_compositor_mode compositor_mode = {
-	    .frame_interval_ns = r->c->frame_interval_ns,
-	};
 	struct xrt_device_compositor_info device_compositor_info = {0};
 	xrt_result_t xret = xrt_device_get_compositor_info( //
 	    xdev,                                           //
-	    &compositor_mode,                               //
+	    &r->c->xdev_compositor_mode,                    //
 	    &device_compositor_info);                       //
 
 	if (xret != XRT_SUCCESS) {

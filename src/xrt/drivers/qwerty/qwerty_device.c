@@ -241,6 +241,22 @@ qwerty_get_tracked_pose(struct xrt_device *xd,
 	return XRT_SUCCESS;
 }
 
+static xrt_result_t
+qwerty_get_compositor_info(struct xrt_device *xdev,
+                           const struct xrt_device_compositor_mode *mode,
+                           struct xrt_device_compositor_info *out_info)
+{
+	struct qwerty_hmd *qh = qwerty_hmd(xdev);
+
+	(void)mode;
+	(*out_info) = (struct xrt_device_compositor_info){
+	    .has_first_pixel_out_to_photons = true,
+	    .first_pixel_out_to_photons_ns = qh->present_to_display_offset_ns,
+	};
+
+	return XRT_SUCCESS;
+}
+
 static void
 qwerty_destroy(struct xrt_device *xd)
 {
@@ -265,6 +281,7 @@ qwerty_hmd_create(void)
 	qd->pose.position = QWERTY_HMD_INITIAL_POS;
 	qd->movement_speed = QWERTY_HMD_INITIAL_MOVEMENT_SPEED;
 	qd->look_speed = QWERTY_HMD_INITIAL_LOOK_SPEED;
+	qh->present_to_display_offset_ns = 4 * U_TIME_1MS_IN_NS; // default
 
 	struct xrt_device *xd = &qd->base;
 	xd->name = XRT_DEVICE_GENERIC_HMD;
@@ -296,10 +313,13 @@ qwerty_hmd_create(void)
 
 	xd->inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;
 
+	xd->supported.compositor_info = true;
+
+	u_device_populate_function_pointers(xd, qwerty_get_tracked_pose, qwerty_destroy);
 	xd->update_inputs = u_device_noop_update_inputs;
-	xd->get_tracked_pose = qwerty_get_tracked_pose;
 	xd->get_view_poses = u_device_get_view_poses;
-	xd->destroy = qwerty_destroy;
+	xd->get_compositor_info = qwerty_get_compositor_info;
+
 	u_distortion_mesh_set_none(xd); // Fill in xd->compute_distortion()
 
 	return qh;
@@ -351,10 +371,9 @@ qwerty_controller_create(bool is_left, struct qwerty_hmd *qhmd)
 	 * removed with xrt_binding_profile.
 	 */
 
+	u_device_populate_function_pointers(xd, qwerty_get_tracked_pose, qwerty_destroy);
 	xd->update_inputs = qwerty_update_inputs;
-	xd->get_tracked_pose = qwerty_get_tracked_pose;
 	xd->set_output = qwerty_set_output;
-	xd->destroy = qwerty_destroy;
 
 	return qc;
 }
@@ -364,7 +383,7 @@ qwerty_controller_create(bool is_left, struct qwerty_hmd *qhmd)
 static void
 qwerty_setup_var_tracking(struct qwerty_system *qs)
 {
-	struct qwerty_device *qd_hmd = qs->hmd ? &qs->hmd->base : NULL;
+	struct qwerty_hmd *qd_hmd = qs->hmd;
 	struct qwerty_device *qd_left = &qs->lctrl->base;
 	struct qwerty_device *qd_right = &qs->rctrl->base;
 
@@ -380,10 +399,11 @@ qwerty_setup_var_tracking(struct qwerty_system *qs)
 	u_var_add_bool(qs, &qs->rctrl_focused, "Right Controller Focused");
 
 	if (qd_hmd) {
-		u_var_add_gui_header(qs, NULL, qd_hmd->base.str);
-		u_var_add_pose(qs, &qd_hmd->pose, "hmd.pose");
-		u_var_add_f32(qs, &qd_hmd->movement_speed, "hmd.movement_speed");
-		u_var_add_f32(qs, &qd_hmd->look_speed, "hmd.look_speed");
+		u_var_add_gui_header(qs, NULL, qd_hmd->base.base.str);
+		u_var_add_pose(qs, &qd_hmd->base.pose, "hmd.pose");
+		u_var_add_f32(qs, &qd_hmd->base.movement_speed, "hmd.movement_speed");
+		u_var_add_f32(qs, &qd_hmd->base.look_speed, "hmd.look_speed");
+		u_var_add_i64(qs, &qd_hmd->present_to_display_offset_ns, "hmd.present_to_display_offset_ns");
 	}
 
 	u_var_add_gui_header(qs, NULL, qd_left->base.str);

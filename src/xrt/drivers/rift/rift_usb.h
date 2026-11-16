@@ -41,6 +41,9 @@ int
 rift_get_display_info(struct rift_hmd *hmd, struct rift_display_info_report *display_info);
 
 int
+rift_get_display_report(struct rift_hmd *hmd, struct rift_display_report *display);
+
+int
 rift_enable_components(struct rift_hmd *hmd, struct rift_enable_components_report *enable_components);
 
 int

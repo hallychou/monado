@@ -863,6 +863,100 @@ rift_hmd_compute_distortion(struct xrt_device *xdev, uint32_t view, float u, flo
 	return XRT_SUCCESS;
 }
 
+/*!
+ * How the panel exposes the image, from the display report.
+ *
+ * The DK2 firmware derives the read only mode from @ref RIFT_DISPLAY_USE_ROLLING, including the direction, and
+ * forces @ref RIFT_DISPLAY_REVERSE_ROLLING on, so the mode is used as is. The CV1 instead keeps reporting global
+ * after being switched to rolling, so then the flags are all there is to go on.
+ *
+ * Note the DK2's "global" mode is really a rolling band at full persistence.
+ */
+static void
+rift_display_get_scanout(const struct rift_display_report *display,
+                         enum xrt_panel_refresh_type *out_refresh_type,
+                         enum xrt_scanout_direction *out_scanout_direction)
+{
+	//! @note The headset's spud file may state this is non-global shutter on some units, but we don't read those
+	//        and they're only accessible from meta's servers. Use headset's logic.
+
+	switch ((enum rift_display_mode)(display->flags & RIFT_DISPLAY_MODE_MASK)) {
+	case RIFT_DISPLAY_MODE_GLOBAL:
+		if ((display->flags & RIFT_DISPLAY_USE_ROLLING) == 0) {
+			// The screen isn't rotated, so the active area is still sent top to bottom.
+			*out_refresh_type = XRT_PANEL_REFRESH_TYPE_GLOBAL;
+			*out_scanout_direction = XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM;
+			return;
+		}
+		*out_refresh_type = XRT_PANEL_REFRESH_TYPE_ROLLING;
+		*out_scanout_direction = (display->flags & RIFT_DISPLAY_REVERSE_ROLLING) != 0
+		                             ? XRT_SCANOUT_DIRECTION_BOTTOM_TO_TOP
+		                             : XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM;
+		return;
+	case RIFT_DISPLAY_MODE_ROLLING_TOP_BOTTOM:
+		*out_refresh_type = XRT_PANEL_REFRESH_TYPE_ROLLING;
+		*out_scanout_direction = XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM;
+		return;
+	case RIFT_DISPLAY_MODE_ROLLING_LEFT_RIGHT:
+		*out_refresh_type = XRT_PANEL_REFRESH_TYPE_ROLLING;
+		*out_scanout_direction = XRT_SCANOUT_DIRECTION_LEFT_TO_RIGHT;
+		return;
+	case RIFT_DISPLAY_MODE_ROLLING_RIGHT_LEFT:
+		*out_refresh_type = XRT_PANEL_REFRESH_TYPE_ROLLING;
+		*out_scanout_direction = XRT_SCANOUT_DIRECTION_RIGHT_TO_LEFT;
+		return;
+	}
+
+	// Unknown mode, warned about at startup, assume global so no scanout compensation is applied.
+	*out_refresh_type = XRT_PANEL_REFRESH_TYPE_GLOBAL;
+	*out_scanout_direction = XRT_SCANOUT_DIRECTION_NONE;
+}
+
+static xrt_result_t
+rift_hmd_get_compositor_info(struct xrt_device *xdev,
+                             const struct xrt_device_compositor_mode *mode,
+                             struct xrt_device_compositor_info *out_info)
+{
+	struct rift_hmd *hmd = rift_hmd(xdev);
+
+	time_duration_ns frame_ns = mode->frame_interval_ns;
+
+	// Rows per frame including blanking, and how long the panel is lit each frame.
+	time_duration_ns total_rows = RIFT_CV1_FALLBACK_TOTAL_ROWS;
+	time_duration_ns persistence_ns = RIFT_CV1_FALLBACK_PERSISTENCE_NS;
+	if (hmd->display.total_rows != 0) {
+		total_rows = hmd->display.total_rows;
+		persistence_ns = frame_ns * hmd->display.persistence / total_rows;
+	}
+
+	time_duration_ns active_ns = frame_ns * hmd->display_info.resolution_y / total_rows;
+
+	enum xrt_panel_refresh_type refresh_type;
+	enum xrt_scanout_direction scanout_direction;
+	rift_display_get_scanout(&hmd->display, &refresh_type, &scanout_direction);
+
+	/*
+	 * Measured from the first active row (VK_EXT_display_control's "first pixel out"), report the middle of the
+	 * first row's lit period. A rolling panel lights each row as it is written. A global panel writes rows dark
+	 * while the active area is scanned out, then lights all of them at once when it ends, staying lit for the
+	 * persistence, which covers the vertical blank.
+	 */
+	time_duration_ns first_pixel_out_to_photons_ns = persistence_ns / 2;
+	if (refresh_type == XRT_PANEL_REFRESH_TYPE_GLOBAL) {
+		first_pixel_out_to_photons_ns += active_ns;
+	}
+
+	*out_info = (struct xrt_device_compositor_info){
+	    .panel_refresh_type = refresh_type,
+	    .scanout_direction = scanout_direction,
+	    .scanout_time_ns = active_ns,
+	    .has_first_pixel_out_to_photons = true,
+	    .first_pixel_out_to_photons_ns = first_pixel_out_to_photons_ns,
+	};
+
+	return XRT_SUCCESS;
+}
+
 static void
 rift_hmd_constellation_device_push_constellation_tracker_sample(struct t_constellation_tracker_device *connection,
                                                                 struct t_constellation_tracker_sample *sample)
@@ -1023,6 +1117,22 @@ rift_devices_create(struct h_hid_device *hmd_dev,
 	}
 	HMD_DEBUG(hmd, "Got display info from hmd, res: %dx%d", hmd->display_info.resolution_x,
 	          hmd->display_info.resolution_y);
+
+	result = rift_get_display_report(hmd, &hmd->display);
+	if (result < 0 || hmd->display.total_rows < hmd->display_info.resolution_y ||
+	    hmd->display.persistence > hmd->display.total_rows) {
+		HMD_WARN(hmd, "Failed to get a valid display report (reason %d), using the default panel timing",
+		         result);
+		U_ZERO(&hmd->display);
+	} else {
+		HMD_DEBUG(hmd, "Got display report from hmd, persistence: %u/%u rows, flags: %X",
+		          hmd->display.persistence, hmd->display.total_rows, hmd->display.flags);
+
+		uint32_t display_mode = hmd->display.flags & RIFT_DISPLAY_MODE_MASK;
+		if (display_mode > RIFT_DISPLAY_MODE_ROLLING_RIGHT_LEFT) {
+			HMD_WARN(hmd, "Unknown display mode %u, assuming a global panel", display_mode);
+		}
+	}
 
 	result = rift_get_config(hmd, &hmd->config);
 	if (result < 0) {
@@ -1216,6 +1326,12 @@ rift_devices_create(struct h_hid_device *hmd_dev,
 	// @todo Disable this when the user doesn't have sensors connected.
 	hmd->base.supported.position_tracking = true;
 	hmd->base.supported.presence = variant == RIFT_VARIANT_CV1;
+
+	// DK2 won't work in this code because it's a sideways phone panel. Just use no info for DK2 for now.
+	if (variant == RIFT_VARIANT_CV1) {
+		hmd->base.get_compositor_info = rift_hmd_get_compositor_info;
+		hmd->base.supported.compositor_info = true;
+	}
 
 	// Set up display details
 	switch (hmd->variant) {

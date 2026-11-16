@@ -9,7 +9,10 @@
 #pragma once
 
 #include "util/u_logging.h"
+#include "util/u_time.h"
+
 #include "xrt/xrt_device.h"
+
 
 /*!
  * @addtogroup drv_qwerty
@@ -79,6 +82,8 @@ struct qwerty_device
 struct qwerty_hmd
 {
 	struct qwerty_device base;
+
+	time_duration_ns present_to_display_offset_ns;
 };
 
 /*!

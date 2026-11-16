@@ -25,6 +25,7 @@
 
 #include "openvr_driver.h"
 
+#include <atomic>
 #include <string>
 #include <vector>
 #include <memory>
@@ -122,7 +123,7 @@ protected:
 	const InputClass *input_class{nullptr};
 	std::string manufacturer;
 	std::string model;
-	float vsync_to_photon_ns{0.f};
+	std::atomic<time_duration_ns> vsync_to_photon_ns{0};
 	bool provides_battery_status{false};
 	bool charging{false};
 	float charge{1.0F};

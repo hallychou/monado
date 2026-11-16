@@ -391,10 +391,12 @@ sdl_compositor_predict_frame(struct xrt_compositor *xc,
 	int64_t null_present_slop_ns = 0;
 	int64_t null_min_display_period_ns = 0;
 
-	u_pc_predict(                        //
+	u_pc_allocate_frame(c->upc, out_frame_id);
+
+	u_pc_predict_frame(                  //
 	    c->upc,                          // upc
+	    *out_frame_id,                   // frame_id
 	    now_ns,                          // now_ns
-	    out_frame_id,                    // out_frame_id
 	    out_wake_time_ns,                // out_wake_up_time_ns
 	    &null_desired_present_time_ns,   // out_desired_present_time_ns
 	    &null_present_slop_ns,           // out_present_slop_ns
@@ -581,6 +583,7 @@ sdl_compositor_init(struct sdl_program *sp)
 	c->frame.waited.id = -1;
 	c->frame.rendering.id = -1;
 	c->settings.frame_interval_ns = U_TIME_1S_IN_NS / 60; // 60 FPS
+	c->xdev = xdev;
 
 	SC_DEBUG(c, "Doing init %p", (void *)c);
 

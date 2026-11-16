@@ -875,13 +875,24 @@ HmdDevice::get_compositor_info(const struct xrt_device_compositor_mode *mode,
 	enum xrt_panel_refresh_type panel_refresh_type;
 	enum xrt_scanout_direction scanout_direction;
 
-	vive_variant_scanout_info(this->variant, mode->frame_interval_ns, &scanout_time_ns, &scanout_direction,
-	                          &panel_refresh_type);
+	vive_variant_scanout_info(   //
+	    this->variant,           //
+	    mode->frame_interval_ns, //
+	    &scanout_time_ns,        //
+	    &scanout_direction,      //
+	    &panel_refresh_type);    //
+
+	//! @todo Monado times based on first pixel out, not vsync, so this is wrong,
+	//        but it's equally as wrong as it was before (hardcoding 4ms for index was wrong),
+	//        so this is fine until we have a way of handling vsync vs. first pixel out.
+	time_duration_ns vsync_to_photon_ns = this->vsync_to_photon_ns.load();
 
 	(*out_info) = {
 	    .panel_refresh_type = panel_refresh_type,
 	    .scanout_direction = scanout_direction,
 	    .scanout_time_ns = scanout_time_ns,
+	    .has_first_pixel_out_to_photons = vsync_to_photon_ns > 0, // has been set
+	    .first_pixel_out_to_photons_ns = vsync_to_photon_ns,
 	};
 
 	return XRT_SUCCESS;
@@ -1583,8 +1594,8 @@ HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 	}
 	case vr::Prop_DisplayFrequency_Float: {
 		assert(prop.unBufferSize == sizeof(float));
-		float freq = *static_cast<float *>(prop.pvBuffer);
-		int64_t interval_ns = (1.f / freq) * 1e9f;
+		double freq = *static_cast<float *>(prop.pvBuffer);
+		int64_t interval_ns = time_s_to_ns(1. / freq);
 		set_nominal_frame_interval(interval_ns);
 		break;
 	}
@@ -1595,7 +1606,7 @@ HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		break;
 	}
 	case vr::Prop_SecondsFromVsyncToPhotons_Float: {
-		vsync_to_photon_ns = *static_cast<float *>(prop.pvBuffer) * 1e9f;
+		this->vsync_to_photon_ns.store(time_s_to_ns(*static_cast<float *>(prop.pvBuffer)));
 		break;
 	}
 	case vr::Prop_DeviceProvidesBatteryStatus_Bool: {

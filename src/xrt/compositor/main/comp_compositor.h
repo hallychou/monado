@@ -118,6 +118,9 @@ struct comp_compositor
 	//! Duration of a frame at current refresh rate.
 	int64_t frame_interval_ns;
 
+	//! Compositor mode passed to the device when querying it, kept in sync with @ref frame_interval_ns.
+	struct xrt_device_compositor_mode xdev_compositor_mode;
+
 	//! Timestamp of last-rendered (immersive) frame.
 	int64_t last_frame_time_ns;
 

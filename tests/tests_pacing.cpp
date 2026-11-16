@@ -18,6 +18,28 @@
 #include <iomanip>
 #include <queue>
 
+namespace {
+
+//! Test helper: begin a frame and predict it in one go.
+void
+u_pc_predict(u_pacing_compositor *upc,
+             int64_t now_ns,
+             int64_t *out_frame_id,
+             int64_t *out_wake_up_time_ns,
+             int64_t *out_desired_present_time_ns,
+             int64_t *out_present_slop_ns,
+             int64_t *out_predicted_display_time_ns,
+             int64_t *out_predicted_display_period_ns,
+             int64_t *out_min_display_period_ns)
+{
+	u_pc_allocate_frame(upc, out_frame_id);
+	u_pc_predict_frame(upc, *out_frame_id, now_ns, out_wake_up_time_ns, out_desired_present_time_ns,
+	                   out_present_slop_ns, out_predicted_display_time_ns, out_predicted_display_period_ns,
+	                   out_min_display_period_ns);
+}
+
+} // namespace
+
 using namespace std::chrono_literals;
 using namespace std::chrono;
 
@@ -400,5 +422,182 @@ TEST_CASE("u_pacing_compositor_fake")
 			drainDisplayTimingQueue(queue, clock.now(), upc);
 		}
 	}
+	u_pc_destroy(&upc);
+}
+
+namespace {
+
+enum class PacerKind
+{
+	Fake,
+	DisplayTiming,
+};
+
+u_pacing_compositor *
+createPacer(PacerKind kind, int64_t now_ns)
+{
+	u_pacing_compositor *upc = nullptr;
+	switch (kind) {
+	case PacerKind::Fake: REQUIRE(XRT_SUCCESS == u_pc_fake_create(frame_interval_ns.count(), now_ns, &upc)); break;
+	case PacerKind::DisplayTiming: {
+		u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
+		REQUIRE(XRT_SUCCESS == u_pc_display_timing_create(frame_interval_ns.count(), &config, &upc));
+		break;
+	}
+	}
+	REQUIRE(upc != nullptr);
+	return upc;
+}
+
+//! Begin a frame, optionally update the present offset for it, then predict it.
+CompositorPredictions
+beginUpdateAndPredict(u_pacing_compositor *upc, int64_t now_ns, const int64_t *present_to_display_offset_ns)
+{
+	CompositorPredictions p;
+	u_pc_allocate_frame(upc, &p.frame_id);
+	if (present_to_display_offset_ns != nullptr) {
+		u_pc_update_present_offset(upc, p.frame_id, *present_to_display_offset_ns);
+	}
+	u_pc_predict_frame(upc, p.frame_id, now_ns, &p.wake_up_time_ns, &p.desired_present_time_ns, &p.present_slop_ns,
+	                   &p.predicted_display_time_ns, &p.predicted_display_period_ns, &p.min_display_period_ns);
+	return p;
+}
+
+int64_t
+displayMinusPresent(const CompositorPredictions &p)
+{
+	return p.predicted_display_time_ns - p.desired_present_time_ns;
+}
+
+} // namespace
+
+TEST_CASE("u_pacing_compositor begin and predict are separate")
+{
+	const PacerKind kind = GENERATE(PacerKind::Fake, PacerKind::DisplayTiming);
+	INFO((kind == PacerKind::Fake ? "fake" : "display timing"));
+
+	MockClock clock;
+	u_pacing_compositor *upc = createPacer(kind, clock.now());
+	clock.advance(1ms);
+
+	int64_t first_id = -1;
+	int64_t second_id = -1;
+	u_pc_allocate_frame(upc, &first_id);
+	CHECK(first_id >= 0);
+
+	// Beginning a frame must not predict, a second begin gives a new id.
+	u_pc_allocate_frame(upc, &second_id);
+	CHECK(second_id != first_id);
+
+	// Frames can be predicted in order once begun.
+	CompositorPredictions p;
+	u_pc_predict_frame(upc, first_id, clock.now(), &p.wake_up_time_ns, &p.desired_present_time_ns,
+	                   &p.present_slop_ns, &p.predicted_display_time_ns, &p.predicted_display_period_ns,
+	                   &p.min_display_period_ns);
+	p.frame_id = first_id;
+	basicPredictionConsistencyChecks(clock.now(), p);
+
+	u_pc_destroy(&upc);
+}
+
+TEST_CASE("u_pacing_compositor update present offset")
+{
+	const PacerKind kind = GENERATE(PacerKind::Fake, PacerKind::DisplayTiming);
+	INFO((kind == PacerKind::Fake ? "fake" : "display timing"));
+
+	MockClock clock;
+	u_pacing_compositor *upc = createPacer(kind, clock.now());
+	clock.advance(1ms);
+
+	SECTION("Offset set between begin and predict is used")
+	{
+		const int64_t offset_ns = unanoseconds(7ms).count();
+		CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
+		CHECK(displayMinusPresent(p) == offset_ns);
+	}
+	SECTION("Small positive offset is used")
+	{
+		const int64_t offset_ns = unanoseconds(500us).count();
+		CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
+		CHECK(displayMinusPresent(p) == offset_ns);
+	}
+	SECTION("Zero offset is used")
+	{
+		const int64_t offset_ns = 0;
+		CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
+		CHECK(displayMinusPresent(p) == 0);
+	}
+	SECTION("Offset persists to later frames and can be changed")
+	{
+		int64_t offset_ns = unanoseconds(5ms).count();
+		CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
+		CHECK(displayMinusPresent(p) == offset_ns);
+
+		// No update, the previous value stays.
+		clock.advance(frame_interval_ns);
+		p = beginUpdateAndPredict(upc, clock.now(), nullptr);
+		CHECK(displayMinusPresent(p) == offset_ns);
+
+		offset_ns = unanoseconds(8ms).count();
+		clock.advance(frame_interval_ns);
+		p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
+		CHECK(displayMinusPresent(p) == offset_ns);
+	}
+
+	u_pc_destroy(&upc);
+}
+
+TEST_CASE("u_pacing_compositor default present to display offset")
+{
+	const PacerKind kind = GENERATE(PacerKind::Fake, PacerKind::DisplayTiming);
+	INFO((kind == PacerKind::Fake ? "fake" : "display timing"));
+
+	MockClock clock;
+	u_pacing_compositor *upc = createPacer(kind, clock.now());
+	clock.advance(1ms);
+
+	CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), nullptr);
+	CHECK(displayMinusPresent(p) == unanoseconds(4ms).count());
+
+	u_pc_destroy(&upc);
+}
+
+TEST_CASE("u_pacing_compositor_display_timing keeps cadence without present info")
+{
+	// Regression test: when no frame has gotten present timing info yet (or a driver never provides any),
+	// consecutive predictions must still be spaced exactly one frame period apart, a non-zero present to display
+	// offset must not leak into the present time cadence.
+	const int64_t offset_ns = unanoseconds(4ms).count();
+
+	u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
+	config.present_to_display_offset_ns = offset_ns;
+
+	MockClock clock;
+	u_pacing_compositor *upc = nullptr;
+	REQUIRE(XRT_SUCCESS == u_pc_display_timing_create(frame_interval_ns.count(), &config, &upc));
+	REQUIRE(upc != nullptr);
+	clock.advance(1ms);
+
+	int64_t last_desired_present_time_ns = 0;
+	for (int i = 0; i < 8; ++i) {
+		CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), nullptr);
+		INFO("frame " << p.frame_id);
+		basicPredictionConsistencyChecks(clock.now(), p);
+		CHECK(displayMinusPresent(p) == offset_ns);
+		if (i > 0) {
+			CHECK(p.desired_present_time_ns - last_desired_present_time_ns == frame_interval_ns.count());
+		}
+		last_desired_present_time_ns = p.desired_present_time_ns;
+
+		// Sleep until wake up, render and submit, but never report any present timing info back.
+		clock.advance_to(p.wake_up_time_ns);
+		u_pc_mark_point(upc, U_TIMING_POINT_WAKE_UP, p.frame_id, clock.now());
+		u_pc_mark_point(upc, U_TIMING_POINT_BEGIN, p.frame_id, clock.now());
+		clock.advance(shortDrawDelay);
+		u_pc_mark_point(upc, U_TIMING_POINT_SUBMIT_BEGIN, p.frame_id, clock.now());
+		clock.advance(shortSubmitDelay);
+		u_pc_mark_point(upc, U_TIMING_POINT_SUBMIT_END, p.frame_id, clock.now());
+	}
+
 	u_pc_destroy(&upc);
 }

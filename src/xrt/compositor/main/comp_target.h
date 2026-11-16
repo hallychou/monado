@@ -268,11 +268,36 @@ struct comp_target
 	 */
 
 	/*!
-	 * Predict when the next frame should be started and when it will be
-	 * turned into photons by the hardware.
+	 * Allocate a new frame ID, this does not make any predictions.
+	 *
+	 * Call @ref calc_frame_pacing afterwards with the returned ID. Between
+	 * the two calls, the target may be given information that will
+	 * influence the prediction, like @ref update_present_offset.
+	 *
+	 * @param[out] out_frame_id Id used to refer to this frame again.
+	 */
+	void (*allocate_frame)(struct comp_target *ct, int64_t *out_frame_id);
+
+	/*!
+	 * Update the target's estimate of the time between present (first
+	 * pixel scanned out) and photons, affects subsequent frame pacing
+	 * predictions. Call after @ref allocate_frame and before
+	 * @ref calc_frame_pacing.
+	 *
+	 * @param frame_id                     The frame ID from @ref allocate_frame.
+	 * @param present_to_display_offset_ns The improved estimate of the time between present and photons.
+	 */
+	void (*update_present_offset)(struct comp_target *ct, int64_t frame_id, int64_t present_to_display_offset_ns);
+
+	/*!
+	 * Predict when a frame previously allocated with @ref allocate_frame
+	 * should be started and when it will be turned into photons by the
+	 * hardware.
+	 *
+	 * @param frame_id The frame ID from @ref allocate_frame.
 	 */
 	void (*calc_frame_pacing)(struct comp_target *ct,
-	                          int64_t *out_frame_id,
+	                          int64_t frame_id,
 	                          int64_t *out_wake_up_time_ns,
 	                          int64_t *out_desired_present_time_ns,
 	                          int64_t *out_present_slop_ns,
@@ -526,6 +551,34 @@ comp_target_flush(struct comp_target *ct)
 }
 
 /*!
+ * @copydoc comp_target::allocate_frame
+ *
+ * @public @memberof comp_target
+ * @ingroup comp_main
+ */
+static inline void
+comp_target_allocate_frame(struct comp_target *ct, int64_t *out_frame_id)
+{
+	COMP_TRACE_MARKER();
+
+	ct->allocate_frame(ct, out_frame_id);
+}
+
+/*!
+ * @copydoc comp_target::update_present_offset
+ *
+ * @public @memberof comp_target
+ * @ingroup comp_main
+ */
+static inline void
+comp_target_update_present_offset(struct comp_target *ct, int64_t frame_id, int64_t present_to_display_offset_ns)
+{
+	COMP_TRACE_MARKER();
+
+	ct->update_present_offset(ct, frame_id, present_to_display_offset_ns);
+}
+
+/*!
  * @copydoc comp_target::calc_frame_pacing
  *
  * @public @memberof comp_target
@@ -533,7 +586,7 @@ comp_target_flush(struct comp_target *ct)
  */
 static inline void
 comp_target_calc_frame_pacing(struct comp_target *ct,
-                              int64_t *out_frame_id,
+                              int64_t frame_id,
                               int64_t *out_wake_up_time_ns,
                               int64_t *out_desired_present_time_ns,
                               int64_t *out_present_slop_ns,
@@ -543,7 +596,7 @@ comp_target_calc_frame_pacing(struct comp_target *ct,
 
 	ct->calc_frame_pacing(              //
 	    ct,                             //
-	    out_frame_id,                   //
+	    frame_id,                       //
 	    out_wake_up_time_ns,            //
 	    out_desired_present_time_ns,    //
 	    out_present_slop_ns,            //
