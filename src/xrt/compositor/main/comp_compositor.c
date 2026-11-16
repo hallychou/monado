@@ -832,6 +832,9 @@ const struct comp_target_factory *ctfs[] = {
 #ifdef XRT_OS_ANDROID
     &comp_target_factory_android,
 #endif
+#ifdef XRT_HAVE_WINRT_DIRECT
+    &comp_target_factory_direct_winrt,
+#endif
 #ifdef XRT_OS_WINDOWS
     &comp_target_factory_mswin,
 #endif

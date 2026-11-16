@@ -39,3 +39,5 @@
 #cmakedefine XRT_HAVE_WAYLAND_DIRECT
 #cmakedefine XRT_HAVE_WIL
 #cmakedefine XRT_HAVE_WINRT
+#cmakedefine XRT_HAVE_WINRT_DIRECT
+

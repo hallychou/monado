@@ -17,11 +17,14 @@
 
 #include "xrt/xrt_compiler.h"
 #include "xrt/xrt_vulkan_includes.h"
+#include "util/u_logging.h"
 
 #include <winrt/Windows.Graphics.DirectX.h>
 #include <winrt/Windows.Devices.Display.Core.h>
 
 #include <stdint.h>
+#include <inttypes.h>
+#include <exception>
 #include <utility>
 #include <tuple>
 
@@ -168,3 +171,21 @@ to_string(::winrt::Windows::Devices::Display::Core::DisplayPresentStatus e)
 }
 #undef D3D_WINRT_MAKE_STRINGIFY_CASE
 } // namespace xrt::auxiliary::d3d::winrt
+
+#define D3D_WINRT_CATCH_GUARDS_WITH_RETURN(...)                                                                        \
+	catch (::winrt::hresult_error const &e)                                                                        \
+	{                                                                                                              \
+		U_LOG_E("Caught WinRT exception: (%" PRId32 ") %s", e.code().value,                                    \
+		        ::winrt::to_string(e.message()).c_str());                                                      \
+		return __VA_ARGS__;                                                                                    \
+	}                                                                                                              \
+	catch (std::exception const &e)                                                                                \
+	{                                                                                                              \
+		U_LOG_E("Caught exception: %s", e.what());                                                             \
+		return __VA_ARGS__;                                                                                    \
+	}                                                                                                              \
+	catch (...)                                                                                                    \
+	{                                                                                                              \
+		U_LOG_E("Caught exception");                                                                           \
+		return __VA_ARGS__;                                                                                    \
+	}
