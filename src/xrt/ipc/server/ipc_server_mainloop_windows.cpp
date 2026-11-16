@@ -47,6 +47,9 @@
 
 DEBUG_GET_ONCE_BOOL_OPTION(relaxed, "IPC_RELAXED_CONNECTION_SECURITY", false)
 
+// FILE_GENERIC_READ and FILE_GENERIC_WRITE, without FILE_CREATE_PIPE_INSTANCE.
+#define PIPE_READ_WRITE "0x12019b"
+
 
 /*
  *
@@ -86,6 +89,42 @@ get_pipe_server_pid(const char *pipe_name)
 	return pid;
 }
 
+static PSECURITY_DESCRIPTOR
+create_elevated_security_descriptor(void)
+{
+	// The service must be in Administrators to create more instances under this ACL.
+	BYTE admins[SECURITY_MAX_SID_SIZE];
+	DWORD len = sizeof(admins);
+	BOOL is_admin = FALSE;
+	if (!CreateWellKnownSid(WinBuiltinAdministratorsSid, NULL, admins, &len) ||
+	    !CheckTokenMembership(NULL, admins, &is_admin) || !is_admin) {
+		return NULL;
+	}
+
+	HANDLE token = GetCurrentProcessToken();
+	union {
+		TOKEN_USER user;
+		uint8_t buffer[sizeof(TOKEN_USER) + SECURITY_MAX_SID_SIZE];
+	} u{};
+	char *sid = NULL;
+	char str[256];
+	PSECURITY_DESCRIPTOR sd = NULL;
+	if (GetTokenInformation(token, TokenUser, &u, sizeof(u), &len) &&
+	    ConvertSidToStringSidA(u.user.User.Sid, &sid)) {
+		// Administrators: full control. Owner and this user: read/write, no creating pipe instances.
+		snprintf(str, sizeof(str), "D:(A;;GA;;;BA)(A;;" PIPE_READ_WRITE ";;;OW)(A;;" PIPE_READ_WRITE ";;;%s)",
+		         sid);
+		ConvertStringSecurityDescriptorToSecurityDescriptorA(str, SDDL_REVISION_1, &sd, NULL);
+	}
+	if (!sd) {
+		DWORD err = GetLastError();
+		U_LOG_E("Making the elevated pipe's security descriptor failed: %lu %s", err, ipc_winerror(err));
+	}
+
+	LocalFree(sid);
+	return sd;
+}
+
 static bool
 create_pipe_instance(struct ipc_server_mainloop *ml, bool first)
 {
@@ -100,13 +139,14 @@ create_pipe_instance(struct ipc_server_mainloop *ml, bool first)
 	 * https://learn.microsoft.com/en-us/windows/win32/secbp/creating-a-dacl
 	 * https://learn.microsoft.com/en-us/windows/win32/secauthz/sid-strings
 	 */
-	const TCHAR *str =               //
-	    TEXT("D:")                   // Discretionary ACL
-	    TEXT("(D;OICI;GA;;;BG)")     // Guest: deny
-	    TEXT("(D;OICI;GA;;;AN)")     // Anonymous: deny
-	    TEXT("(A;OICI;GRGWGX;;;AC)") // UWP/AppContainer packages: read/write/execute
-	    TEXT("(A;OICI;GRGWGX;;;AU)") // Authenticated user: read/write/execute
-	    TEXT("(A;OICI;GA;;;BA)");    // Administrator: full control
+	const TCHAR *str =                            //
+	    TEXT("D:")                                // Discretionary ACL
+	    TEXT("(D;OICI;GA;;;BG)")                  // Guest: deny
+	    TEXT("(D;OICI;GA;;;AN)")                  // Anonymous: deny
+	    TEXT("(A;OICI;" PIPE_READ_WRITE ";;;AC)") // UWP/AppContainer packages: read/write
+	    TEXT("(A;OICI;" PIPE_READ_WRITE ";;;AU)") // Authenticated user: read/write
+	    TEXT("(A;OICI;GA;;;OW)")                  // Owner: full control
+	    TEXT("(A;OICI;GA;;;BA)");                 // Administrator: full control
 
 	BOOL bret = ConvertStringSecurityDescriptorToSecurityDescriptor( //
 	    str,                                                         // StringSecurityDescriptor
@@ -123,6 +163,13 @@ create_pipe_instance(struct ipc_server_mainloop *ml, bool first)
 	if (debug_get_bool_option_relaxed()) {
 		U_LOG_W("Using relax security permissions on pipe");
 		lpsa = &sa;
+	} else {
+		PSECURITY_DESCRIPTOR sd = create_elevated_security_descriptor();
+		if (sd != nullptr) {
+			LocalFree(sa.lpSecurityDescriptor);
+			sa.lpSecurityDescriptor = sd;
+			lpsa = &sa;
+		}
 	}
 
 	DWORD dwOpenMode = PIPE_ACCESS_DUPLEX;
