@@ -19,6 +19,7 @@
 #include "util/u_var.h"
 #include "util/u_device.h"
 #include "util/u_time.h"
+#include "util/u_json.hpp"
 
 #include "math/m_api.h"
 
@@ -42,6 +43,8 @@
 #include <filesystem>
 #include <istream>
 #include <algorithm>
+
+using xrt::auxiliary::util::json::JSONNode;
 
 namespace {
 
@@ -89,7 +92,6 @@ namespace {
 #endif
 
 DEBUG_GET_ONCE_LOG_OPTION(lh_log, "LIGHTHOUSE_LOG", U_LOGGING_INFO)
-DEBUG_GET_ONCE_BOOL_OPTION(lh_load_slimevr, "LH_LOAD_SLIMEVR", false)
 DEBUG_GET_ONCE_NUM_OPTION(lh_discover_wait_ms, "LH_DISCOVER_WAIT_MS", 3000)
 DEBUG_GET_ONCE_FLOAT_OPTION(lh_stick_deadzone, "LH_STICK_DEADZONE", 0)
 
@@ -150,23 +152,24 @@ find_steamvr_install()
  * devices that exist when they are all destroyed.
  */
 std::shared_ptr<Context>
-Context::create(const std::string &steam_install,
-                const std::string &steamvr_install,
-                std::vector<vr::IServerTrackedDeviceProvider *> providers)
+Context::create(const std::string &driver_path,
+                const std::string &driver_name,
+                const std::string &user_settings_path,
+				const std::map<std::string, std::filesystem::path> &driver_name_to_directory,
+                vr::IServerTrackedDeviceProvider * provider)
 {
 	// xrt_tracking_origin initialization
 	std::shared_ptr<Context> c =
-	    std::make_shared<Context>(steam_install, steamvr_install, debug_get_log_option_lh_log());
-	c->providers = std::move(providers);
-	std::strncpy(c->name, "SteamVR Lighthouse Tracking", XRT_TRACKING_NAME_LEN);
+	    std::make_shared<Context>(driver_path, driver_name, user_settings_path, driver_name_to_directory, debug_get_log_option_lh_log());
+	c->provider = provider;
+	std::string tracking_name = "openvr " + driver_name + " driver tracking origin";
+	std::strncpy(c->name, tracking_name.c_str(), XRT_TRACKING_NAME_LEN);
 	c->type = XRT_TRACKING_TYPE_LIGHTHOUSE;
 	c->initial_offset = XRT_POSE_IDENTITY;
-	for (vr::IServerTrackedDeviceProvider *const &driver : c->providers) {
-		vr::EVRInitError err = driver->Init(c.get());
-		if (err != vr::VRInitError_None) {
-			U_LOG_IFL_E(c->log_level, "OpenVR driver initialization failed: error %u", err);
-			return nullptr;
-		}
+	vr::EVRInitError err = provider->Init(c.get());
+	if (err != vr::VRInitError_None) {
+		U_LOG_IFL_E(c->log_level, "OpenVR driver initialization failed: error %u", err);
+		return nullptr;
 	}
 	c->frame_thread = std::thread([ctx = c.get()] {
 		while (ctx->frame_thread_run.load()) {
@@ -174,17 +177,16 @@ Context::create(const std::string &steam_install,
 			// SteamVR calls `RunFrame()` approximately every 10.1ms
 			const std::chrono::time_point<std::chrono::steady_clock> next =
 			    std::chrono::steady_clock::now() + 10ms;
-			for (vr::IServerTrackedDeviceProvider *const &provider : ctx->providers)
-				provider->RunFrame();
+			ctx->provider->RunFrame();
 			ctx->frame_thread_event.try_acquire_until(next);
 		}
 	});
 	return c;
 }
 
-Context::Context(const std::string &steam_install, const std::string &steamvr_install, u_logging_level level)
-    : settings(steam_install, steamvr_install, this), resources(level, steamvr_install), log_level(level),
-      frame_thread_run(true), frame_thread()
+Context::Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level)
+    : settings(driver_path, user_settings_path, this), resources(level, driver_path, driver_name_to_directory), log_level(level),
+      frame_thread_run(true), frame_thread(), driver_name(driver_name)
 {}
 
 Context::~Context()
@@ -193,8 +195,8 @@ Context::~Context()
 	this->frame_thread_event.release();
 	if (this->frame_thread.joinable())
 		this->frame_thread.join();
-	for (vr::IServerTrackedDeviceProvider *const &provider : providers)
-		provider->Cleanup();
+	if (this->provider)
+		this->provider->Cleanup();
 }
 
 /***** IVRDriverContext methods *****/
@@ -202,7 +204,7 @@ Context::~Context()
 void *
 Context::GetGenericInterface(const char *pchInterfaceVersion, vr::EVRInitError *peError)
 {
-	CTX_DEBUG("Requested interface %s", pchInterfaceVersion);
+	CTX_DEBUG("Driver %s Requested interface %s", this->driver_name.c_str(), pchInterfaceVersion);
 #define MATCH_INTERFACE(version, interface)                                                                            \
 	if (std::strcmp(pchInterfaceVersion, version) == 0) {                                                          \
 		return interface;                                                                                      \
@@ -230,6 +232,7 @@ Context::GetGenericInterface(const char *pchInterfaceVersion, vr::EVRInitError *
 	// Internal interfaces
 	MATCH_INTERFACE("IVRServer_XXX", &server);
 	MATCH_INTERFACE("IVRServerInternal_XXX", &server);
+	MATCH_INTERFACE("IVRChaperoneServerDriver_XXX", &server);
 	return nullptr;
 }
 
@@ -983,13 +986,164 @@ Context::TrackedDeviceToPropertyContainer(vr::TrackedDeviceIndex_t nDevice)
 void
 Context::Log(const char *pchLogMessage)
 {
-	CTX_TRACE("[lighthouse]: %s", pchLogMessage);
+	// check if the message has empty space or new line at the end and remove it
+	std::string_view message(pchLogMessage);
+	while (!message.empty() && (message.back() == ' ' || message.back() == '\n' || message.back() == '\r' || message.back() == '\t')) {
+		message.remove_suffix(1);
+	}
+	std::string shortened_message(message);
+	CTX_TRACE("[openvr %s]: %s", this->driver_name.c_str(), shortened_message.c_str());
 }
 // NOLINTEND(bugprone-easily-swappable-parameters)
 
 extern "C" enum xrt_result
 steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsysd)
 {
+	u_logging_level level = debug_get_log_option_lh_log();
+
+	if (xsysd == NULL) {
+		U_LOG_IFL_E(level, "Invalid system pointer");
+		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
+	}
+
+	std::filesystem::path steamvr{};
+	if (getenv("STEAMVR_PATH") != nullptr) {
+		steamvr = getenv("STEAMVR_PATH");
+	} else {
+		steamvr = find_steamvr_install();
+	}
+
+	std::vector<std::filesystem::path> driver_directories = {};
+
+	// go through the steamvr drivers directory and find all the subdirectories that contain a driver manifest file
+
+	std::filesystem::path steamvr_drivers_path = steamvr / "drivers";
+
+	if (!std::filesystem::exists(steamvr_drivers_path)) {
+		U_LOG_IFL_W(level, "Couldn't find SteamVR drivers folder (%s)", steamvr_drivers_path.c_str());
+	} else {
+		U_LOG_IFL_I(level, "Found SteamVR install: %s", steamvr.c_str());
+		for (const auto &entry : std::filesystem::directory_iterator(steamvr_drivers_path)) {
+			if (entry.is_directory()) {
+				std::filesystem::path manifest_path = entry.path() / "driver.vrdrivermanifest";
+				if (std::filesystem::exists(manifest_path)) {
+					driver_directories.push_back(entry.path());
+					U_LOG_IFL_I(level, "Found built-in driver directory: %s", entry.path().string().c_str());
+				}
+			}
+		}
+	}
+
+	// go through the external_drivers in `~/.config/openvr/openvrpaths.vrpath` and find all directories that contain a driver manifest file
+	// openvrpaths.vrpath is a JSON
+	// {
+	//   "jsonid" : "vrpathreg",
+	//   "config": [
+	//     "$HOME/.local/share/Steam/config",
+	//     "/path/to/config2"
+	//   ],
+	//   "external_drivers": [
+	//     "/path/to/driver1",
+	//     "/path/to/driver2"
+	//   ]
+	// }
+
+	std::filesystem::path user_settings_path{};
+
+	// load and parse the JSON file
+	std::filesystem::path openvrpaths_path = std::filesystem::path(getenv("HOME")) / ".config/openvr/openvrpaths.vrpath";
+	if (std::filesystem::exists(openvrpaths_path)) {
+		auto openvrpaths_json = JSONNode::loadFromFile(openvrpaths_path);
+		if (openvrpaths_json.hasKey("jsonid") && openvrpaths_json["jsonid"].isString() == true && openvrpaths_json["jsonid"].asString() == "vrpathreg") {
+			U_LOG_IFL_I(level, "Found openvrpaths.vrpath: %s", openvrpaths_path.c_str());
+			if(openvrpaths_json.hasKey("config") && openvrpaths_json["config"].isArray() == true) {
+				for (const auto &config_path_json : openvrpaths_json["config"].asArray()) {
+					if (config_path_json.isString() == false) {
+						U_LOG_IFL_W(level, "Invalid config path in openvrpaths.vrpath: %s", config_path_json.toString().c_str());
+						continue;
+					}
+					std::filesystem::path config_path = config_path_json.asString();
+					if (config_path != "" && std::filesystem::exists(config_path)) {
+						if(std::filesystem::exists(config_path / "steamvr.vrsettings") == false) {
+							continue;
+						}
+						user_settings_path = config_path / "steamvr.vrsettings";
+					}
+				}
+			}
+			if(openvrpaths_json.hasKey("external_drivers") && openvrpaths_json["external_drivers"].isArray() == true) {
+				for (const auto &driver_path_json : openvrpaths_json["external_drivers"].asArray()) {
+					if (driver_path_json.isString() == false) {
+						U_LOG_IFL_W(level, "Invalid external driver path in openvrpaths.vrpath: %s", driver_path_json.toString().c_str());
+						continue;
+					}
+					std::filesystem::path driver_path = driver_path_json.asString();
+					if (driver_path != "" && std::filesystem::exists(driver_path)) {
+						std::filesystem::path manifest_path = driver_path / "driver.vrdrivermanifest";
+						if (std::filesystem::exists(manifest_path)) {
+							driver_directories.push_back(driver_path);
+							U_LOG_IFL_I(level, "Found external driver directory: %s",
+										driver_path.c_str());
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if (getenv("OPENVR_USER_SETTINGS") != nullptr) {
+		user_settings_path = getenv("OPENVR_USER_SETTINGS");
+		U_LOG_IFL_I(level, "Using SteamVR user settings from OPENVR_USER_SETTINGS: %s", user_settings_path.c_str());
+	}
+
+	if (!std::filesystem::exists(user_settings_path)) {
+		U_LOG_IFL_W(level, "Couldn't find SteamVR user settings file (%s)", user_settings_path.c_str());
+	} else {
+		U_LOG_IFL_I(level, "Found SteamVR user settings: %s", user_settings_path.c_str());
+	}
+
+	JSONNode user_settings_json = JSONNode::loadFromFile(user_settings_path);
+
+	// go through the driver directories and create a Context for each one, and add it to the drivers vector
+
+	std::vector<std::shared_ptr<Context>> driver_contexts = {};
+
+	// a map of driver name to driver directory
+	std::map<std::string, std::filesystem::path> driver_name_to_directory = {};
+	std::vector<std::string> enabled_drivers = {};
+
+	for (const auto &driver_dir : driver_directories) {
+		// parse the driver manifest file and get the driver name
+		std::filesystem::path manifest_path = driver_dir / "driver.vrdrivermanifest";
+		if (std::filesystem::exists(manifest_path)) {
+			auto manifest_json = JSONNode::loadFromFile(manifest_path);
+			if (manifest_json.hasKey("name") && manifest_json["name"].isString()) {
+				std::string driver_name = manifest_json["name"].asString();
+				driver_name_to_directory[driver_name] = driver_dir;
+
+				if(manifest_json.hasKey("resourceOnly") && manifest_json["resourceOnly"].isBool() && manifest_json["resourceOnly"].asBool() == true) {
+					U_LOG_IFL_I(level, "Skipping resource-only driver %s", driver_name.c_str());
+					continue;
+				}
+
+				if(user_settings_json.hasKey("driver_" + driver_name) && user_settings_json["driver_" + driver_name].hasKey("enable")) {
+					if(user_settings_json["driver_" + driver_name]["enable"].isBool() && user_settings_json["driver_" + driver_name]["enable"].asBool() == false) {
+						U_LOG_IFL_I(level, "Skipping disabled driver %s in user settings", driver_name.c_str());
+						continue;
+					}
+				}
+
+				std::filesystem::path driver_path = driver_dir / "bin" / OVR_PLAT_SUBDIR / ("driver_" + driver_name + OVR_PLAT_EXT);
+				if (!std::filesystem::exists(driver_path)) {
+					U_LOG_IFL_I(level, "Skipping driver %s because missing driver library for %s", driver_name.c_str(), OVR_PLAT_SUBDIR);
+					continue;
+				}
+
+				enabled_drivers.push_back(driver_name);
+			}
+		}
+	}
+
 	// Pimax P2 init needs to happen before lighthouse init, as it may disconnect the HMD lighthouse USB device if
 	// PIMAX_REBOOT is enabled, which resets the USB hub in the headset.
 	// The lighthouse driver does not reconnect to USB devices and will stop tracking devices that have been
@@ -999,104 +1153,88 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 	pimax_p2_init(&pdev);
 #endif
 
-	u_logging_level level = debug_get_log_option_lh_log();
-	// The driver likes to create a bunch of transient folders -
-	// let's try to make sure they're created where they normally are.
-	std::filesystem::path dir = STEAM_INSTALL_DIR + "/config/lighthouse";
-	if (!std::filesystem::exists(dir)) {
-		U_LOG_IFL_W(level,
-		            "Couldn't find lighthouse config folder (%s)- transient folders will be created in current "
-		            "working directory (%s)",
-		            dir.c_str(), std::filesystem::current_path().c_str());
-	} else {
-		std::filesystem::current_path(dir);
-	}
-
-	std::string steamvr{};
-	if (getenv("STEAMVR_PATH") != nullptr) {
-		steamvr = getenv("STEAMVR_PATH");
-	} else {
-		steamvr = find_steamvr_install();
-	}
-
-	if (steamvr.empty()) {
-		U_LOG_IFL_E(level, "Could not find where SteamVR is installed!");
-		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
-	}
-
-	U_LOG_IFL_I(level, "Found SteamVR install: %s", steamvr.c_str());
-
-	std::vector<vr::IServerTrackedDeviceProvider *> drivers = {};
-	const auto loadDriver = [&](const std::string &soPath, bool require) {
+	for (const auto &driver_name : enabled_drivers) {
+		auto driver_dir = driver_name_to_directory[driver_name];
+		std::filesystem::path driver_path = driver_dir / "bin" / OVR_PLAT_SUBDIR / ("driver_" + driver_name + OVR_PLAT_EXT);
+		U_LOG_IFL_I(level, "Loading driver %s: %s", driver_name.c_str(), driver_path.c_str());
+				
 		// TODO: support windows?
-		void *driver_lib = dlopen((steamvr + soPath).c_str(), RTLD_LAZY);
+		void *driver_lib = dlopen(driver_path.c_str(), RTLD_LAZY);
 		if (!driver_lib) {
 			U_LOG_IFL_E(level, "Couldn't open driver lib: %s", dlerror());
-			return !require;
 		}
 
 		void *sym = dlsym(driver_lib, "HmdDriverFactory");
 		if (!sym) {
 			U_LOG_IFL_E(level, "Couldn't find HmdDriverFactory in driver lib: %s", dlerror());
-			return false;
+			continue;
 		}
+
 		using HmdDriverFactory_t = void *(*)(const char *, int *);
 		auto factory = reinterpret_cast<HmdDriverFactory_t>(sym);
 
 		vr::EVRInitError err = vr::VRInitError_None;
-		drivers.push_back(static_cast<vr::IServerTrackedDeviceProvider *>(
-		    factory(vr::IServerTrackedDeviceProvider_Version, (int *)&err)));
+
+		vr::IServerTrackedDeviceProvider *driver = static_cast<vr::IServerTrackedDeviceProvider *>(
+			factory(vr::IServerTrackedDeviceProvider_Version, (int *)&err));
 		if (err != vr::VRInitError_None) {
 			U_LOG_IFL_E(level, "Couldn't get tracked device driver: error %u", err);
-			return false;
+			continue;
 		}
-		return true;
-	};
-	if (!loadDriver("/drivers/lighthouse/bin/" OVR_PLAT_SUBDIR "/driver_lighthouse" OVR_PLAT_EXT, true))
-		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
-	if (debug_get_bool_option_lh_load_slimevr() &&
-	    !loadDriver("/drivers/slimevr/bin/" OVR_PLAT_SUBDIR "/driver_slimevr" OVR_PLAT_EXT, false))
-		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
-	auto ctx = Context::create(STEAM_INSTALL_DIR, steamvr, std::move(drivers));
-	if (ctx == nullptr)
-		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
 
-	U_LOG_IFL_I(level, "Lighthouse initialization complete, giving time to setup connected devices...");
-	// RunFrame needs to be called to detect controllers
-	ctx->wait_for_discover();
-	U_LOG_IFL_I(level, "Device search time complete.");
+		auto ctx = Context::create(driver_dir, driver_name, user_settings_path, driver_name_to_directory, driver);
 
-	if (xsysd == NULL) {
-		U_LOG_IFL_E(level, "Invalid system pointer");
+		U_LOG_IFL_I(level, "Waiting for device discovery for driver %s...", driver_name.c_str());
+
+		ctx->wait_for_discover();
+
+		U_LOG_IFL_I(level, "Device search time complete for driver %s.", driver_name.c_str());
+
+		driver_contexts.push_back(ctx);
+	}
+
+	if (driver_contexts.size() == 0) {
+		U_LOG_IFL_W(level, "No drivers found!");
 		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
 	}
 
-	std::lock_guard lk(ctx->devices_mut);
-	ctx->in_setup = false;
+	U_LOG_IFL_I(level, "Loaded and initialized %zu drivers: ", driver_contexts.size());
+	for (const auto &ctx : driver_contexts) {
+		U_LOG_IFL_I(level, " - %s", ctx->driver_name.c_str());
+	}
 
-	// Include the HMD
-	if (ctx->hmd) {
-		if (ctx->hmd->variant == VIVE_VARIANT_PRO2 && !ctx->hmd->init_vive_pro_2(xp)) {
-			U_LOG_IFL_W(level, "Found Vive Pro 2, but failed to initialize.");
-		}
+	for (auto &ctx : driver_contexts) {
+		std::lock_guard lk(ctx->devices_mut);
+		ctx->in_setup = false;
+
+		// Include the HMD
+		if (ctx->hmd) {
+			if (ctx->hmd->variant == VIVE_VARIANT_PRO2 && !ctx->hmd->init_vive_pro_2(xp)) {
+				U_LOG_IFL_W(level, "Found Vive Pro 2, but failed to initialize.");
+			}
 #ifdef XRT_BUILD_DRIVER_PIMAX_P2
-		if (ctx->hmd->variant == VIVE_VARIANT_PIMAX_P2 && (pdev == nullptr || !ctx->hmd->init_pimax(pdev))) {
-			U_LOG_IFL_W(level, "Found Pimax P2, but failed to initialize.");
-		}
+			if (ctx->hmd->variant == VIVE_VARIANT_PIMAX_P2 && (pdev == nullptr || !ctx->hmd->init_pimax(pdev))) {
+				U_LOG_IFL_W(level, "Found Pimax P2, but failed to initialize.");
+			}
 #else
-		if (ctx->hmd->variant == VIVE_VARIANT_PIMAX_P2) {
-			U_LOG_IFL_W(level, "Found Pimax P2, but the driver is not compiled in.");
-		}
+			if (ctx->hmd->variant == VIVE_VARIANT_PIMAX_P2) {
+				U_LOG_IFL_W(level, "Found Pimax P2, but the driver is not compiled in.");
+			}
 #endif
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = ctx->hmd;
+		}
 
-		xsysd->static_xdevs[xsysd->static_xdev_count++] = ctx->hmd;
+		// Include the controllers
+		for (size_t i = 0; i < MAX_CONTROLLERS; i++) {
+			if (ctx->controller[i]) {
+				xsysd->static_xdevs[xsysd->static_xdev_count++] = ctx->controller[i];
+			}
+		}
 	}
 
-	// Include the controllers
-	for (size_t i = 0; i < MAX_CONTROLLERS; i++) {
-		if (ctx->controller[i]) {
-			xsysd->static_xdevs[xsysd->static_xdev_count++] = ctx->controller[i];
-		}
+	if (xsysd->static_xdev_count == 0) {
+		U_LOG_IFL_W(level, "No devices found!");
+		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
 	}
 
 	return xrt_result::XRT_SUCCESS;

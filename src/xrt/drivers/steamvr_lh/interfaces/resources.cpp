@@ -42,9 +42,15 @@ Resources::GetResourceFullPath(const char *pchResourceName,
 			return 0;
 		}
 		const std::string driver = resource.substr(1, idx - 1);
-		std::string path = steamvr_install + "/drivers/" + driver + "/resources/";
+		// find the driver directory in the map
+		auto it = driver_name_to_directory.find(driver);
+		if (it == driver_name_to_directory.end()) {
+			RES_ERR("driver not found: %s", driver.c_str());
+			return 0;
+		}
+		std::filesystem::path path = it->second / "/resources/";
 		if (pchResourceTypeDirectory)
-			path += pchResourceTypeDirectory + std::string("/");
+			path /= std::filesystem::path(pchResourceTypeDirectory) / std::string("/");
 
 		// for some reason sometimes it gives the paths like {driver}resource.file instead of
 		// {driver}/resource.file

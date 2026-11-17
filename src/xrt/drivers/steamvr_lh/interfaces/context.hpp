@@ -29,6 +29,7 @@
 #include "paths.hpp"
 
 #include "xrt/xrt_tracking.h"
+#include <filesystem>
 
 struct xrt_input;
 class Device;
@@ -99,10 +100,10 @@ private:
 
 	bool
 	setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *driver);
-	std::vector<vr::IServerTrackedDeviceProvider *> providers;
+	vr::IServerTrackedDeviceProvider *provider{nullptr};
 
 public:
-	Context(const std::string &steam_install, const std::string &steamvr_install, u_logging_level level);
+	Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level);
 
 	// These are owned by Monado, context is destroyed when these are destroyed
 	std::mutex devices_mut{};
@@ -111,6 +112,7 @@ public:
 
 	bool in_setup{true};
 	const u_logging_level log_level;
+	const std::string driver_name;
 
 	void
 	wait_for_discover();
@@ -134,9 +136,11 @@ public:
 	~Context();
 
 	[[nodiscard]] static std::shared_ptr<Context>
-	create(const std::string &steam_install,
-	       const std::string &steamvr_install,
-	       std::vector<vr::IServerTrackedDeviceProvider *> providers);
+	create(const std::string &driver_path,
+                const std::string &driver_name,
+                const std::string &user_settings_path,
+				const std::map<std::string, std::filesystem::path> &driver_name_to_directory,
+                vr::IServerTrackedDeviceProvider * provider);
 
 	size_t
 	add_haptic_event(vr::VREvent_HapticVibration_t event, size_t old_event_index);
