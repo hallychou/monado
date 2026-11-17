@@ -157,6 +157,62 @@ const std::unordered_map<std::string_view, InputClass> controller_classes{
             },
         },
     },
+	{
+        "playstation_vr2_sense_controller_left",
+		// Experimental mapping to Oculus Touch
+		InputClass{
+		    XRT_DEVICE_TOUCH_CONTROLLER,
+		    {
+		        XRT_INPUT_TOUCH_GRIP_POSE,
+		        XRT_INPUT_TOUCH_AIM_POSE,
+		        XRT_INPUT_GENERIC_PALM_POSE,
+		    },
+		    {
+		        {"/input/left_ps/click", XRT_INPUT_TOUCH_MENU_CLICK},
+				{"/input/left_ps/touch", XRT_INPUT_TOUCH_MENU_CLICK},
+				{"/input/square/click", XRT_INPUT_TOUCH_X_CLICK},
+		        {"/input/square/touch", XRT_INPUT_TOUCH_X_TOUCH},
+		        {"/input/triangle/click", XRT_INPUT_TOUCH_Y_CLICK},
+		        {"/input/triangle/touch", XRT_INPUT_TOUCH_Y_TOUCH},
+				{"/input/l2/value", XRT_INPUT_TOUCH_TRIGGER_VALUE},
+		        {"/input/l2/touch", XRT_INPUT_TOUCH_TRIGGER_TOUCH},
+				{"/input/l2_sensor/value", XRT_INPUT_TOUCH_TRIGGER_PROXIMITY},
+				{"/input/l1/value", XRT_INPUT_TOUCH_SQUEEZE_VALUE},
+		        {"/input/left_stick", XRT_INPUT_TOUCH_THUMBSTICK},
+		        {"/input/left_stick/click", XRT_INPUT_TOUCH_THUMBSTICK_CLICK},
+		        {"/input/left_stick/touch", XRT_INPUT_TOUCH_THUMBSTICK_TOUCH},
+		    },
+		},
+		
+    },
+    {
+        "playstation_vr2_sense_controller_right",
+		// Experimental mapping to Oculus Touch
+		InputClass{
+		    XRT_DEVICE_TOUCH_CONTROLLER,
+		    {
+		        XRT_INPUT_TOUCH_GRIP_POSE,
+		        XRT_INPUT_TOUCH_AIM_POSE,
+		        XRT_INPUT_GENERIC_PALM_POSE,
+		    },
+		    {
+				{"/input/right_ps/click", XRT_INPUT_TOUCH_SYSTEM_CLICK},
+				{"/input/right_ps/touch", XRT_INPUT_TOUCH_SYSTEM_CLICK},
+		        {"/input/cross/click", XRT_INPUT_TOUCH_A_CLICK},
+		        {"/input/cross/touch", XRT_INPUT_TOUCH_A_TOUCH},
+		        {"/input/circle/click", XRT_INPUT_TOUCH_B_CLICK},
+		        {"/input/circle/touch", XRT_INPUT_TOUCH_B_TOUCH},
+				{"/input/r2/value", XRT_INPUT_TOUCH_TRIGGER_VALUE},
+				{"/input/r2/touch", XRT_INPUT_TOUCH_TRIGGER_TOUCH},
+				{"/input/r2_sensor/value", XRT_INPUT_TOUCH_TRIGGER_PROXIMITY},
+				{"/input/r1/value", XRT_INPUT_TOUCH_SQUEEZE_VALUE},
+				{"/input/right_stick", XRT_INPUT_TOUCH_THUMBSTICK},
+		        {"/input/right_stick/click", XRT_INPUT_TOUCH_THUMBSTICK_CLICK},
+				{"/input/right_stick/touch", XRT_INPUT_TOUCH_THUMBSTICK_TOUCH},
+		    },
+		},
+		
+    },
     {
         "flipvr_controller_vc1b",
         InputClass{
@@ -330,6 +386,23 @@ ControllerDevice::ControllerDevice(vr::PropertyContainerHandle_t handle, const D
 
 	this->inputs_map["/skeleton/hand/left"] = &hand_tracking_inputs[XRT_HAND_LEFT];
 	this->inputs_map["/skeleton/hand/right"] = &hand_tracking_inputs[XRT_HAND_RIGHT];
+
+	// Some controllers may have an input class known at construction time. Since the serial is known, we can
+	// attempt to look it up.
+	// Serial looks like this: playstation_vr2_sense_controller_left
+	// So we can strip off the _left/_right suffix to get the input profile name.
+	std::string_view serial_sv{this->serial};
+	if (serial_sv.ends_with("_left"sv)) {
+		this->name = XRT_DEVICE_TOUCH_CONTROLLER;
+		this->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
+	} else if (serial_sv.ends_with("_right"sv)) {
+		this->name = XRT_DEVICE_TOUCH_CONTROLLER;
+		this->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
+	}
+	auto it = controller_classes.find(this->serial);
+	if (it != controller_classes.end()) {
+		set_input_class(&it->second);
+	}
 }
 
 Device::~Device()
@@ -342,8 +415,7 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 	u_device_id_assign(this);
 
 	m_relation_history_create(&relation_hist);
-	std::strncpy(this->serial, builder.serial, XRT_DEVICE_NAME_LEN - 1);
-	this->serial[XRT_DEVICE_NAME_LEN - 1] = 0;
+	snprintf(this->serial, XRT_DEVICE_NAME_LEN, "%s", builder.serial);
 	this->tracking_origin = ctx.get();
 	this->supported.orientation_tracking = true;
 	this->supported.position_tracking = true;
@@ -398,6 +470,17 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 		delete dev;
 	};
 
+	// Add properties
+	std::string chap_path = builder.chaperone_info_path;
+	this->properties.emplace(vr::ETrackedDeviceProperty::Prop_DriverProvidedChaperonePath_String,
+	                         Property(vr::k_unStringPropertyTag, (void *)chap_path.c_str(),
+	                                  (uint32_t)(chap_path.size() + 1)));
+	
+	// ToDo: dont go one folder up form chaperone_info_path.
+	// builder.chaperone_info_path is a path to a file. get the parent folder and use that as the config path.
+	std::string conf_path = std::filesystem::path(builder.chaperone_info_path).parent_path().string();
+	this->properties.emplace(vr::ETrackedDeviceProperty::Prop_UserConfigPath_String, Property(vr::k_unStringPropertyTag, (void *)conf_path.c_str(), (uint32_t)(conf_path.size() + 1)));
+
 	init_chaperone(builder.chaperone_info_path);
 }
 
@@ -408,7 +491,9 @@ void
 Device::set_input_class(const InputClass *input_class)
 {
 	// this should only be called once, or after clearing the inputs (see HmdDevice::set_hmd_class)
-	assert(inputs_vec.empty());
+	if (!inputs_vec.empty()) {
+		return;
+	}
 	this->input_class = input_class;
 
 	// reserve to ensure our pointers don't get invalidated
@@ -716,7 +801,10 @@ ControllerDevice::set_haptic_handle(vr::VRInputComponentHandle_t handle)
 	}
 	default: {
 		DEV_WARN("Unknown device name (%u), haptics will not work", this->name);
-		return;
+		// ToDo fix controller name.
+		//return;
+		name = XRT_OUTPUT_NAME_TOUCH_HAPTIC;
+		break;
 	}
 	}
 	output = std::make_unique<xrt_output>(xrt_output{name});
@@ -1009,7 +1097,7 @@ ControllerDevice::set_output(xrt_output_name name, const xrt_output_value *value
 	if (vib.amplitude == 0.0)
 		return XRT_SUCCESS;
 	vr::VREvent_HapticVibration_t event;
-	event.containerHandle = container_handle;
+	event.containerHandle = container_handle + 1;
 	event.componentHandle = haptic_handle;
 	event.fDurationSeconds = (float)vib.duration_ns / 1e9f;
 	// 0.0f in OpenXR means let the driver determine a frequency, but
