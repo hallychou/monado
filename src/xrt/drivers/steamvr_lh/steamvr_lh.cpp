@@ -849,8 +849,10 @@ Context::CreateSkeletonComponent(vr::PropertyContainerHandle_t ulContainer,
 		return vr::VRInputError_InvalidSkeleton;
 	}
 
-	device->set_skeleton(std::span(pGripLimitTransforms, unGripLimitTransformCount), hand,
+	if (pGripLimitTransforms != nullptr && unGripLimitTransformCount != 0) {
+		device->set_skeleton(std::span(pGripLimitTransforms, unGripLimitTransformCount), hand,
 	                     eSkeletalTrackingLevel == vr::VRSkeletalTracking_Estimated, pchSkeletonPath);
+	}
 	this->input.skeleton_to_controller[*pHandle] = device;
 
 	return vr::VRInputError_None;
