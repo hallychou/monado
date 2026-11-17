@@ -95,12 +95,16 @@ steamvr_estimate_system(struct xrt_builder *xb,
 	// Currently no built in support for hand tracking.
 	bool have_hand_tracking = false;
 
+	U_LOG_IFL_D(debug_get_log_option_svr_log(), "SteamVR enabled: %d, forced: %d", debug_get_bool_option_steamvr_enable(),
+	             debug_get_bool_option_steamvr_force());
+
 	if (debug_get_bool_option_steamvr_enable()) {
 		if (debug_get_bool_option_steamvr_force()) {
 			estimate->certain.head = true;
 			estimate->maybe.dof6 = true;
 			estimate->maybe.left = true;
 			estimate->maybe.right = true;
+			U_LOG_IFL_D(debug_get_log_option_svr_log(), "SteamVR forced head without device probing, returning success");
 			return XRT_SUCCESS;
 		} else {
 			return vive_builder_estimate( //
