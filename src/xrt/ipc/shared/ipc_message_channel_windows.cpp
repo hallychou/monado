@@ -134,6 +134,11 @@ ipc_receive(struct ipc_message_channel *imc, void *out_data, size_t size)
  *
  */
 
+/*
+ * Handles go over the pipe as 64-bit values so 32- and 64-bit processes can talk. Microsoft documents that only the
+ * lower 32 bits of a handle are significant between them, so sign-extending and truncating through intptr_t is safe.
+ */
+
 xrt_result_t
 ipc_receive_handles(
     struct ipc_message_channel *imc, void *out_data, size_t size, HANDLE *out_handles, uint32_t handle_count)
@@ -142,7 +147,19 @@ ipc_receive_handles(
 	if (rc != XRT_SUCCESS) {
 		return rc;
 	}
-	return ipc_receive(imc, out_handles, handle_count * sizeof(*out_handles));
+	if (!handle_count) {
+		return ipc_receive(imc, out_handles, 0);
+	}
+
+	std::vector<int64_t> wire(handle_count);
+	rc = ipc_receive(imc, wire.data(), wire.size() * sizeof(*wire.data()));
+	if (rc != XRT_SUCCESS) {
+		return rc;
+	}
+	for (uint32_t i = 0; i < handle_count; i++) {
+		out_handles[i] = (HANDLE)(intptr_t)wire[i];
+	}
+	return XRT_SUCCESS;
 }
 
 xrt_result_t
@@ -166,7 +183,7 @@ ipc_send_handles(
 	}
 
 	HANDLE current_process = GetCurrentProcess();
-	std::vector<HANDLE> v;
+	std::vector<int64_t> v;
 	v.reserve(handle_count);
 	for (uint32_t i = 0; i < handle_count; i++) {
 		HANDLE handle;
@@ -180,7 +197,7 @@ ipc_send_handles(
 			CloseHandle(target_process);
 			return XRT_ERROR_IPC_FAILURE;
 		}
-		v.push_back(handle);
+		v.push_back((int64_t)(intptr_t)handle);
 	}
 	CloseHandle(target_process);
 	return ipc_send(imc, v.data(), v.size() * sizeof(*v.data()));
