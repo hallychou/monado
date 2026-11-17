@@ -52,7 +52,7 @@ Resources::GetResourceFullPath(const char *pchResourceName,
 
 		U_LOG_IFL_D(log_level, "Found driver %s resources at %s", driver.c_str(), path.c_str());
 
-		if (pchResourceTypeDirectory)
+		if (pchResourceTypeDirectory != nullptr && std::strlen(pchResourceTypeDirectory) > 0)
 			path /= std::filesystem::path(pchResourceTypeDirectory);
 
 		U_LOG_IFL_D(log_level, "Adding resource type directory: %s", path.c_str());
