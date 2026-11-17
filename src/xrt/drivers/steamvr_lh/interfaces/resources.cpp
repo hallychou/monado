@@ -59,7 +59,12 @@ Resources::GetResourceFullPath(const char *pchResourceName,
 
 		// for some reason sometimes it gives the paths like {driver}resource.file instead of
 		// {driver}/resource.file
-		path += resource.substr(idx + 1);
+		std::filesystem::path resource_path(resource.substr(idx + 1));
+		if (resource_path.is_absolute()) {
+			path += resource_path;
+		} else {
+			path /= resource_path;
+		}
 
 		U_LOG_IFL_D(log_level, "Adding resource name: %s", path.c_str());
 
