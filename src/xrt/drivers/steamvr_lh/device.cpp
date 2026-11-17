@@ -1780,7 +1780,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 			this->manufacturer = name.substr(0, name.find_first_of(' '));
 			fixedProp.pvBuffer = (char *)fixedProp.pvBuffer + this->manufacturer.size() +
 			                     (this->manufacturer.size() != name.size());
-			fixedProp.unBufferSize = name.end() - (char *)fixedProp.pvBuffer;
+			fixedProp.unBufferSize = prop.unBufferSize - ((char *)fixedProp.pvBuffer - (char *)prop.pvBuffer);
 		}
 		return Device::handle_property_write(fixedProp);
 	}
