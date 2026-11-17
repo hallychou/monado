@@ -95,7 +95,7 @@ Settings::GetBool(const char *pchSection, const char *pchSettingsKey, vr::EVRSet
 	if (peError)
 		*peError = vr::VRSettingsError_None;
 		
-	U_LOG_IFL_I(U_LOGGING_INFO, "Getting bool setting: %s.%s", pchSection, pchSettingsKey);
+	U_LOG_IFL_D(context->log_level, "Getting bool setting: %s.%s", pchSection, pchSettingsKey);
 
 	if (pchSection == std::string_view{vr::k_pch_Power_Section} && pchSettingsKey == "powerOffOnExit"sv)
 		return debug_get_bool_option_lh_standby_on_exit();
@@ -117,7 +117,7 @@ Settings::GetInt32(const char *pchSection, const char *pchSettingsKey, vr::EVRSe
 	if (peError)
 		*peError = vr::VRSettingsError_None;
 		
-	U_LOG_IFL_I(U_LOGGING_INFO, "Getting int32 setting: %s.%s", pchSection, pchSettingsKey);
+	U_LOG_IFL_D(context->log_level, "Getting int32 setting: %s.%s", pchSection, pchSettingsKey);
 
 	std::optional value = get_settings_value(pchSection, pchSettingsKey);
 
@@ -136,7 +136,7 @@ Settings::GetFloat(const char *pchSection, const char *pchSettingsKey, vr::EVRSe
 	if (peError)
 		*peError = vr::VRSettingsError_None;
 
-	U_LOG_IFL_I(U_LOGGING_INFO, "Getting float setting: %s.%s", pchSection, pchSettingsKey);
+	U_LOG_IFL_D(context->log_level, "Getting float setting: %s.%s", pchSection, pchSettingsKey);
 
 	if (!strcmp(pchSection, vr::k_pch_SteamVR_Section)) {
 		if (!strcmp(pchSettingsKey, "analogGain")) {
@@ -170,7 +170,7 @@ Settings::GetString(const char *pchSection,
 	if (peError)
 		*peError = vr::VRSettingsError_None;
 
-	U_LOG_IFL_I(U_LOGGING_INFO, "Getting string setting: %s.%s", pchSection, pchSettingsKey);
+	U_LOG_IFL_D(context->log_level, "Getting string setting: %s.%s", pchSection, pchSettingsKey);
 
 	std::optional value = get_settings_value(pchSection, pchSettingsKey);
 
