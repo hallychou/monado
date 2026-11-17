@@ -46,13 +46,13 @@ struct DeviceBuilder
 	ContextPtr ctx;
 	vr::ITrackedDeviceServerDriver *driver;
 	const char *serial;
-	const std::string &steam_install;
+	const std::string &chaperone_info_path;
 
 	DeviceBuilder(const ContextPtr &p_ctx,
 	              vr::ITrackedDeviceServerDriver *p_driver,
 	              const char *p_serial,
-	              const std::string &p_stream_install)
-	    : ctx{p_ctx}, driver{p_driver}, serial{p_serial}, steam_install{p_stream_install}
+	              const std::string &p_chaperone_info_path)
+	    : ctx{p_ctx}, driver{p_driver}, serial{p_serial}, chaperone_info_path{p_chaperone_info_path}
 	{}
 
 	// no copies!

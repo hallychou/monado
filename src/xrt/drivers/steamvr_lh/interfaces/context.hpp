@@ -103,7 +103,7 @@ private:
 	vr::IServerTrackedDeviceProvider *provider{nullptr};
 
 public:
-	Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level);
+	Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::string &chaperone_info_path, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level);
 
 	// These are owned by Monado, context is destroyed when these are destroyed
 	std::mutex devices_mut{};
@@ -113,6 +113,7 @@ public:
 	bool in_setup{true};
 	const u_logging_level log_level;
 	const std::string driver_name;
+	const std::string chaperone_info_path;
 
 	void
 	wait_for_discover();
@@ -139,6 +140,7 @@ public:
 	create(const std::string &driver_path,
                 const std::string &driver_name,
                 const std::string &user_settings_path,
+				const std::string &chaperone_info_path,
 				const std::map<std::string, std::filesystem::path> &driver_name_to_directory,
                 vr::IServerTrackedDeviceProvider * provider);
 

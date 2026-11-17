@@ -398,7 +398,7 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 		delete dev;
 	};
 
-	init_chaperone(builder.steam_install);
+	init_chaperone(builder.chaperone_info_path);
 }
 
 // NOTE: No operations that would force inputs_vec or finger_inputs_vec to reallocate (such as insertion)
@@ -1177,7 +1177,7 @@ copy_pose(const vr::HmdQuaternion_t &orientation, const double (&position)[3])
 } // namespace
 
 void
-Device::init_chaperone(const std::string &steam_install)
+Device::init_chaperone(const std::string &chaperone_info_path)
 {
 	static bool initialized = false;
 	if (initialized)
@@ -1189,34 +1189,39 @@ Device::init_chaperone(const std::string &steam_install)
 	// We will use the known_universes from the lighthousedb.json to match to a universe from chaperone_info.vrchap
 
 	using xrt::auxiliary::util::json::JSONNode;
-	auto lighthousedb = JSONNode::loadFromFile(steam_install + "/config/lighthouse/lighthousedb.json");
-	if (lighthousedb.isInvalid()) {
-		DEV_ERR("Couldn't load lighthousedb file, playspace center will be off - was Room Setup run?");
-		return;
-	}
-	auto chap_info = JSONNode::loadFromFile(steam_install + "/config/chaperone_info.vrchap");
+
+	std::vector<std::string> known_universes = {};
+	// ToDo: connect to install for lighthouse driver.
+	// auto lighthousedb = JSONNode::loadFromFile(steam_install + "/config/lighthouse/lighthousedb.json");
+	// if (lighthousedb.isInvalid()) {
+	// 	DEV_ERR("Couldn't load lighthousedb file, playspace center will be off - was Room Setup run?");
+	// 	// return;
+	// } else {
+	// 	for (auto &universe : lighthousedb["known_universes"].asArray()) {
+	// 		known_universes.push_back(universe["id"].asString());
+	// 	}
+	// }
+
+	auto chap_info = JSONNode::loadFromFile(chaperone_info_path);
 	if (chap_info.isInvalid()) {
 		DEV_ERR("Couldn't load chaperone info, playspace center will be off - was Room Setup run?");
 		return;
 	}
 
 	JSONNode info = {};
-	bool universe_found = false;
 
-	// XXX: This may be broken if there are multiple known universes - how do we determine which to use then?
-	auto known_universes = lighthousedb["known_universes"].asArray();
-	for (auto &universe : known_universes) {
-		const std::string id = universe["id"].asString();
-		for (const JSONNode &u : chap_info["universes"].asArray()) {
-			if (u["universeID"].asString() == id) {
-				DEV_INFO("Found info for universe %s", id.c_str());
+	JSONNode universes = chap_info["universes"];
+	if (universes.isArray() && !universes.asArray().empty()) {
+		for (const JSONNode &u : universes.asArray()) {
+			const std::string id = u["universeID"].asString();
+			if (std::find(known_universes.begin(), known_universes.end(), id) != known_universes.end()) {
 				info = u;
-				universe_found = true;
 				break;
 			}
 		}
-		if (universe_found) {
-			break;
+		if (info.isInvalid()) {
+			U_LOG_W("Couldn't find known universe in chaperone, falling back to first universe in chaperone info");
+			info = universes.asArray()[0]; // Fallback to the first universe if no match is found
 		}
 	}
 

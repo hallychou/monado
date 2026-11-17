@@ -104,7 +104,7 @@ Settings::GetBool(const char *pchSection, const char *pchSettingsKey, vr::EVRSet
 
 	if (!value.has_value() || !value->isBool()) {
 		if (peError)
-			*peError = vr::VRSettingsError_ReadFailed;
+			*peError = vr::VRSettingsError_UnsetSettingHasNoDefault;
 		return false;
 	}
 
@@ -123,7 +123,7 @@ Settings::GetInt32(const char *pchSection, const char *pchSettingsKey, vr::EVRSe
 
 	if (!value.has_value() || !value->isInt()) {
 		if (peError)
-			*peError = vr::VRSettingsError_ReadFailed;
+			*peError = vr::VRSettingsError_UnsetSettingHasNoDefault;
 		return 0;
 	}
 
@@ -152,7 +152,7 @@ Settings::GetFloat(const char *pchSection, const char *pchSettingsKey, vr::EVRSe
 
 	if (!value.has_value() || !value->isDouble()) {
 		if (peError)
-			*peError = vr::VRSettingsError_ReadFailed;
+			*peError = vr::VRSettingsError_UnsetSettingHasNoDefault;
 		return 0.f;
 	}
 
@@ -176,7 +176,7 @@ Settings::GetString(const char *pchSection,
 
 	if (!value.has_value() || !value->isString()) {
 		if (peError)
-			*peError = vr::VRSettingsError_ReadFailed;
+			*peError = vr::VRSettingsError_UnsetSettingHasNoDefault;
 		return;
 	}
 	

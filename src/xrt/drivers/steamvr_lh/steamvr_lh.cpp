@@ -156,12 +156,13 @@ std::shared_ptr<Context>
 Context::create(const std::string &driver_path,
                 const std::string &driver_name,
                 const std::string &user_settings_path,
+				const std::string &chaperone_info_path,
 				const std::map<std::string, std::filesystem::path> &driver_name_to_directory,
                 vr::IServerTrackedDeviceProvider * provider)
 {
 	// xrt_tracking_origin initialization
 	std::shared_ptr<Context> c =
-	    std::make_shared<Context>(driver_path, driver_name, user_settings_path, driver_name_to_directory, debug_get_log_option_lh_log());
+	    std::make_shared<Context>(driver_path, driver_name, user_settings_path, chaperone_info_path, driver_name_to_directory, debug_get_log_option_lh_log());
 	c->provider = provider;
 	std::string tracking_name = "openvr " + driver_name + " driver tracking origin";
 	std::strncpy(c->name, tracking_name.c_str(), XRT_TRACKING_NAME_LEN);
@@ -185,9 +186,9 @@ Context::create(const std::string &driver_path,
 	return c;
 }
 
-Context::Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level)
+Context::Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::string &chaperone_info_path, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level)
     : settings(driver_path, user_settings_path, this), resources(level, driver_path, driver_name_to_directory), log_level(level),
-      frame_thread_run(true), frame_thread(), driver_name(driver_name)
+      frame_thread_run(true), frame_thread(), driver_name(driver_name), chaperone_info_path(chaperone_info_path)
 {}
 
 Context::~Context()
@@ -216,6 +217,7 @@ Context::GetGenericInterface(const char *pchInterfaceVersion, vr::EVRInitError *
 	MATCH_INTERFACE_THIS(vr::IVRServerDriverHost);
 	MATCH_INTERFACE_THIS(vr::IVRDriverInput);
 	// This interface is not in a public header yet, but just passing IVRDriverInput_003 seems to work.
+	MATCH_INTERFACE("IVRDriverInput_003", static_cast<vr::IVRDriverInput *>(this));
 	MATCH_INTERFACE("IVRDriverInput_004", static_cast<vr::IVRDriverInput *>(this));
 	MATCH_INTERFACE("IVRDriverInput_005", static_cast<vr::IVRDriverInput *>(this));
 	MATCH_INTERFACE_THIS(vr::IVRProperties);
@@ -249,7 +251,7 @@ Context::GetDriverHandle()
 bool
 Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 {
-	auto *hmd = new HmdDevice(DeviceBuilder{this->shared_from_this(), driver, serial, STEAM_INSTALL_DIR});
+	auto *hmd = new HmdDevice(DeviceBuilder{this->shared_from_this(), driver, serial, this->chaperone_info_path});
 
 	{
 		// Publish the device before activating it: the driver writes its properties and creates its
@@ -358,7 +360,7 @@ Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *dr
 		// properties and creates its input components from within Activate, and those callbacks have to
 		// be able to find it.
 		device = new ControllerDevice(
-		    device_idx + 1, DeviceBuilder{this->shared_from_this(), driver, serial, STEAM_INSTALL_DIR});
+		    device_idx + 1, DeviceBuilder{this->shared_from_this(), driver, serial, this->chaperone_info_path});
 		controller[device_idx] = device;
 	}
 
@@ -1049,7 +1051,7 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 	//   ]
 	// }
 
-	std::filesystem::path user_settings_path{};
+	std::vector<std::filesystem::path> config_directories = {};
 
 	// load and parse the JSON file
 	std::filesystem::path openvrpaths_path = std::filesystem::path(getenv("HOME")) / ".config/openvr/openvrpaths.vrpath";
@@ -1063,13 +1065,7 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 						U_LOG_IFL_W(level, "Invalid config path in openvrpaths.vrpath: %s", config_path_json.toString().c_str());
 						continue;
 					}
-					std::filesystem::path config_path = config_path_json.asString();
-					if (config_path != "" && std::filesystem::exists(config_path)) {
-						if(std::filesystem::exists(config_path / "steamvr.vrsettings") == false) {
-							continue;
-						}
-						user_settings_path = config_path / "steamvr.vrsettings";
-					}
+					config_directories.push_back(config_path_json.asString());
 				}
 			}
 			if(openvrpaths_json.hasKey("external_drivers") && openvrpaths_json["external_drivers"].isArray() == true) {
@@ -1089,6 +1085,16 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 					}
 				}
 			}
+		}
+	}
+
+	std::filesystem::path user_settings_path{};
+	for (const auto &config_path : config_directories) {
+		if (config_path != "" && std::filesystem::exists(config_path)) {
+			if(std::filesystem::exists(config_path / "steamvr.vrsettings") == false) {
+				continue;
+			}
+			user_settings_path = config_path / "steamvr.vrsettings";
 		}
 	}
 
@@ -1183,7 +1189,22 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 			continue;
 		}
 
-		auto ctx = Context::create(driver_dir, driver_name, user_settings_path, driver_name_to_directory, driver);
+		std::filesystem::path chaperone_info_file = "chaperone_info.vrchap";
+		if(driver_name == "playstation_vr2") {
+			chaperone_info_file = "playstation_vr2/chaperone_info.vrchap";
+		}
+		std::filesystem::path chaperone_info_path{};
+
+		for (const auto &config_path : config_directories) {
+			if (config_path != "" && std::filesystem::exists(config_path)) {
+				if(std::filesystem::exists(config_path / chaperone_info_file) == false) {
+					continue;
+				}
+				chaperone_info_path = config_path / chaperone_info_file;
+			}
+		}
+
+		auto ctx = Context::create(driver_dir, driver_name, user_settings_path, chaperone_info_path, driver_name_to_directory, driver);
 
 		U_LOG_IFL_I(level, "Waiting for device discovery for driver %s...", driver_name.c_str());
 
