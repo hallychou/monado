@@ -157,12 +157,13 @@ Context::create(const std::string &driver_path,
                 const std::string &driver_name,
                 const std::string &user_settings_path,
 				const std::string &chaperone_info_path,
+				const std::string &steamvr_install,
 				const std::map<std::string, std::filesystem::path> &driver_name_to_directory,
                 vr::IServerTrackedDeviceProvider * provider)
 {
 	// xrt_tracking_origin initialization
 	std::shared_ptr<Context> c =
-	    std::make_shared<Context>(driver_path, driver_name, user_settings_path, chaperone_info_path, driver_name_to_directory, debug_get_log_option_lh_log());
+	    std::make_shared<Context>(driver_path, driver_name, user_settings_path, chaperone_info_path, steamvr_install, driver_name_to_directory, debug_get_log_option_lh_log());
 	c->provider = provider;
 	std::string tracking_name = "openvr " + driver_name + " driver tracking origin";
 	std::strncpy(c->name, tracking_name.c_str(), XRT_TRACKING_NAME_LEN);
@@ -186,8 +187,8 @@ Context::create(const std::string &driver_path,
 	return c;
 }
 
-Context::Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::string &chaperone_info_path, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level)
-    : settings(driver_path, user_settings_path, this), resources(level, driver_path, driver_name_to_directory), log_level(level),
+Context::Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::string &chaperone_info_path, const std::string &steamvr_install, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level)
+    : settings(driver_path, user_settings_path, this), resources(level, steamvr_install, driver_name_to_directory), log_level(level),
       frame_thread_run(true), frame_thread(), driver_name(driver_name), chaperone_info_path(chaperone_info_path)
 {}
 
@@ -1206,7 +1207,7 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 			}
 		}
 
-		auto ctx = Context::create(driver_dir, driver_name, user_settings_path, chaperone_info_path, driver_name_to_directory, driver);
+		auto ctx = Context::create(driver_dir, driver_name, user_settings_path, chaperone_info_path, steamvr, driver_name_to_directory, driver);
 
 		U_LOG_IFL_I(level, "Waiting for device discovery for driver %s...", driver_name.c_str());
 
