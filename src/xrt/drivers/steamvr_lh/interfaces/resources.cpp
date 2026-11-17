@@ -48,13 +48,21 @@ Resources::GetResourceFullPath(const char *pchResourceName,
 			RES_ERR("driver not found: %s", driver.c_str());
 			return 0;
 		}
-		std::filesystem::path path = it->second / "/resources/";
+		std::filesystem::path path = it->second / "resources";
+
+		U_LOG_IFL_D(log_level, "Found driver %s resources at %s", driver.c_str(), path.c_str());
+
 		if (pchResourceTypeDirectory)
-			path /= std::filesystem::path(pchResourceTypeDirectory) / std::string("/");
+			path /= std::filesystem::path(pchResourceTypeDirectory);
+
+		U_LOG_IFL_D(log_level, "Adding resource type directory: %s", path.c_str());
 
 		// for some reason sometimes it gives the paths like {driver}resource.file instead of
 		// {driver}/resource.file
 		path += resource.substr(idx + 1);
+
+		U_LOG_IFL_D(log_level, "Adding resource name: %s", path.c_str());
+
 		return return_str(path);
 	}
 
