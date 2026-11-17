@@ -66,11 +66,16 @@ Resources::GetResourceFullPath(const char *pchResourceName,
 		return return_str(path);
 	}
 
+	U_LOG_IFL_D(log_level, "Loading resource %s from shared resources with type %s", resource.c_str(), pchResourceTypeDirectory ? pchResourceTypeDirectory : "null");
+
 	// loading from shared folder?
 	std::string path = steamvr_install + "/resources/";
 	path += pchResourceTypeDirectory;
 	path += "/";
 	path += pchResourceName;
+
+	U_LOG_IFL_D(log_level, "Returning shared resource at %s", path.c_str());
+
 	return return_str(path);
 }
 // NOLINTEND(bugprone-easily-swappable-parameters)
