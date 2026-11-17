@@ -8,9 +8,11 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 
 #include "util/u_debug.h"
+#include "util/u_json.h"
 #include "util/u_prober.h"
 #include "util/u_trace_marker.h"
 
@@ -19,16 +21,10 @@
 #include "vive_device.h"
 #include "vive_controller.h"
 #include "vive_prober.h"
+#include "vive_protocol.h"
 
 #include "xrt/xrt_config_drivers.h"
 
-
-static const char VIVE_PRODUCT_STRING[] = "HTC Vive";
-static const char VIVE_PRO_PRODUCT_STRING[] = "VIVE Pro";
-static const char VIVE_PRO2_PRODUCT_STRING[] = "VIVE Pro 2";
-static const char VALVE_INDEX_PRODUCT_STRING[] = "Index HMD";
-static const char VALVE_INDEX_MANUFACTURER_STRING[] = "Valve";
-static const char VIVE_MANUFACTURER_STRING[] = "HTC";
 
 DEBUG_GET_ONCE_LOG_OPTION(vive_log, "VIVE_LOG", U_LOGGING_WARN)
 
@@ -344,6 +340,45 @@ init_valve_index(struct xrt_prober *xp,
 	*out_vdev = d;
 }
 
+static void
+init_bigscreen_beyond(struct xrt_prober *xp,
+                      struct xrt_prober_device *dev,
+                      struct vive_tracking_status tstatus,
+                      struct vive_source *vs,
+                      struct vive_device **out_vdev)
+{
+	XRT_TRACE_MARKER();
+
+	if (!u_prober_match_string(xp, dev, XRT_PROBER_STRING_MANUFACTURER, VALVE_INDEX_MANUFACTURER_STRING)) {
+		return;
+	}
+
+	struct os_hid_device *sensors_dev = NULL;
+	if (xrt_prober_open_hid_interface(xp, dev, 0, &sensors_dev) != 0) {
+		U_LOG_E("Could not open Beyond sensors device.");
+		return;
+	}
+
+	// Beyond shares its USB descriptors with standalone Tundra trackers.
+	char *config = vive_read_config(sensors_dev);
+	cJSON *json = config != NULL ? cJSON_Parse(config) : NULL;
+	const cJSON *model = cJSON_GetObjectItemCaseSensitive(json, "model_number");
+	if (!cJSON_IsString(model)) {
+		model = cJSON_GetObjectItemCaseSensitive(json, "model_name");
+	}
+	bool is_beyond = cJSON_IsString(model) && strcmp(model->valuestring, "Beyond") == 0;
+	cJSON_Delete(json);
+	free(config);
+	if (!is_beyond) {
+		os_hid_destroy(sensors_dev);
+		return;
+	}
+
+	// Beyond 3DoF tracking only uses the IMU. Do not enable the optical pulse
+	// interface as it does nothing for us.
+	*out_vdev = vive_device_create(NULL, sensors_dev, NULL, VIVE_VARIANT_BEYOND, tstatus, vs);
+}
+
 int
 vive_found(struct xrt_prober *xp,
            struct xrt_prober_device **devices,
@@ -384,7 +419,11 @@ vive_found(struct xrt_prober *xp,
 		break;
 	}
 	case VIVE_PRO_LHR_PID: {
-		init_valve_index(xp, dev, devices, device_count, log_level, tstatus, vs, &vdev);
+		if (u_prober_match_string(xp, dev, XRT_PROBER_STRING_PRODUCT, BEYOND_PRODUCT_STRING)) {
+			init_bigscreen_beyond(xp, dev, tstatus, vs, &vdev);
+		} else {
+			init_valve_index(xp, dev, devices, device_count, log_level, tstatus, vs, &vdev);
+		}
 		break;
 	}
 	default: U_LOG_E("No product ids matched %.4x", dev->product_id); return 0;

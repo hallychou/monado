@@ -13,6 +13,7 @@
 #include "xrt/xrt_prober.h"
 
 #include "util/u_misc.h"
+#include "util/u_prober.h"
 #include "util/u_logging.h"
 #include "util/u_builder_search.h"
 
@@ -45,9 +46,22 @@ vive_builder_estimate(struct xrt_prober *xp,
 
 	bool have_vive = HAVE_USB_DEV(HTC_VID, VIVE_PID);
 	bool have_vive_pro = HAVE_USB_DEV(HTC_VID, VIVE_PRO_MAINBOARD_PID);
-	bool have_valve_index = HAVE_USB_DEV(VALVE_VID, VIVE_PRO_LHR_PID);
 
-	if (have_vive || have_vive_pro || have_valve_index) {
+	// Check for Valve VID *and* the product string to avoid conflict with Beyond,
+	// which does not have the same index features
+	struct xrt_prober_device *lhr = HAVE_USB_DEV(VALVE_VID, VIVE_PRO_LHR_PID);
+	bool have_valve_index = false;
+	for (size_t i = 0; i < xpdev_count; i++) {
+		struct xrt_prober_device *dev = xpdevs[i];
+		if (dev->bus == XRT_BUS_TYPE_USB && dev->vendor_id == VALVE_VID &&
+		    dev->product_id == VIVE_PRO_LHR_PID &&
+		    u_prober_match_string(xp, dev, XRT_PROBER_STRING_PRODUCT, VALVE_INDEX_PRODUCT_STRING)) {
+			have_valve_index = true;
+			break;
+		}
+	}
+
+	if (have_vive || have_vive_pro || lhr != NULL) {
 		estimate.certain.head = true;
 		if (have_6dof) {
 			estimate.maybe.dof6 = true;

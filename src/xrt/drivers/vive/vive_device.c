@@ -223,9 +223,15 @@ vive_device_get_view_poses(struct xrt_device *xdev,
 	// Only supports two views.
 	assert(view_count <= 2);
 
+	struct vive_device *d = vive_device(xdev);
+	struct xrt_vec3 eye_relation = *default_eye_relation;
+	if (d->config.variant == VIVE_VARIANT_BEYOND && d->config.display.lens_separation > 0.0) {
+		eye_relation.x = d->config.display.lens_separation;
+	}
+
 	xrt_result_t xret = u_device_get_view_poses( //
 	    xdev,                                    //
-	    default_eye_relation,                    //
+	    &eye_relation,                           //
 	    at_timestamp_ns,                         //
 	    view_type,                               //
 	    view_count,                              //
@@ -237,7 +243,6 @@ vive_device_get_view_poses(struct xrt_device *xdev,
 	}
 
 	// This is for the Index' canted displays, on the Vive [Pro] they are identity.
-	struct vive_device *d = vive_device(xdev);
 	for (uint32_t i = 0; i < view_count && i < ARRAY_SIZE(d->config.display.rot); i++) {
 		out_poses[i].orientation = d->config.display.rot[i];
 	}
@@ -393,6 +398,12 @@ convert_imu_to_openxr(struct vive_device *d, struct xrt_vec3 *gyro, struct xrt_v
 
 		break;
 	}
+	case VIVE_VARIANT_BEYOND: {
+		// The Beyond IMU is tilted relative to the head: use its factory calibration.
+		math_quat_rotate_vec3(&d->config.display.imuref.orientation, accel, accel);
+		math_quat_rotate_vec3(&d->config.display.imuref.orientation, gyro, gyro);
+		break;
+	}
 	default: {
 		VIVE_ERROR(d, "Unhandled Vive variant");
 		return;
@@ -410,6 +421,8 @@ update_imu(struct vive_device *d, const void *buffer)
 	const struct vive_imu_report *report = buffer;
 	const struct vive_imu_sample *sample = report->sample;
 	uint8_t last_seq = d->imu.sequence;
+	struct xrt_space_relation rel = {0};
+	bool have_sample = false;
 	int i;
 	int j;
 
@@ -516,21 +529,29 @@ update_imu(struct vive_device *d, const void *buffer)
 
 		d->imu.sequence = seq;
 
-		struct xrt_space_relation rel = {0};
-		rel.relation_flags =
-		    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT;
+		rel.relation_flags = XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
+		                     XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+		                     XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
 
 		os_mutex_lock(&d->fusion.mutex);
 		m_imu_3dof_update(&d->fusion.i3dof, d->imu.last_sample_ts_ns, &acceleration, &angular_velocity);
 		rel.pose.orientation = d->fusion.i3dof.rot;
 		os_mutex_unlock(&d->fusion.mutex);
 
-		m_relation_history_push(d->fusion.relation_hist, &rel, now_ns);
+		// Relation velocities are in tracking space, while the gyro is in head space.
+		math_quat_rotate_derivative(&rel.pose.orientation, &angular_velocity, &rel.angular_velocity);
+		have_sample = true;
 
 		assert(j > 0);
 		uint32_t age = j <= 0 ? 0 : (uint32_t)(j - 1);
 
 		vive_source_push_imu_packet(d->source, age, d->imu.last_sample_ts_ns, raw_accel, raw_gyro);
+	}
+
+	// Integrate every new sample, but publish only the newest pose at the packet's
+	// host timestamp. Equal timestamps cause the history to reject later entries.
+	if (have_sample) {
+		m_relation_history_push(d->fusion.relation_hist, &rel, now_ns);
 	}
 }
 
@@ -1150,10 +1171,6 @@ vive_device_create(struct h_hid_device *mainboard_dev,
 	          d->config.firmware.hardware_version_major, d->config.firmware.hardware_version_minor,
 	          d->config.firmware.hardware_version_micro);
 
-	vive_get_imu_range_report(d->sensors_dev, &d->config.imu.gyro_range, &d->config.imu.acc_range);
-	VIVE_INFO(d, "Vive gyroscope range     %f", d->config.imu.gyro_range);
-	VIVE_INFO(d, "Vive accelerometer range %f", d->config.imu.acc_range);
-
 	char *config = vive_read_config(d->sensors_dev);
 
 	// Set logging level for the config we are about to fill out.
@@ -1167,6 +1184,12 @@ vive_device_create(struct h_hid_device *mainboard_dev,
 		vive_config_parse(&d->config, config, d->log_level);
 		free(config);
 	}
+
+	// Parsing the config initializes default IMU ranges. Read the hardware ranges
+	// afterwards so those defaults do not overwrite the actual sensor scaling.
+	vive_get_imu_range_report(d->sensors_dev, &d->config.imu.gyro_range, &d->config.imu.acc_range);
+	VIVE_INFO(d, "Vive gyroscope range     %f", d->config.imu.gyro_range);
+	VIVE_INFO(d, "Vive accelerometer range %f", d->config.imu.acc_range);
 
 	// FoV values from config.
 	d->base.hmd->distortion.fov[0] = d->config.distortion.fov[0];
@@ -1259,11 +1282,13 @@ vive_device_create(struct h_hid_device *mainboard_dev,
 		return NULL;
 	}
 
-	ret = os_thread_helper_start(&d->watchman_thread, vive_watchman_run_thread, d);
-	if (ret != 0) {
-		VIVE_ERROR(d, "Failed to start watchman thread!");
-		vive_device_destroy((struct xrt_device *)d);
-		return NULL;
+	if (d->watchman_dev != NULL) {
+		ret = os_thread_helper_start(&d->watchman_thread, vive_watchman_run_thread, d);
+		if (ret != 0) {
+			VIVE_ERROR(d, "Failed to start watchman thread!");
+			vive_device_destroy((struct xrt_device *)d);
+			return NULL;
+		}
 	}
 
 	vive_device_setup_ui(d);
