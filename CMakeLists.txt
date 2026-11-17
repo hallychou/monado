@@ -332,6 +332,9 @@ else()
 	set(XRT_FEATURE_IPC_CLIENT OFF)
 endif()
 
+option_with_deps(XRT_FEATURE_CLIENT_LAUNCH_SERVICE "Have the runtimes start XRT_SERVICE_EXECUTABLE if no service is running" DEPENDS WIN32 XRT_FEATURE_IPC_CLIENT)
+option_with_deps(XRT_FEATURE_CLIENT_LAUNCH_SERVICE_NEW_CONSOLE "Start the service in a console of its own" DEPENDS XRT_FEATURE_CLIENT_LAUNCH_SERVICE)
+
 # systemd detailed config
 option_with_deps(XRT_INSTALL_SYSTEMD_UNIT_FILES "Install user unit files for systemd socket activation on installation" DEPENDS XRT_HAVE_SYSTEMD)
 option_with_deps(XRT_INSTALL_ABSOLUTE_SYSTEMD_UNIT_FILES "Use an absolute path to monado-system in installed user unit files for systemd socket activation" DEPENDS XRT_HAVE_SYSTEMD)
@@ -395,6 +398,9 @@ option(XRT_BUILD_DRIVER_SIMULATED "Enable simulated driver" ON)
 option(XRT_BUILD_SAMPLES "Enable compiling sample code implementations that will not be linked into any final targets" ON)
 set(XRT_IPC_MSG_SOCK_FILENAME monado_comp_ipc CACHE STRING "Socket filename of Monado's default service and runtimes")
 set(XRT_IPC_SERVICE_PID_FILENAME monado.pid CACHE STRING "Pidfile filename of Monado's default service")
+if(WIN32)
+	set(XRT_SERVICE_EXECUTABLE monado-service CACHE STRING "Service the runtimes start if none is running, without .exe")
+endif()
 set(XRT_OXR_RUNTIME_SUFFIX monado CACHE STRING "OpenXR client library suffix")
 set(XRT_OPENVR_STATE_TRACKER_INSTALL_DIR "share" CACHE STRING "Install the OpenVR state tracker to this directory root.")
 
@@ -674,6 +680,8 @@ message(STATUS "#    MODULE_OPENXR_STATE_TRACKER:   ${XRT_MODULE_OPENXR_STATE_TR
 message(STATUS "#")
 message(STATUS "#    FEATURE_AHARDWARE_BUFFER:                      ${XRT_FEATURE_AHARDWARE_BUFFER}")
 message(STATUS "#    FEATURE_CLIENT_DEBUG_GUI:                      ${XRT_FEATURE_CLIENT_DEBUG_GUI}")
+message(STATUS "#    FEATURE_CLIENT_LAUNCH_SERVICE:                 ${XRT_FEATURE_CLIENT_LAUNCH_SERVICE}")
+message(STATUS "#    FEATURE_CLIENT_LAUNCH_SERVICE_NEW_CONSOLE:     ${XRT_FEATURE_CLIENT_LAUNCH_SERVICE_NEW_CONSOLE}")
 message(STATUS "#    FEATURE_COLOR_LOG:                             ${XRT_FEATURE_COLOR_LOG}")
 message(STATUS "#    FEATURE_DEBUG_GUI:                             ${XRT_FEATURE_DEBUG_GUI}")
 message(STATUS "#    FEATURE_OPENVR:                                ${XRT_FEATURE_OPENVR}")

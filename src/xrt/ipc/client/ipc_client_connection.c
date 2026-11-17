@@ -59,6 +59,13 @@
 
 DEBUG_GET_ONCE_BOOL_OPTION(ipc_ignore_version, "IPC_IGNORE_VERSION", false)
 
+
+/*
+ *
+ * Helpers.
+ *
+ */
+
 #ifdef XRT_OS_ANDROID
 
 static bool
@@ -106,8 +113,39 @@ ipc_open_pipe(const char *pipe_name)
 	return pipe_inst;
 }
 
+static bool
+ipc_launch_service(struct ipc_connection *ipc_c,
+                   const char *dir,
+                   const char *extra_folder,
+                   const char *service_executable,
+                   bool new_console,
+                   PROCESS_INFORMATION *out_pi)
+{
+	char service_path[MAX_PATH] = {0};
+	if (extra_folder != NULL) {
+		snprintf(service_path, sizeof(service_path), "%s\\%s\\%s", dir, extra_folder, service_executable);
+	} else {
+		snprintf(service_path, sizeof(service_path), "%s\\%s", dir, service_executable);
+	}
+
+	char command_line[MAX_PATH + 2];
+	snprintf(command_line, sizeof(command_line), "\"%s\"", service_path);
+
+	DWORD flags = new_console ? CREATE_NEW_CONSOLE : 0;
+	STARTUPINFOA si = {.cb = sizeof(si)};
+	// Path as lpApplicationName, so a space in it can't start another program.
+	if (!CreateProcessA(service_path, command_line, NULL, NULL, false, flags, NULL, NULL, &si, out_pi)) {
+		DWORD err = GetLastError();
+		IPC_INFO(ipc_c, "Failed to start %s: %lu %s", service_path, err, ipc_winerror(err));
+		return false;
+	}
+
+	IPC_INFO(ipc_c, "Launched %s (pid %lu)", service_path, out_pi->dwProcessId);
+	return true;
+}
+
 static HANDLE
-ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name, const char *service_executable)
+ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name, const char *service_executable, bool new_console)
 {
 	HANDLE pipe_inst = ipc_open_pipe(pipe_name);
 	if (pipe_inst != INVALID_HANDLE_VALUE) {
@@ -137,38 +175,14 @@ ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name, const char
 		IPC_ERROR(ipc_c, "failed to parse the path %s", current_path);
 		return INVALID_HANDLE_VALUE;
 	}
+	*p = 0;
 
-	/*!
-	 * @todo This tries <module file>\<exe> and then <module dir>\service\<exe>,
-	 * but never <module dir>\<exe>, so a service next to the runtime isn't found.
-	 */
-	char service_path[MAX_PATH] = {0};
-	snprintf(service_path, MAX_PATH, "%s\\%s", current_path, service_executable);
-	STARTUPINFOA si = {.cb = sizeof(si)};
 	PROCESS_INFORMATION pi;
-	/*!
-	 * @todo Both CreateProcessA calls get the path as an unquoted command line, which can start the wrong program
-	 * if the path contains spaces. Pass it as lpApplicationName instead.
-	 */
-	if (!CreateProcessA(NULL, service_path, NULL, NULL, false, 0, NULL, NULL, &si, &pi)) {
-		*p = 0;
-		p = strrchr(service_path, '\\');
-		if (!p) {
-			err = GetLastError();
-			IPC_INFO(ipc_c, "%s not found in %s: %lu %s", service_executable, service_path, err,
-			         ipc_winerror(err));
-			return INVALID_HANDLE_VALUE;
-		}
-
-		snprintf(service_path, MAX_PATH, "%s\\service\\%s", current_path, service_executable);
-		if (!CreateProcessA(NULL, service_path, NULL, NULL, false, 0, NULL, NULL, &si, &pi)) {
-			err = GetLastError();
-			IPC_INFO(ipc_c, "%s not found at %s: %lu %s", service_executable, service_path, err,
-			         ipc_winerror(err));
-			return INVALID_HANDLE_VALUE;
-		}
+	if (!ipc_launch_service(ipc_c, current_path, NULL, service_executable, new_console, &pi) &&
+	    !ipc_launch_service(ipc_c, current_path, "service", service_executable, new_console, &pi)) {
+		return INVALID_HANDLE_VALUE;
 	}
-	IPC_INFO(ipc_c, "Launched %s (pid %lu)... Waiting for %s...", service_path, pi.dwProcessId, pipe_name);
+	IPC_INFO(ipc_c, "Waiting for %s...", pipe_name);
 	CloseHandle(pi.hThread);
 	int64_t start_ns = os_monotonic_get_ns();
 	for (int i = 0;; i++) {
@@ -201,7 +215,7 @@ ipc_client_socket_connect(struct ipc_connection *ipc_c, const struct ipc_client_
 		return false;
 	}
 
-	HANDLE pipe_inst = ipc_connect_pipe(ipc_c, pipe_name, icci->service_executable);
+	HANDLE pipe_inst = ipc_connect_pipe(ipc_c, pipe_name, icci->service_executable, icci->service_new_console);
 	if (pipe_inst == INVALID_HANDLE_VALUE) {
 		return false;
 	}

@@ -100,7 +100,8 @@ also handles builds without `XRT_FEATURE_IPC_CLIENT`, and takes its names from
 `ipc_client_connection_info` and `ipc_server_main_info` with your own socket and
 pidfile names. On Windows, also set `service_executable` in
 `ipc_client_connection_info` to the service the runtime launches when none is
-running.
+running, with `.exe`, and `service_new_console` to start it in a console of its
+own.
 
 In the parent `CMakeLists.txt`, `monado_set_options()` turns off every Monado
 option that isn't listed with `ENABLE`, `KEEP` or `KEEP_SET`. Monado's default

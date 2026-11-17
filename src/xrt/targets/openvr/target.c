@@ -35,8 +35,11 @@ xrt_instance_create(struct xrt_instance_info *ii, struct xrt_instance **out_xins
 	struct ipc_client_connection_info icci = {
 	    .socket_filename = XRT_IPC_MSG_SOCK_FILENAME,
 	};
-#if defined(XRT_SERVICE_EXECUTABLE) && !defined(NO_XRT_SERVICE_LAUNCH)
+#if defined(XRT_FEATURE_CLIENT_LAUNCH_SERVICE) && defined(XRT_SERVICE_EXECUTABLE) && !defined(NO_XRT_SERVICE_LAUNCH)
 	icci.service_executable = XRT_SERVICE_EXECUTABLE;
+#ifdef XRT_FEATURE_CLIENT_LAUNCH_SERVICE_NEW_CONSOLE
+	icci.service_new_console = true;
+#endif
 #endif
 
 	return ipc_instance_create(&icci, ii, out_xinst);
