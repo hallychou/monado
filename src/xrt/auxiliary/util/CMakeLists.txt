@@ -17,6 +17,7 @@ configure_file(
 
 add_library(
 	aux_util STATIC
+	u_allocation_collection.h
 	u_autoexpgain.c
 	u_autoexpgain.h
 	u_bitwise.c
