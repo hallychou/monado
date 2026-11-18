@@ -1806,6 +1806,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		if (input_class == controller_classes.end()) {
 			DEV_ERR("Could not find input class for controller profile %s", std::string(profile).c_str());
 		} else {
+			DEV_INFO("Found input class for controller profile %s, using name: %s, input: %s", std::string(profile).c_str(), input_class->second.name.c_str(), input_class->second.inputs[0].name.c_str());
 			this->name = input_class->second.name;
 			set_input_class(&input_class->second);
 		}
