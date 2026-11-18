@@ -214,6 +214,30 @@ const std::unordered_map<std::string_view, InputClass> controller_classes{
 		
     },
     {
+        "mixedreality_hpcontroller",
+		InputClass{
+		    XRT_DEVICE_HP_REVERB_G2_CONTROLLER,
+		    {
+				XRT_INPUT_GENERIC_PALM_POSE,
+				XRT_INPUT_GENERIC_GRIP_SURFACE_POSE,
+				XRT_INPUT_HAND_PINCH_POSE,
+				XRT_INPUT_HAND_POKE_POSE,
+		    },
+		    {
+		        {"/input/x/click", XRT_INPUT_G2_CONTROLLER_X_CLICK},
+		        {"/input/y/click", XRT_INPUT_G2_CONTROLLER_Y_CLICK},
+		        {"/input/a/click", XRT_INPUT_G2_CONTROLLER_A_CLICK},
+		        {"/input/b/click", XRT_INPUT_G2_CONTROLLER_B_CLICK},
+				{"/input/application_menu/click", XRT_INPUT_G2_CONTROLLER_MENU_CLICK},
+				{"/input/grip/value", XRT_INPUT_G2_CONTROLLER_SQUEEZE_VALUE},
+				{"/input/trigger/value", XRT_INPUT_G2_CONTROLLER_TRIGGER_VALUE},
+				{"/input/joystick", XRT_INPUT_G2_CONTROLLER_THUMBSTICK},
+		        {"/input/joystick/click", XRT_INPUT_G2_CONTROLLER_THUMBSTICK_CLICK},
+				{"/input/system/click", XRT_INPUT_G2_CONTROLLER_HOME_CLICK},
+		    },
+		},
+    },
+    {
         "flipvr_controller_vc1b",
         InputClass{
             XRT_DEVICE_FLIPVR,
