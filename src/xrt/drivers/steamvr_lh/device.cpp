@@ -1577,28 +1577,77 @@ Device::handle_property_write(const vr::PropertyWrite_t &prop)
 		return handle_generic_property_write(prop);
 	}
 
-	switch (prop.prop) {
-	case vr::Prop_ManufacturerName_String: {
-		this->manufacturer = std::string(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
-		if (!this->model.empty()) {
-			std::snprintf(this->str, std::size(this->str), "%s %s", this->manufacturer.c_str(),
-			              this->model.c_str());
+	switch (prop.unTag) {
+		case vr::k_unFloatPropertyTag: {
+			float value = *static_cast<float *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to float %f", prop.prop, value);
+			break;
 		}
-		break;
-	}
-	case vr::Prop_ModelNumber_String: {
-		this->model = std::string(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
-		if (!this->manufacturer.empty()) {
-			std::snprintf(this->str, std::size(this->str), "%s %s", this->manufacturer.c_str(),
-			              this->model.c_str());
+		case vr::k_unInt32PropertyTag: {
+			int32_t value = *static_cast<int32_t *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to int32 %d", prop.prop, value);
+			break;
 		}
-		break;
+		case vr::k_unUint64PropertyTag: {
+			uint64_t value = *static_cast<uint64_t *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to uint64 %lu", prop.prop, value);
+			break;
+		}
+		case vr::k_unBoolPropertyTag: {
+			bool value = *static_cast<bool *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to bool %s", prop.prop, value ? "true" : "false");
+			break;
+		}
+		case vr::k_unStringPropertyTag: {
+			std::string value(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
+
+			switch (prop.prop) {
+				case vr::Prop_ManufacturerName_String: {
+					DEV_DEBUG("Property ManufacturerName set to string %s", value.c_str());
+					this->manufacturer = value;
+					if (!this->model.empty()) {
+						std::snprintf(this->str, std::size(this->str), "%s %s", this->manufacturer.c_str(),
+									this->model.c_str());
+					} else {
+						std::snprintf(this->str, std::size(this->str), "%s", this->manufacturer.c_str());
+					}
+					break;
+				}
+				case vr::Prop_ModelNumber_String: {
+					DEV_DEBUG("Property ModelNumber set to string %s", value.c_str());
+					this->model = value;
+					if (!this->manufacturer.empty()) {
+						std::snprintf(this->str, std::size(this->str), "%s %s", this->manufacturer.c_str(),
+									this->model.c_str());
+					} else {
+						std::snprintf(this->str, std::size(this->str), "%s", this->model.c_str());
+					}
+					break;
+				}
+				default: {
+					DEV_DEBUG("Property %d set to string %s", prop.prop, value.c_str());
+					break;
+				}
+			}
+
+			break;
+		}
+		case vr::k_unErrorPropertyTag: {
+			vr::ETrackedPropertyError value = *static_cast<vr::ETrackedPropertyError *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to error %d", prop.prop, value);
+			break;
+		}
+		case vr::k_unDoublePropertyTag: {
+			double value = *static_cast<double *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to double %f", prop.prop, value);
+			break;
+		}
+		default: {
+			DEV_DEBUG("Unhandled property tag: %d", prop.unTag);
+			break;
+		}
 	}
-	default: {
-		DEV_DEBUG("Unhandled property: %i", prop.prop);
-		break;
-	}
-	}
+
 	return handle_generic_property_write(prop);
 }
 
