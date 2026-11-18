@@ -239,6 +239,31 @@ const std::unordered_map<std::string_view, InputClass> controller_classes{
 		    },
 		},
     },
+	{
+		"gamepad",
+		InputClass{
+			XRT_DEVICE_XBOX_CONTROLLER,
+			{},
+			{
+				{"/input/a/click", XRT_INPUT_XBOX_A_CLICK},
+				{"/input/b/click", XRT_INPUT_XBOX_B_CLICK},
+				{"/input/x/click", XRT_INPUT_XBOX_X_CLICK},
+				{"/input/y/click", XRT_INPUT_XBOX_Y_CLICK},
+				{"/input/dpad_down/click", XRT_INPUT_XBOX_DPAD_DOWN_CLICK},
+				{"/input/dpad_right/click", XRT_INPUT_XBOX_DPAD_RIGHT_CLICK},
+				{"/input/dpad_up/click", XRT_INPUT_XBOX_DPAD_UP_CLICK},
+				{"/input/dpad_left/click", XRT_INPUT_XBOX_DPAD_LEFT_CLICK},
+				{"/input/joystick_left/click", XRT_INPUT_XBOX_THUMBSTICK_LEFT_CLICK},
+				{"/input/joystick_left", XRT_INPUT_XBOX_THUMBSTICK_LEFT},
+				{"/input/joystick_right/click", XRT_INPUT_XBOX_THUMBSTICK_RIGHT_CLICK},
+				{"/input/joystick_right", XRT_INPUT_XBOX_THUMBSTICK_RIGHT},
+				{"/input/trigger_left/value", XRT_INPUT_XBOX_LEFT_TRIGGER_VALUE},
+				{"/input/trigger_right/value", XRT_INPUT_XBOX_RIGHT_TRIGGER_VALUE},
+				{"/input/shoulder_left/click", XRT_INPUT_XBOX_SHOULDER_LEFT_CLICK},
+				{"/input/shoulder_right/click", XRT_INPUT_XBOX_SHOULDER_RIGHT_CLICK},
+			},
+		},
+	},
     {
         "flipvr_controller_vc1b",
         InputClass{
