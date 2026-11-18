@@ -170,37 +170,41 @@ const std::unordered_map<std::string_view, InputClass> controller_classes{
 				XRT_INPUT_HAND_POKE_POSE,
 		    },
 		    {
-		        {"/input/left_ps/click", XRT_INPUT_PSSENSE_PS_CLICK},
-				// {"/input/left_ps/touch", XRT_INPUT_PSSENSE_PS_TOUCH},
 				{"/input/square/click", XRT_INPUT_PSSENSE_SQUARE_CLICK},
 		        {"/input/square/touch", XRT_INPUT_PSSENSE_SQUARE_TOUCH},
 		        {"/input/triangle/click", XRT_INPUT_PSSENSE_TRIANGLE_CLICK},
 		        {"/input/triangle/touch", XRT_INPUT_PSSENSE_TRIANGLE_TOUCH},
-				{"/input/l2/value", XRT_INPUT_PSSENSE_TRIGGER_VALUE},
+				{"/input/create/click", XRT_INPUT_PSSENSE_SHARE_CLICK},
+				{"/input/create/touch", XRT_INPUT_PSSENSE_SHARE_TOUCH},
 		        {"/input/l2/touch", XRT_INPUT_PSSENSE_TRIGGER_TOUCH},
+				{"/input/l2/value", XRT_INPUT_PSSENSE_TRIGGER_VALUE},
 				{"/input/l2_sensor/value", XRT_INPUT_PSSENSE_TRIGGER_PROXIMITY_FLOAT},
-				{"/input/l1/value", XRT_INPUT_PSSENSE_SQUEEZE_CLICK},
 		        {"/input/l1/touch", XRT_INPUT_PSSENSE_SQUEEZE_TOUCH},
+				{"/input/l1/value", XRT_INPUT_PSSENSE_SQUEEZE_CLICK},
 				{"/input/l1_sensor/value", XRT_INPUT_PSSENSE_SQUEEZE_PROXIMITY_FLOAT},
-		        {"/input/left_stick", XRT_INPUT_PSSENSE_THUMBSTICK},
 		        {"/input/left_stick/click", XRT_INPUT_PSSENSE_THUMBSTICK_CLICK},
 		        {"/input/left_stick/touch", XRT_INPUT_PSSENSE_THUMBSTICK_TOUCH},
-
-				{"/input/right_ps/click", XRT_INPUT_PSSENSE_PS_CLICK},
-				// {"/input/right_ps/touch", XRT_INPUT_PSSENSE_PS_TOUCH},
-		        {"/input/cross/click", XRT_INPUT_PSSENSE_CROSS_CLICK},
+		        {"/input/left_stick", XRT_INPUT_PSSENSE_THUMBSTICK},
+		        {"/input/left_ps/click", XRT_INPUT_PSSENSE_PS_CLICK},
+				{"/input/left_ps/touch", XRT_INPUT_PSSENSE_PS_TOUCH},
+				
+				{"/input/cross/click", XRT_INPUT_PSSENSE_CROSS_CLICK},
 		        {"/input/cross/touch", XRT_INPUT_PSSENSE_CROSS_TOUCH},
 		        {"/input/circle/click", XRT_INPUT_PSSENSE_CIRCLE_CLICK},
 		        {"/input/circle/touch", XRT_INPUT_PSSENSE_CIRCLE_TOUCH},
+				{"/input/options/click", XRT_INPUT_PSSENSE_OPTIONS_CLICK},
+				{"/input/options/touch", XRT_INPUT_PSSENSE_OPTIONS_TOUCH},
+		        {"/input/r2/touch", XRT_INPUT_PSSENSE_TRIGGER_TOUCH},
 				{"/input/r2/value", XRT_INPUT_PSSENSE_TRIGGER_VALUE},
-				{"/input/r2/touch", XRT_INPUT_PSSENSE_TRIGGER_TOUCH},
 				{"/input/r2_sensor/value", XRT_INPUT_PSSENSE_TRIGGER_PROXIMITY_FLOAT},
+		        {"/input/r1/touch", XRT_INPUT_PSSENSE_SQUEEZE_TOUCH},
 				{"/input/r1/value", XRT_INPUT_PSSENSE_SQUEEZE_CLICK},
-				{"/input/r1/touch", XRT_INPUT_PSSENSE_SQUEEZE_TOUCH},
 				{"/input/r1_sensor/value", XRT_INPUT_PSSENSE_SQUEEZE_PROXIMITY_FLOAT},
-				{"/input/right_stick", XRT_INPUT_PSSENSE_THUMBSTICK},
 		        {"/input/right_stick/click", XRT_INPUT_PSSENSE_THUMBSTICK_CLICK},
 				{"/input/right_stick/touch", XRT_INPUT_PSSENSE_THUMBSTICK_TOUCH},
+				{"/input/right_stick", XRT_INPUT_PSSENSE_THUMBSTICK},
+		        {"/input/right_ps/click", XRT_INPUT_PSSENSE_PS_CLICK},
+				{"/input/right_ps/touch", XRT_INPUT_PSSENSE_PS_TOUCH},
 		    },
 		},
     },
@@ -429,22 +433,24 @@ ControllerDevice::ControllerDevice(vr::PropertyContainerHandle_t handle, const D
 	this->inputs_map["/skeleton/hand/left"] = &hand_tracking_inputs[XRT_HAND_LEFT];
 	this->inputs_map["/skeleton/hand/right"] = &hand_tracking_inputs[XRT_HAND_RIGHT];
 
-	// Some controllers may have an input class known at construction time. Since the serial is known, we can
-	// attempt to look it up.
-	// Serial looks like this: playstation_vr2_sense_controller_left
-	// So we can strip off the _left/_right suffix to get the input profile name.
-	// std::string_view serial_sv{this->serial};
-	// if (serial_sv.ends_with("_left"sv)) {
-	// 	this->name = XRT_DEVICE_TOUCH_CONTROLLER;
-	// 	this->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
-	// } else if (serial_sv.ends_with("_right"sv)) {
-	// 	this->name = XRT_DEVICE_TOUCH_CONTROLLER;
-	// 	this->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
-	// }
-	// auto it = controller_classes.find(this->serial);
-	// if (it != controller_classes.end()) {
-	// 	set_input_class(&it->second);
-	// }
+	std::string profile_name = "";
+	std::string serial{this->serial};
+	if(serial == "playstation_vr2_sense_controller_left") {
+		profile_name = "playstation_vr2_sense_controller";
+		this->name = XRT_DEVICE_PSSENSE;
+		this->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
+		snprintf(this->str, XRT_DEVICE_NAME_LEN, "SIE PS VR2 Sense Controller Left");
+	} else if(serial == "playstation_vr2_sense_controller_right") {
+		profile_name = "playstation_vr2_sense_controller";
+		this->name = XRT_DEVICE_PSSENSE;
+		this->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
+		snprintf(this->str, XRT_DEVICE_NAME_LEN, "SIE PS VR2 Sense Controller Right");
+	}
+	auto it = controller_classes.find(profile_name);
+	if (it != controller_classes.end()) {
+		DEV_INFO("Found input class for controller profile %s", profile_name.c_str());
+		set_input_class(&it->second);
+	}
 }
 
 Device::~Device()
@@ -1794,8 +1800,6 @@ HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 vr::ETrackedPropertyError
 ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 {
-	U_LOG_IFL_T("ControllerDevice::handle_property_write: prop=%d, writeType=%d", prop.prop, prop.writeType);
-
 	if (prop.writeType != vr::EPropertyWriteType::PropertyWrite_Set) {
 		return handle_generic_property_write(prop);
 	}
@@ -1808,7 +1812,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		if (input_class == controller_classes.end()) {
 			DEV_ERR("Could not find input class for controller profile %s", std::string(profile).c_str());
 		} else {
-			DEV_INFO("Found input class for controller profile %s, using name: %s, input: %s", std::string(profile).c_str(), input_class->second.name.c_str(), input_class->second.inputs[0].name.c_str());
+			DEV_INFO("Found input class for controller profile %s", std::string(profile).c_str());
 			this->name = input_class->second.name;
 			set_input_class(&input_class->second);
 		}

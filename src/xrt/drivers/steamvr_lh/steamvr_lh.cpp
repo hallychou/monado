@@ -1209,6 +1209,11 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 
 		auto ctx = Context::create(driver_dir, driver_name, user_settings_path, chaperone_info_path, steamvr, driver_name_to_directory, driver);
 
+		if(!ctx) {
+			U_LOG_IFL_E(level, "Couldn't create context for driver %s", driver_name.c_str());
+			continue;
+		}
+
 		U_LOG_IFL_I(level, "Waiting for device discovery for driver %s...", driver_name.c_str());
 
 		ctx->wait_for_discover();
