@@ -1794,6 +1794,8 @@ HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 vr::ETrackedPropertyError
 ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 {
+	U_LOG_IFL_T("ControllerDevice::handle_property_write: prop=%d, writeType=%d", prop.prop, prop.writeType);
+
 	if (prop.writeType != vr::EPropertyWriteType::PropertyWrite_Set) {
 		return handle_generic_property_write(prop);
 	}
