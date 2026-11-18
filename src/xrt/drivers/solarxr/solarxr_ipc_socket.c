@@ -115,6 +115,18 @@ solarxr_ipc_socket_find(const enum u_logging_level log_level, const char filenam
 		return (struct sockaddr_un){0};
 	}
 
+	// try override path
+	const char *override_env;
+	int override_path_len = 0;
+	if ((override_env = getenv("SLIMEVR_SOCKET_DIR")) != NULL) {
+		override_path_len = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", override_env, filename);
+	}
+
+	if (override_path_len > 0 && (unsigned)override_path_len < sizeof(addr.sun_path) &&
+	    check_socket_path(log_level, addr.sun_path)) {
+		return addr;
+	}
+
 	const ssize_t runtime_dir_len =
 	    u_file_get_path_in_runtime_dir("", addr.sun_path, sizeof(addr.sun_path) - 1 - filename_len);
 	if (runtime_dir_len <= 0 || (size_t)runtime_dir_len >= sizeof(addr.sun_path) - 1 - filename_len) {
@@ -161,8 +173,6 @@ solarxr_ipc_socket_find(const enum u_logging_level log_level, const char filenam
 bool
 solarxr_ipc_socket_connect(struct solarxr_ipc_socket *const state, const struct sockaddr_un addr)
 {
-	solarxr_ipc_socket_close(state);
-
 	xrt_ipc_handle_t ipc_handle = XRT_IPC_HANDLE_INVALID;
 	if (addr.sun_family != AF_UNIX) {
 		goto fail;
@@ -239,7 +249,7 @@ solarxr_ipc_socket_wait_timeout(struct solarxr_ipc_socket *const state, const ti
 	    .tv_nsec = timeout % U_TIME_1S_IN_NS,
 	};
 	const bool result = (ppoll(&fd, 1, (timeout >= 0) ? &timeout_ts : NULL, NULL) != -1)
-	                        ? (fd.revents & POLLERR) == 0
+	                        ? (fd.revents & (POLLERR | POLLHUP)) == 0
 	                        : errno == EINTR;
 
 	xrt_reference_dec(&state->reference);
