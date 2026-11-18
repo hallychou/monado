@@ -158,60 +158,51 @@ const std::unordered_map<std::string_view, InputClass> controller_classes{
         },
     },
 	{
-        "playstation_vr2_sense_controller_left",
-		// Experimental mapping to Oculus Touch
+        "playstation_vr2_sense_controller",
 		InputClass{
-		    XRT_DEVICE_TOUCH_CONTROLLER,
+		    XRT_DEVICE_PSSENSE,
 		    {
-		        XRT_INPUT_TOUCH_GRIP_POSE,
-		        XRT_INPUT_TOUCH_AIM_POSE,
-		        XRT_INPUT_GENERIC_PALM_POSE,
+				XRT_INPUT_PSSENSE_GRIP_POSE,
+				XRT_INPUT_PSSENSE_AIM_POSE,
+				XRT_INPUT_GENERIC_PALM_POSE,
+				XRT_INPUT_GENERIC_GRIP_SURFACE_POSE,
+				XRT_INPUT_HAND_PINCH_POSE,
+				XRT_INPUT_HAND_POKE_POSE,
 		    },
 		    {
-		        {"/input/left_ps/click", XRT_INPUT_TOUCH_MENU_CLICK},
-				{"/input/left_ps/touch", XRT_INPUT_TOUCH_MENU_CLICK},
-				{"/input/square/click", XRT_INPUT_TOUCH_X_CLICK},
-		        {"/input/square/touch", XRT_INPUT_TOUCH_X_TOUCH},
-		        {"/input/triangle/click", XRT_INPUT_TOUCH_Y_CLICK},
-		        {"/input/triangle/touch", XRT_INPUT_TOUCH_Y_TOUCH},
-				{"/input/l2/value", XRT_INPUT_TOUCH_TRIGGER_VALUE},
-		        {"/input/l2/touch", XRT_INPUT_TOUCH_TRIGGER_TOUCH},
-				{"/input/l2_sensor/value", XRT_INPUT_TOUCH_TRIGGER_PROXIMITY},
-				{"/input/l1/value", XRT_INPUT_TOUCH_SQUEEZE_VALUE},
-		        {"/input/left_stick", XRT_INPUT_TOUCH_THUMBSTICK},
-		        {"/input/left_stick/click", XRT_INPUT_TOUCH_THUMBSTICK_CLICK},
-		        {"/input/left_stick/touch", XRT_INPUT_TOUCH_THUMBSTICK_TOUCH},
+		        {"/input/left_ps/click", XRT_INPUT_PSSENSE_PS_CLICK},
+				// {"/input/left_ps/touch", XRT_INPUT_PSSENSE_PS_TOUCH},
+				{"/input/square/click", XRT_INPUT_PSSENSE_SQUARE_CLICK},
+		        {"/input/square/touch", XRT_INPUT_PSSENSE_SQUARE_TOUCH},
+		        {"/input/triangle/click", XRT_INPUT_PSSENSE_TRIANGLE_CLICK},
+		        {"/input/triangle/touch", XRT_INPUT_PSSENSE_TRIANGLE_TOUCH},
+				{"/input/l2/value", XRT_INPUT_PSSENSE_TRIGGER_VALUE},
+		        {"/input/l2/touch", XRT_INPUT_PSSENSE_TRIGGER_TOUCH},
+				{"/input/l2_sensor/value", XRT_INPUT_PSSENSE_TRIGGER_PROXIMITY_FLOAT},
+				{"/input/l1/value", XRT_INPUT_PSSENSE_SQUEEZE_CLICK},
+		        {"/input/l1/touch", XRT_INPUT_PSSENSE_SQUEEZE_TOUCH},
+				{"/input/l1_sensor/value", XRT_INPUT_PSSENSE_SQUEEZE_PROXIMITY_FLOAT},
+		        {"/input/left_stick", XRT_INPUT_PSSENSE_THUMBSTICK},
+		        {"/input/left_stick/click", XRT_INPUT_PSSENSE_THUMBSTICK_CLICK},
+		        {"/input/left_stick/touch", XRT_INPUT_PSSENSE_THUMBSTICK_TOUCH},
+
+				{"/input/right_ps/click", XRT_INPUT_PSSENSE_PS_CLICK},
+				// {"/input/right_ps/touch", XRT_INPUT_PSSENSE_PS_TOUCH},
+		        {"/input/cross/click", XRT_INPUT_PSSENSE_CROSS_CLICK},
+		        {"/input/cross/touch", XRT_INPUT_PSSENSE_CROSS_TOUCH},
+		        {"/input/circle/click", XRT_INPUT_PSSENSE_CIRCLE_CLICK},
+		        {"/input/circle/touch", XRT_INPUT_PSSENSE_CIRCLE_TOUCH},
+				{"/input/r2/value", XRT_INPUT_PSSENSE_TRIGGER_VALUE},
+				{"/input/r2/touch", XRT_INPUT_PSSENSE_TRIGGER_TOUCH},
+				{"/input/r2_sensor/value", XRT_INPUT_PSSENSE_TRIGGER_PROXIMITY_FLOAT},
+				{"/input/r1/value", XRT_INPUT_PSSENSE_SQUEEZE_CLICK},
+				{"/input/r1/touch", XRT_INPUT_PSSENSE_SQUEEZE_TOUCH},
+				{"/input/r1_sensor/value", XRT_INPUT_PSSENSE_SQUEEZE_PROXIMITY_FLOAT},
+				{"/input/right_stick", XRT_INPUT_PSSENSE_THUMBSTICK},
+		        {"/input/right_stick/click", XRT_INPUT_PSSENSE_THUMBSTICK_CLICK},
+				{"/input/right_stick/touch", XRT_INPUT_PSSENSE_THUMBSTICK_TOUCH},
 		    },
 		},
-		
-    },
-    {
-        "playstation_vr2_sense_controller_right",
-		// Experimental mapping to Oculus Touch
-		InputClass{
-		    XRT_DEVICE_TOUCH_CONTROLLER,
-		    {
-		        XRT_INPUT_TOUCH_GRIP_POSE,
-		        XRT_INPUT_TOUCH_AIM_POSE,
-		        XRT_INPUT_GENERIC_PALM_POSE,
-		    },
-		    {
-				{"/input/right_ps/click", XRT_INPUT_TOUCH_SYSTEM_CLICK},
-				{"/input/right_ps/touch", XRT_INPUT_TOUCH_SYSTEM_CLICK},
-		        {"/input/cross/click", XRT_INPUT_TOUCH_A_CLICK},
-		        {"/input/cross/touch", XRT_INPUT_TOUCH_A_TOUCH},
-		        {"/input/circle/click", XRT_INPUT_TOUCH_B_CLICK},
-		        {"/input/circle/touch", XRT_INPUT_TOUCH_B_TOUCH},
-				{"/input/r2/value", XRT_INPUT_TOUCH_TRIGGER_VALUE},
-				{"/input/r2/touch", XRT_INPUT_TOUCH_TRIGGER_TOUCH},
-				{"/input/r2_sensor/value", XRT_INPUT_TOUCH_TRIGGER_PROXIMITY},
-				{"/input/r1/value", XRT_INPUT_TOUCH_SQUEEZE_VALUE},
-				{"/input/right_stick", XRT_INPUT_TOUCH_THUMBSTICK},
-		        {"/input/right_stick/click", XRT_INPUT_TOUCH_THUMBSTICK_CLICK},
-				{"/input/right_stick/touch", XRT_INPUT_TOUCH_THUMBSTICK_TOUCH},
-		    },
-		},
-		
     },
     {
         "mixedreality_hpcontroller",
@@ -450,10 +441,10 @@ ControllerDevice::ControllerDevice(vr::PropertyContainerHandle_t handle, const D
 		this->name = XRT_DEVICE_TOUCH_CONTROLLER;
 		this->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
 	}
-	auto it = controller_classes.find(this->serial);
-	if (it != controller_classes.end()) {
-		set_input_class(&it->second);
-	}
+	// auto it = controller_classes.find(this->serial);
+	// if (it != controller_classes.end()) {
+	// 	set_input_class(&it->second);
+	// }
 }
 
 Device::~Device()
