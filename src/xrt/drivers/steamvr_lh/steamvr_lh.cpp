@@ -198,8 +198,14 @@ Context::~Context()
 	this->frame_thread_event.release();
 	if (this->frame_thread.joinable())
 		this->frame_thread.join();
-	if (this->provider)
-		this->provider->Cleanup();
+	U_LOG_IFL_I(log_level, "Shutting down driver %s", driver_name.c_str());
+	if (this->provider) {
+		try {
+			this->provider->Cleanup();
+		} catch (const std::exception &e) {
+			U_LOG_IFL_E(log_level, "Exception during Cleanup: %s", e.what());
+		}
+	}
 }
 
 /***** IVRDriverContext methods *****/
