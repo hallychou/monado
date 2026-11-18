@@ -433,14 +433,14 @@ ControllerDevice::ControllerDevice(vr::PropertyContainerHandle_t handle, const D
 	// attempt to look it up.
 	// Serial looks like this: playstation_vr2_sense_controller_left
 	// So we can strip off the _left/_right suffix to get the input profile name.
-	std::string_view serial_sv{this->serial};
-	if (serial_sv.ends_with("_left"sv)) {
-		this->name = XRT_DEVICE_TOUCH_CONTROLLER;
-		this->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
-	} else if (serial_sv.ends_with("_right"sv)) {
-		this->name = XRT_DEVICE_TOUCH_CONTROLLER;
-		this->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
-	}
+	// std::string_view serial_sv{this->serial};
+	// if (serial_sv.ends_with("_left"sv)) {
+	// 	this->name = XRT_DEVICE_TOUCH_CONTROLLER;
+	// 	this->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
+	// } else if (serial_sv.ends_with("_right"sv)) {
+	// 	this->name = XRT_DEVICE_TOUCH_CONTROLLER;
+	// 	this->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
+	// }
 	// auto it = controller_classes.find(this->serial);
 	// if (it != controller_classes.end()) {
 	// 	set_input_class(&it->second);
@@ -841,12 +841,13 @@ ControllerDevice::set_haptic_handle(vr::VRInputComponentHandle_t handle)
 		name = XRT_OUTPUT_NAME_VIVE_TRACKER_HAPTIC;
 		break;
 	}
+	case XRT_DEVICE_PSSENSE: {
+		name = XRT_OUTPUT_NAME_PSVR2_HAPTIC;
+		break;
+	}
 	default: {
 		DEV_WARN("Unknown device name (%u), haptics will not work", this->name);
-		// ToDo fix controller name.
-		//return;
-		name = XRT_OUTPUT_NAME_TOUCH_HAPTIC;
-		break;
+		return;
 	}
 	}
 	output = std::make_unique<xrt_output>(xrt_output{name});
