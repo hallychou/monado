@@ -218,6 +218,8 @@ const std::unordered_map<std::string_view, InputClass> controller_classes{
 		InputClass{
 		    XRT_DEVICE_HP_REVERB_G2_CONTROLLER,
 		    {
+				XRT_INPUT_G2_CONTROLLER_GRIP_POSE,
+				XRT_INPUT_G2_CONTROLLER_AIM_POSE,
 				XRT_INPUT_GENERIC_PALM_POSE,
 				XRT_INPUT_GENERIC_GRIP_SURFACE_POSE,
 				XRT_INPUT_HAND_PINCH_POSE,
