@@ -503,8 +503,6 @@ Context::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t
 		return;
 	}
 
-	U_LOG_IFL_T(log_level, "Updating pose for device %u, (%.2f, %.2f, %.2f)", unWhichDevice, newPose.vecPosition[0], newPose.vecPosition[1], newPose.vecPosition[2]);
-
 	dev->update_pose(newPose);
 }
 
@@ -1030,6 +1028,8 @@ Context::prop_container_to_device(vr::PropertyContainerHandle_t handle)
 vr::PropertyContainerHandle_t
 Context::TrackedDeviceToPropertyContainer(vr::TrackedDeviceIndex_t nDevice)
 {
+	U_LOG_IFL_T(log_level, "Getting property container for device %u", nDevice);
+
 	size_t container = nDevice + 1;
 	if (nDevice == 0 && this->hmd) {
 		return container;
