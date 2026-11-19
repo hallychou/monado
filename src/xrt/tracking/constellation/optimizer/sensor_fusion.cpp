@@ -27,7 +27,6 @@
 #include <atomic>
 #include <bit>
 #include <cassert>
-#include <ceres/covariance.h>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -1006,7 +1005,13 @@ private:
 	double target_cost;
 };
 
-//! Does a single IMU sample integration and updates the passed state parameters
+/*!
+ * Does a single IMU sample integration and updates the passed state parameters.
+ *
+ * @param[in,out] cov_imu               The pose covariance, with the rotation block in the IMU frame rather than
+ *                                      the LED model's, propagated across this sample.
+ * @param[out]    out_calibrated_sample The sample with bias and scale applied, still in the IMU frame.
+ */
 static void
 integrateOnce(timepoint_ns &pose_ns,
               const xrt_imu_sample &sample,
@@ -1014,17 +1019,36 @@ integrateOnce(timepoint_ns &pose_ns,
               Quaterniond &Q_world_imu,
               Vector3d &world_velocity,
               const Vector3d &gravity_vec,
-              const Vector3d &accel_bias,
-              const Vector3d &gyro_bias,
-              const Vector3d &accel_scale)
+              const ImuBias<double> &bias,
+              const xrt_imu_noise_calibration &sensor_calibration,
+              PoseCovarianceMatrix &cov_imu,
+              xrt_imu_sample &out_calibrated_sample)
 {
 	double dt = time_ns_to_s(sample.timestamp_ns - pose_ns);
 	// @todo: Handle this properly
 	// assert(dt >= 0);
 	dt = MAX(0.0, dt);
 
-	Vector3d cur_accel = (map_vec3_f64(sample.accel_m_s2) - accel_bias).cwiseProduct(accel_scale);
-	auto cur_gyro = map_vec3_f64(sample.gyro_rad_secs) - gyro_bias;
+	const Vector3d cur_accel = bias.calibrateAccel(map_vec3_f64(sample.accel_m_s2));
+	const Vector3d cur_gyro = bias.calibrateGyro(map_vec3_f64(sample.gyro_rad_secs));
+
+	out_calibrated_sample.timestamp_ns = sample.timestamp_ns;
+	map_vec3_f64(out_calibrated_sample.accel_m_s2) = cur_accel;
+	map_vec3_f64(out_calibrated_sample.gyro_rad_secs) = cur_gyro;
+
+	/*
+	 * Propagated with the absolute orientation from *before* this sample, the same one the position and velocity
+	 * updates below use, since the covariance is of the absolute world state rather than of a preintegrated delta.
+	 */
+	propagateCovariance(Q_world_imu,                        //
+	                    map_vec3_f64(sample.accel_m_s2),    //
+	                    map_vec3_f64(sample.gyro_rad_secs), //
+	                    cur_accel,                          //
+	                    cur_gyro,                           //
+	                    bias.accel_scale,                   //
+	                    sensor_calibration,                 //
+	                    dt,                                 //
+	                    cov_imu);                           //
 
 	auto world_accel = Q_world_imu * cur_accel;
 
@@ -1041,9 +1065,11 @@ integrateOnce(timepoint_ns &pose_ns,
 
 static void
 integrateToTimestampHistory(const double world_gravity_mag,
+                            const xrt_imu_noise_calibration &sensor_calibration,
                             DeviceSolveState &inout_solve,
                             const std::span<const xrt_imu_sample> imu_samples,
-                            RelationHistory &relation_history)
+                            CovarianceRelationHistory &relation_history,
+                            SensorFusion *fusion)
 {
 	assert(imu_samples.size() > 0);
 
@@ -1061,21 +1087,30 @@ integrateToTimestampHistory(const double world_gravity_mag,
 	Quaterniond Q_world_model = map_quat(inout_solve.Tcv_world_device.orientation).cast<double>();
 	Quaterniond Q_world_imu = Q_world_model * Q_model_imu;
 
-	const auto accel_bias = map_vec3_f64(inout_solve.imu_calibration.accel_bias);
-	const auto gyro_bias = map_vec3_f64(inout_solve.imu_calibration.gyro_bias);
-	const auto accel_scale = map_vec3_f64(inout_solve.imu_calibration.accel_scale);
+	const ImuBias<double> bias(map_vec3_f64(inout_solve.imu_calibration.accel_bias),
+	                           map_vec3_f64(inout_solve.imu_calibration.gyro_bias),
+	                           map_vec3_f64(inout_solve.imu_calibration.accel_scale));
+
+	// Convert covariance to IMU space
+	PoseCovarianceMatrix cov_imu = rotateCovarianceRotBlock(inout_solve.covariance, Q_model_imu.conjugate());
+	PoseCovarianceMatrix cov_model = inout_solve.covariance;
 
 	Vector3d world_velocity = map_vec3_f64(inout_solve.world_velocity);
 	for (const auto &sample : imu_samples) {
-		integrateOnce(pose_ns,        //
-		              sample,         //
-		              T_world_device, //
-		              Q_world_imu,    //
-		              world_velocity, //
-		              gravity_vec,    //
-		              accel_bias,     //
-		              gyro_bias,      //
-		              accel_scale);   //
+		xrt_imu_sample calibrated_sample{};
+		integrateOnce(pose_ns,            //
+		              sample,             //
+		              T_world_device,     //
+		              Q_world_imu,        //
+		              world_velocity,     //
+		              gravity_vec,        //
+		              bias,               //
+		              sensor_calibration, //
+		              cov_imu,            //
+		              calibrated_sample); //
+
+		// Convert covariance back to model-space
+		cov_model = rotateCovarianceRotBlock(cov_imu, Q_model_imu);
 
 		// Normalize the orientation
 		Q_world_imu.normalize();
@@ -1096,14 +1131,35 @@ integrateToTimestampHistory(const double world_gravity_mag,
 		map_vec3(relation.linear_velocity) = world_velocity.cast<float>();
 		// World-frame angular velocity is the same for every frame on the device, so the IMU's will do.
 		map_vec3(relation.angular_velocity) =
-		    (Q_world_imu * (map_vec3_f64(sample.gyro_rad_secs) - gyro_bias)).cast<float>();
+		    (Q_world_imu * map_vec3_f64(calibrated_sample.gyro_rad_secs)).cast<float>();
 
-		relation_history.pushOrUpdate({relation, pose_ns}, true);
+		const CovarianceRelationHistoryEntry entry( //
+		    relation,                               //
+		    pose_ns,                                //
+		    cov_model,                              //
+		    &sensor_calibration,                    //
+		    sample,                                 //
+		    calibrated_sample,                      //
+		    bias.accel_scale,                       //
+		    Q_model_imu);                           //
+
+		const bool pushed = relation_history.pushOrUpdate(entry, true);
+
+#ifdef XRT_FEATURE_RERUN
+		// Only what actually made it into the history, so the recording matches what readers of it see.
+		if (pushed && fusion->rerun_context) {
+			fusion->rerun_context->logImuRelation(entry);
+		}
+#else
+		(void)pushed;
+		(void)fusion;
+#endif
 	}
 
 	map_vec3(inout_solve.Tcv_world_device.position) = T_world_device.cast<float>();
 	map_quat(inout_solve.Tcv_world_device.orientation) = Q_world_model.cast<float>();
 	map_vec3_f64(inout_solve.world_velocity) = world_velocity;
+	inout_solve.covariance = cov_model;
 	inout_solve.time_ns = pose_ns;
 }
 
@@ -1515,6 +1571,7 @@ struct SensorFusionProblem
 		this->dropPriorIfBlocksMissingLocked(fusion, keyframe_mask);
 
 		const auto &latest_imu_calib = device.getLatestImuCalibration();
+		const xrt_imu_noise_calibration &sensor_calib = device.sensor_calibration;
 
 		if (keyframe_mask != 0) {
 			auto &imu_extrinsics_block = blocks.imu_extrinsics;
@@ -1796,8 +1853,12 @@ struct SensorFusionProblem
 				blocks.keyframe_marginalization_residuals[start_age_idx].push_back(
 				    problem.AddResidualBlock(
 				        anchorJacobians(
-				            new ImuBiasRandomWalkCostFunction(new ImuBiasRandomWalkCostFunctor(
-				                {preintegration.imu_preintegration.dt})), //
+				            new ImuBiasRandomWalkCostFunction(new ImuBiasRandomWalkCostFunctor({
+				                .dt = preintegration.imu_preintegration.dt,
+				                .accel_bias_random_walk = sensor_calib.accel.bias_random_walk,
+				                .gyro_bias_random_walk = sensor_calib.gyro.bias_random_walk,
+				                .accel_scale_random_walk = sensor_calib.accel_scale_random_walk,
+				            })), //
 				            {
 				                {start_imu_bias_block.anchorData(), nullptr},
 				                {end_imu_bias_block.anchorData(), nullptr},
@@ -1826,9 +1887,13 @@ struct SensorFusionProblem
 					    problem.AddResidualBlock(
 					        anchorJacobians(
 					            new ImuBiasAnchorCostFunction(new ImuBiasAnchorCostFunctor({
-					                ImuBias<double>(map_vec3_f64(latest_imu_calib.accel_bias),
-					                                map_vec3_f64(latest_imu_calib.gyro_bias),
-					                                map_vec3_f64(latest_imu_calib.accel_scale)),
+					                .anchor =
+					                    ImuBias<double>(map_vec3_f64(latest_imu_calib.accel_bias),
+					                                    map_vec3_f64(latest_imu_calib.gyro_bias),
+					                                    map_vec3_f64(latest_imu_calib.accel_scale)),
+					                .accel_bias_sigma = sensor_calib.accel.bias_initial_sigma,
+					                .gyro_bias_sigma = sensor_calib.gyro.bias_initial_sigma,
+					                .accel_scale_sigma = sensor_calib.accel_scale_initial_sigma,
 					            })),
 					            {{oldest_bias.anchorData(), nullptr}}), //
 					        nullptr,                                    //
@@ -1926,69 +1991,67 @@ struct SensorFusionProblem
 			SolvedDeviceKeyframe &solved = out.device;
 			solved.Tcv_world_device = pose.toXrtPose();
 			map_vec3_f64(solved.linear_velocity) = pose.velocity;
-			solved.angular_velocity_valid = preintegration.imu_preintegration.body_angular_velocity_valid;
-			map_vec3_f64(solved.angular_velocity) =
-			    // Q_world_model * Q_model_imu = Q_world_imu
-			    (pose.rotation * extrinsics.Q_model_imu) *
-			    // Q_world_imu * Q_imu_vel = Q_world_vel
-			    (preintegration.imu_preintegration.body_angular_velocity - bias.gyro_bias);
+
+			solved.imu_sample_valid = preintegration.imu_preintegration.imu_sample_valid;
+			solved.raw_imu_sample = preintegration.imu_preintegration.imu_sample;
+			{ // solved.calibrated_imu_sample
+				solved.calibrated_imu_sample.timestamp_ns = solved.raw_imu_sample.timestamp_ns;
+				map_vec3_f64(solved.calibrated_imu_sample.accel_m_s2) =
+				    bias.calibrateAccel(map_vec3_f64(solved.raw_imu_sample.accel_m_s2));
+				map_vec3_f64(solved.calibrated_imu_sample.gyro_rad_secs) =
+				    bias.calibrateGyro(map_vec3_f64(solved.raw_imu_sample.gyro_rad_secs));
+			}
+			{ // solved.world_imu_sample
+				auto Q_world_imu = pose.rotation * extrinsics.Q_model_imu;
+
+				solved.world_imu_sample.timestamp_ns = solved.calibrated_imu_sample.timestamp_ns;
+				map_vec3_f64(solved.world_imu_sample.gyro_rad_secs) =
+				    // Q_world_imu * Q_imu_vel = Q_world_vel
+				    Q_world_imu * map_vec3_f64(solved.calibrated_imu_sample.gyro_rad_secs);
+				map_vec3_f64(solved.world_imu_sample.accel_m_s2) =
+				    // Q_world_imu * Q_imu_vel = Q_world_vel
+				    Q_world_imu * map_vec3_f64(solved.calibrated_imu_sample.accel_m_s2);
+			}
+
 			map_vec3_f64(solved.accel_bias) = bias.accel_bias;
 			map_vec3_f64(solved.gyro_bias) = bias.gyro_bias;
 			map_vec3_f64(solved.accel_scale) = bias.accel_scale;
 		}
 
-#ifdef XRT_FEATURE_RERUN
-		// We only use the covariance when rerun logging is enabled.
-		if (fusion->rerun_context != nullptr) {
-			ceres::Covariance::Options cov_options{};
-			cov_options.num_threads = 1; //! @todo measure if more threads is needed
-			cov_options.null_space_rank = -1;
-			cov_options.algorithm_type = ceres::CovarianceAlgorithmType::DENSE_SVD;
-			ceres::Covariance cov(cov_options);
-
-			std::vector<const double *> covariance_blocks;
-			// Collect the covariance blocks
-			for (uint32_t age = 0; age < snapshot.num_keyframes; age++) {
-				// If the device isn't in this keyframe, skip it
-				if (!(snapshot.device.keyframe_mask & (1u << age))) {
-					continue;
-				}
-
-				const auto keyframe_ring_idx = fusion->keyframeIdxLocked(age);
-				const auto &keyframe_pose_vec = blocks.keyframes[keyframe_ring_idx];
-				covariance_blocks.push_back(keyframe_pose_vec.data());
+		std::vector<const double *> covariance_blocks;
+		std::vector<uint32_t> covariance_ages;
+		for (uint32_t age = 0; age < snapshot.num_keyframes; age++) {
+			// If the device isn't in this keyframe, skip it
+			if (!(snapshot.device.keyframe_mask & (1u << age))) {
+				continue;
 			}
 
-			if (!cov.Compute(covariance_blocks, &problem)) {
-				SF_ERROR(fusion, "Failed to compute covariance matrix");
-				//! @todo is failure a common case? try to find recovery strategy maybe?
-				return false;
-			}
-
-			for (uint32_t age = 0; age < snapshot.num_keyframes; age++) {
-				// If the device isn't in this keyframe, skip it
-				if (!(snapshot.device.keyframe_mask & (1u << age))) {
-					continue;
-				}
-
-				SnapshotKeyframe &out = snapshot.keyframes[age];
-
-				const auto keyframe_ring_idx = fusion->keyframeIdxLocked(age);
-				const auto &keyframe_pose_parameters = blocks.keyframes[keyframe_ring_idx].data();
-
-				bool success = cov.GetCovarianceBlockInTangentSpace( //
-				    keyframe_pose_parameters,                        //
-				    keyframe_pose_parameters,                        //
-				    out.device.covariance.data());                   //
-				if (!success) {
-					SF_ERROR(fusion, "Failed to get covariance matrix for keyframe with age %u",
-					         age);
-					//! @todo is failure a common case?
-					return false;
-				}
-			}
+			const auto keyframe_ring_idx = fusion->keyframeIdxLocked(age);
+			covariance_blocks.push_back(blocks.keyframes[keyframe_ring_idx].data());
+			covariance_ages.push_back(age);
 		}
-#endif // XRT_FEATURE_RERUN
+
+		const timepoint_ns covariance_start_ns = os_monotonic_get_ns();
+
+		std::vector<MatrixXd> covariances;
+		const bool computed = computeTangentCovariances(problem, covariance_blocks, covariances);
+
+		snapshot.covariance_time_ns = os_monotonic_get_ns() - covariance_start_ns;
+
+		if (!computed) {
+			/*
+			 * Rank deficiency doesn't land here, only the problem failing to evaluate or
+			 * the eigensolver failing, ie. a non-finite Jacobian at the solution. The
+			 * covariance isn't used for solving yet, but that means the solution itself
+			 * can't be trusted, so reset.
+			 */
+			SF_ERROR(fusion, "Failed to compute covariance matrix");
+			return false;
+		}
+
+		for (size_t i = 0; i < covariance_ages.size(); i++) {
+			snapshot.keyframes[covariance_ages[i]].device.covariance = covariances[i];
+		}
 
 		return true;
 	}
@@ -2254,15 +2317,17 @@ struct SensorFusionProblem
  */
 
 Device::Device(t_constellation_device_id_t id,
-               const t_constellation_tracker_led_model *led_model)
-    : id(id),                          //
-      led_model(led_model),            //
-      latest_solve(std::nullopt),      //
-      latest_imu_reckon(std::nullopt), //
-      imu_relation_history(),          //
-      stored_imu_calibration(),        //
-      imu_write_count(0),              //
-      imu_samples()                    //
+               const t_constellation_tracker_led_model *led_model,
+               const xrt_imu_noise_calibration &sensor_calibration)
+    : id(id),                                 //
+      led_model(led_model),                   //
+      sensor_calibration(sensor_calibration), //
+      latest_solve(std::nullopt),             //
+      latest_imu_reckon(std::nullopt),        //
+      imu_relation_history(),                 //
+      stored_imu_calibration(),               //
+      imu_write_count(0),                     //
+      imu_samples()                           //
 {
 	this->resetLocked();
 }
@@ -2500,11 +2565,12 @@ SensorFusion::pullReadyCameraSamplesLocked(timepoint_ns now_ns, std::vector<cons
 SensorFusion::SensorFusion(ceres::Context *context,
                            bool deterministic,
                            t_constellation_device_id_t id,
-                           const t_constellation_tracker_led_model *led_model)
+                           const t_constellation_tracker_led_model *led_model,
+                           const xrt_imu_noise_calibration &sensor_calibration)
     : context(context),                                    //
       log_level(debug_get_log_option_sensor_fusion_log()), //
       deterministic(deterministic),                        //
-      device(id, led_model),                               //
+      device(id, led_model, sensor_calibration),           //
       sample_queue()                                       //
 {
 	this->problem = new SensorFusionProblem();
@@ -2820,7 +2886,7 @@ SensorFusion::getTrackedPose(timepoint_ns requested_time_ns, xrt_space_relation 
 {
 	out_relation = XRT_SPACE_RELATION_ZERO;
 
-	RelationHistoryEntry entry{};
+	CovarianceRelationHistoryEntry entry{};
 	auto result = this->device.imu_relation_history.get(requested_time_ns, entry);
 	if (result != M_RELATION_HISTORY_RESULT_INVALID) {
 		out_relation = entry.relation;
@@ -3011,6 +3077,7 @@ SensorFusion::preintegrateDeviceLocked(bool &work_remaining)
 		                                                                                 num_samples), //
 		                                                 first_after,                                  //
 		                                                 bias,                                         //
+		                                                 this->device.sensor_calibration,              //
 		                                                 start_keyframe->timestamp_ns,                 //
 		                                                 end_keyframe.timestamp_ns);                   //
 
@@ -3058,9 +3125,11 @@ SensorFusion::reckonToLatestImu(DeviceSolveState &inout_solve)
 
 	const timepoint_ns start_ns = inout_solve.time_ns;
 	integrateToTimestampHistory(this->snapshot.world_gravity_mag,                                 //
+	                            device.sensor_calibration,                                        //
 	                            inout_solve,                                                      //
 	                            std::span<const xrt_imu_sample>(samples_buf.data(), num_samples), //
-	                            device.imu_relation_history);                                     //
+	                            device.imu_relation_history,                                      //
+	                            this);                                                            //
 
 	SF_TRACE(this, "Filled relation history for device %d from %" PRIi64 " to %" PRIi64, device.id, start_ns,
 	         samples_buf[num_samples - 1].timestamp_ns);
@@ -3210,6 +3279,11 @@ SensorFusion::tickLocked(bool have_new_input)
 			continue;
 		}
 
+		// If this keyframe has no exact angular velocity, just rely on the IMU relation history.
+		if (!keyframe.device.imu_sample_valid) {
+			continue;
+		}
+
 		xrt_space_relation relation = {
 		    .relation_flags = static_cast<xrt_space_relation_flags>(
 		        XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_VALID_BIT |
@@ -3220,19 +3294,20 @@ SensorFusion::tickLocked(bool have_new_input)
 		    .angular_velocity = {},
 		};
 		map_vec3(relation.linear_velocity) = map_vec3_f64(keyframe.device.linear_velocity).cast<float>();
-		map_vec3(relation.angular_velocity) = map_vec3_f64(keyframe.device.angular_velocity).cast<float>();
+		map_vec3(relation.angular_velocity) =
+		    map_vec3_f64(keyframe.device.world_imu_sample.gyro_rad_secs).cast<float>();
 
-		// If this keyframe has no exact angular velocity, just rely on the IMU relation history.
-		if (!keyframe.device.angular_velocity_valid) {
-			continue;
-		}
+		auto entry = CovarianceRelationHistoryEntry(                 //
+		    relation,                                                //
+		    keyframe.timestamp_ns,                                   //
+		    keyframe.device.covariance,                              //
+		    &this->device.sensor_calibration,                        //
+		    keyframe.device.raw_imu_sample,                          //
+		    keyframe.device.calibrated_imu_sample,                   //
+		    map_vec3_f64(keyframe.device.accel_scale),               //
+		    map_quat(snapshot.device.Qcv_model_imu).cast<double>()); //
 
-		bool success = this->device.keyframe_relation_history.pushOrUpdate(
-		    {
-		        .relation = relation,
-		        .timestamp = keyframe.timestamp_ns,
-		    },
-		    true);
+		bool success = this->device.keyframe_relation_history.pushOrUpdate(entry, true);
 
 		if (!success) {
 			SF_DEBUG(this, "Failed to write keyframe relation at ts %" PRId64, keyframe.timestamp_ns);
@@ -3258,6 +3333,7 @@ SensorFusion::tickLocked(bool have_new_input)
 		            .accel_scale = keyframe.device.accel_scale,
 		            .Qcv_model_imu = snapshot.device.Qcv_model_imu,
 		        },
+		    .covariance = keyframe.device.covariance,
 		};
 
 		/*

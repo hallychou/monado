@@ -57,7 +57,7 @@ struct RelationHistoryEntry
 
 	//! Interpolates between the two relation history entries, returning a new one.
 	RelationHistoryEntry
-	interpolate(timepoint_ns to_ns, RelationHistoryEntry successor) const
+	interpolate(timepoint_ns to_ns, const RelationHistoryEntry &successor) const
 	{
 		RelationHistoryEntry final = *this;
 		final.timestamp = to_ns;

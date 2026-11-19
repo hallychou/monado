@@ -40,6 +40,7 @@ constexpr std::string kSummaryEntityName = "summary";
 constexpr std::string kSolverMetricsEntityName = "metrics/solver";
 constexpr std::string kSolveTimelineName = "solves";
 constexpr std::string kTimeTimelineName = "fusion_time";
+constexpr std::string kImuTimeTimelineName = "imu_time";
 constexpr std::string kDeviceMetricsEntityName = "metrics/device";
 
 std::string
@@ -73,6 +74,13 @@ std::string
 getDeviceImuEntityName()
 {
 	return std::format("{}/imu", getDeviceEntityName());
+}
+
+//! Sibling of the device entity, so the dead reckoned pose never moves the solved one.
+std::string
+getImuReckonEntityName()
+{
+	return std::format("{}/imu_reckon", getWorldEntityName());
 }
 
 std::string
@@ -120,6 +128,27 @@ RerunContext::logStaticScene()
 	// The whole solve happens in OpenCV space.
 	this->stream->log_static("/", rerun::ViewCoordinates::RIGHT_HAND_Y_DOWN);
 	this->stream->log_static(getWorldEntityName(), rerun::TransformAxes3D(kAxisLength));
+}
+
+void
+RerunContext::logPositionCovariance(const std::string &entity,
+                                    const xrt_pose &Tcv_world_device,
+                                    const PoseCovarianceMatrix &covariance)
+{
+	xrt_vec3 radii;
+	xrt_quat Q_origin_cov;
+	covariancePositionRadius(covariance, radii, Q_origin_cov);
+
+	// The position block is in world space, but the entity sits under the device's transform, so take it back off.
+	xrt_quat Q_device_world;
+	math_quat_invert(&Tcv_world_device.orientation, &Q_device_world);
+
+	xrt_quat Q_device_cov;
+	math_quat_rotate(&Q_device_world, &Q_origin_cov, &Q_device_cov);
+
+	this->stream->log(entity, toRerunTransform({Q_device_cov, XRT_VEC3_ZERO}));
+	this->stream->log(entity, rerun::archetypes::Ellipsoids3D::from_half_sizes(
+	                              rerun::components::HalfSize3D(radii.x, radii.y, radii.z)));
 }
 
 void
@@ -189,6 +218,8 @@ RerunContext::logSolverMetrics(const SolveSnapshot &snapshot)
 	this->stream->log(metrics + "/final_rms_sigma", rerun::Scalars(snapshot.final_rms_sigma));
 	this->stream->log(metrics + "/iterations", rerun::Scalars(static_cast<double>(snapshot.num_iterations)));
 	this->stream->log(metrics + "/solve_time_ms", rerun::Scalars(snapshot.solve_time_s * 1000.0));
+	this->stream->log(metrics + "/covariance_time_ms",
+	                  rerun::Scalars(static_cast<double>(snapshot.covariance_time_ns) / 1e6));
 	this->stream->log(metrics + "/residuals", rerun::Scalars(static_cast<double>(snapshot.num_residuals)));
 	this->stream->log(metrics + "/parameter_blocks",
 	                  rerun::Scalars(static_cast<double>(snapshot.num_parameter_blocks)));
@@ -265,23 +296,7 @@ RerunContext::logDevice(const SolveSnapshot &snapshot)
 	        .with_colors({deviceColor(device.id, 1.0f)}) //
 	);                                                   //
 
-	const std::string camera_device_covariance_entity = device_entity + "/covariance";
-	xrt_vec3 radii;
-	xrt_quat Q_origin_cov;
-	covariancePositionRadius(newest.covariance, radii, Q_origin_cov);
-
-	xrt_quat Q_device_world;
-	math_quat_invert(&newest.Tcv_world_device.orientation, &Q_device_world);
-
-	xrt_quat Q_device_cov;
-	math_quat_rotate(&Q_device_world, &Q_origin_cov, &Q_device_cov);
-
-	this->stream->log(                                    //
-	    camera_device_covariance_entity,                  //
-	    toRerunTransform({Q_device_cov, XRT_VEC3_ZERO})); //
-	this->stream->log(
-	    camera_device_covariance_entity,
-	    rerun::archetypes::Ellipsoids3D::from_half_sizes(rerun::components::HalfSize3D(radii.x, radii.y, radii.z)));
+	this->logPositionCovariance(device_entity + "/covariance", newest.Tcv_world_device, newest.covariance);
 }
 
 void
@@ -550,6 +565,24 @@ RerunContext::logSolve(const SolveSnapshot &snapshot)
 	this->logDevice(snapshot);
 	this->logDeviceWindow(snapshot);
 	this->logDeviceMetrics(snapshot);
+
+	this->stream->reset_time();
+}
+
+void
+RerunContext::logImuRelation(const CovarianceRelationHistoryEntry &entry)
+{
+	/*
+	 * Only the IMU timeline is set, so none of this shows up against the solve timelines. A re-reckon after a solve
+	 * logs over timestamps already logged, the same way it updates the history entries they came from.
+	 */
+	this->stream->set_time_timestamp_nanos_since_epoch(kImuTimeTimelineName, entry.timestamp);
+
+	const std::string entity = getImuReckonEntityName();
+
+	this->stream->log(entity, toRerunTransform(entry.relation.pose));
+	this->stream->log(entity + "/axes", rerun::TransformAxes3D(kAxisLength));
+	this->logPositionCovariance(entity + "/covariance", entry.relation.pose, entry.covariance);
 
 	this->stream->reset_time();
 }

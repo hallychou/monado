@@ -33,6 +33,7 @@ add_library(
 	led_sync/t_led_sync_refinement.c
 	led_sync/pssense_gray_code.h
 	led_sync/led_sync_internal.h
+	optimizer/covariance_relation_history.hpp
 	optimizer/imu_preintegration.hpp
 	optimizer/internal_math.cpp
 	optimizer/internal_math.hpp

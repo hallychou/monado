@@ -17,9 +17,8 @@
 
 #include "constellation/t_constellation_tracker.h"
 
-#include "math/m_relation_history.hpp"
-
 #include "imu_preintegration.hpp"
+#include "covariance_relation_history.hpp"
 
 #include <array>
 #include <atomic>
@@ -237,6 +236,13 @@ struct DeviceSolveState
 	xrt_vec3_f64 world_velocity;
 	//! The imu calibration at the solve
 	DeviceImuCalibration imu_calibration;
+	/*!
+	 * The pose covariance at the solve, in the solver's tangent space (world position, LED model local rotation,
+	 * world velocity).
+	 *
+	 * @see PoseCovarianceIndex
+	 */
+	PoseCovarianceMatrix covariance = PoseCovarianceMatrix::Zero();
 };
 
 struct Device
@@ -246,13 +252,16 @@ public: // Fields
 
 	const t_constellation_tracker_led_model *const led_model;
 
+	//! The noise model and bias behaviour of the device's IMU, as the driver gave it.
+	const xrt_imu_noise_calibration sensor_calibration;
+
 	//! The latest fused solve.
 	std::optional<DeviceSolveState> latest_solve;
 	//! The solved state for the latest IMU dead reckoned position.
 	std::optional<DeviceSolveState> latest_imu_reckon;
 
 	//! The relation history of the device, used as a fast way to retrieve the latest dead-reckoned poses.
-	RelationHistory imu_relation_history;
+	CovarianceRelationHistory imu_relation_history;
 	/*!
 	 * The relation history containing only the exact camera keyframes, to allow access to exact fused keyframes.
 	 *
@@ -260,7 +269,7 @@ public: // Fields
 	 * camera keyframe poses, so that a late camera can get the full solved pose from other cameras, this is the way
 	 * to go about that.
 	 */
-	RelationHistory keyframe_relation_history;
+	CovarianceRelationHistory keyframe_relation_history;
 
 	//! Pre-calibrated accelerometer bias, in meters per second squared.
 	DeviceImuCalibration stored_imu_calibration;
@@ -294,7 +303,9 @@ public: // Fields
 	std::array<RingImuSample, kImuBufferSize> imu_samples;
 
 public: // Methods
-	Device(t_constellation_device_id_t id, const t_constellation_tracker_led_model *led_model);
+	Device(t_constellation_device_id_t id,
+	       const t_constellation_tracker_led_model *led_model,
+	       const xrt_imu_noise_calibration &sensor_calibration);
 	~Device();
 
 	Device(const Device &) = delete;
@@ -339,10 +350,14 @@ struct SolvedDeviceKeyframe
 	//! Solved world-frame velocity, in meters per second.
 	xrt_vec3_f64 linear_velocity;
 
-	//! Whether the world-frame angular velocity is valid.
-	bool angular_velocity_valid;
-	//! World-frame angular velocity, in radians per second.
-	xrt_vec3_f64 angular_velocity;
+	//! Whether or not the IMU sample is valid.
+	bool imu_sample_valid;
+	//! Device-frame raw IMU sample that ended the preintegration.
+	xrt_imu_sample raw_imu_sample;
+	//! Device-frame calibrated IMU sample that ended the preintegration.
+	xrt_imu_sample calibrated_imu_sample;
+	//! World-frame IMU sample that ended the preintegration.
+	xrt_imu_sample world_imu_sample;
 
 	//! Solved accelerometer bias, in meters per second squared.
 	xrt_vec3_f64 accel_bias;
@@ -350,14 +365,13 @@ struct SolvedDeviceKeyframe
 	xrt_vec3_f64 gyro_bias;
 	//! Solved per-axis accelerometer scale, unitless.
 	xrt_vec3_f64 accel_scale;
-#ifdef XRT_FEATURE_RERUN
+
 	/*!
 	 * The covariance matrix of this solve's keyframe parameters of the pose
 	 *
 	 * @see PoseCovarianceIndex
 	 */
-	PoseCovarianceMatrix covariance;
-#endif // XRT_FEATURE_RERUN
+	PoseCovarianceMatrix covariance{PoseCovarianceMatrix::Zero()};
 };
 
 /*!
@@ -435,6 +449,9 @@ struct SolveSnapshot
 	double final_rms_sigma{0.0};
 
 	double solve_time_s{0.0};
+
+	//! Time spent computing the pose covariances after the solve
+	time_duration_ns covariance_time_ns{0};
 
 	//! Ceres' termination type, already stringified, since the logger has no business including Ceres headers.
 	std::string termination;
@@ -575,13 +592,15 @@ public: // Methods
 	 * @param context       The Ceres context to use
 	 * @param deterministic Whether to not startup a separate thread, and run the fusion on the same
 	 *                      thread as the callee's push functions.
-	 * @param id            The ID of the constellation device
-	 * @param led_model     The LED model of the device
+	 * @param id                 The ID of the constellation device
+	 * @param led_model          The LED model of the device
+	 * @param sensor_calibration The noise model and bias behaviour of the device's IMU
 	 */
 	SensorFusion(ceres::Context *context,
 	             bool deterministic,
 	             t_constellation_device_id_t id,
-	             const t_constellation_tracker_led_model *led_model);
+	             const t_constellation_tracker_led_model *led_model,
+	             const xrt_imu_noise_calibration &sensor_calibration);
 
 	~SensorFusion();
 

@@ -1481,7 +1481,10 @@ ConstellationTracker::addDevice(t_constellation_tracker_device_params *params, t
 	    this->ceres_context.get(),                                             //
 	    this->deterministic,                                                   //
 	    id,                                                                    //
-	    new_device->search_model->led_model);                                  //
+	    new_device->search_model->led_model,                                   //
+	    new_device->params.imu_calibration);                                   //
+
+	this->rig_calibration->addDevice(id, new_device->params.imu_calibration);
 
 	for (auto &mosaic : this->mosaics) {
 		for (auto &camera : mosaic->cameras) {
@@ -1516,6 +1519,8 @@ ConstellationTracker::removeDevice(t_constellation_device_id_t device_id)
 
 	// Remove the device
 	this->devices.erase(this->devices.begin() + index);
+
+	this->rig_calibration->removeDevice(device_id);
 }
 
 void

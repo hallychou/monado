@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "xrt/xrt_tracking.h"
+
 #include "os/os_time.h"
 
 #include "math/m_eigen_interop.hpp"
@@ -49,21 +51,7 @@ using Eigen::Vector4;
 
 using ceres::Jet;
 
-// @todo Tune this per device. Right now these are CV1 HMD numbers.
-//! BMI055 gyroscope noise density, 0.014 deg/s/sqrt(Hz) from the datasheet, in rad/s/sqrt(Hz).
-constexpr double kGyroNoiseDensity = 2.44e-4;
-//! BMI055 accelerometer noise density, 150 ug/sqrt(Hz) from the datasheet, in (m/s^2)/sqrt(Hz).
-constexpr double kAccelNoiseDensity = 1.47e-3;
-
-// @todo These need to be computed properly, not guessed.
-constexpr double kAccelBiasRandomWalkSigma = 1e-3;  // (m/s^2) / sqrt(s)
-constexpr double kGyroBiasRandomWalkSigma = 1e-4;   // (rad/s) / sqrt(s)
-constexpr double kAccelScaleRandomWalkSigma = 1e-5; // 1 / sqrt(s)
-
-// @todo This needs to be computed properly, not hardcoded for CV1.
-constexpr double kAccelBiasAnchorSigma = 0.687; // m/s^2
-constexpr double kGyroBiasAnchorSigma = 0.0175; // rad/s
-constexpr double kAccelScaleAnchorSigma = 0.05; // dimensionless
+//! @todo: If another device needs these variable, move these to the IMU calibration
 
 //! Largest accelerometer bias to allow, in m/s^2. The BMI055's zero-g offset is +-70mg, so this is ~1.4x that.
 constexpr double kMaxAccelBias = 1.0;
@@ -167,6 +155,20 @@ template <typename T> struct ImuBias
 		};
 		return seeded;
 	}
+
+	//! Removes the bias from a raw accelerometer reading and applies the scale, both in the IMU frame.
+	Vector3<T>
+	calibrateAccel(const Vector3<T> &raw_accel) const
+	{
+		return (raw_accel - this->accel_bias).cwiseProduct(this->accel_scale);
+	}
+
+	//! Removes the bias from a raw gyroscope reading.
+	Vector3<T>
+	calibrateGyro(const Vector3<T> &raw_gyro) const
+	{
+		return raw_gyro - this->gyro_bias;
+	}
 };
 
 enum class PoseCovarianceIndex : int
@@ -195,6 +197,21 @@ static constexpr int kNumPoseCovIndices = static_cast<int>(PoseCovarianceIndex::
 typedef Matrix<double, kNumPoseCovIndices, kNumPoseCovIndices> PoseCovarianceMatrix;
 
 /*!
+ * Re-expresses the rotation block of a pose covariance in another frame, `J Σ Jᵀ` with `J = diag(I, R_new_old, I)`,
+ * since `δθ_new = R_new_old δθ_old`. Position and velocity are left alone, the frames are assumed to share an origin.
+ *
+ * @param covariance The covariance, with its rotation block in the old frame.
+ * @param Q_new_old  Rotation taking the old frame to the new one.
+ */
+inline PoseCovarianceMatrix
+rotateCovarianceRotBlock(const PoseCovarianceMatrix &covariance, const Quaterniond &Q_new_old)
+{
+	PoseCovarianceMatrix J = PoseCovarianceMatrix::Identity();
+	J.block<3, 3>(kPoseRotCovIndex, kPoseRotCovIndex) = Q_new_old.toRotationMatrix();
+	return J * covariance * J.transpose();
+}
+
+/*!
  * Computes the radii and covariance orientation from the 3x3 position part of the pose covariance matrix
  * (3σ elliphoir, so 97%-ish probability containment, assuming a perfectly matching noise model).
  *
@@ -204,6 +221,30 @@ typedef Matrix<double, kNumPoseCovIndices, kNumPoseCovIndices> PoseCovarianceMat
  */
 void
 covariancePositionRadius(const PoseCovarianceMatrix &covariance, xrt_vec3 &out_radii, xrt_quat &out_Q_origin_cov);
+
+/*!
+ * Propagates the covariance for this sample.
+ *
+ * @param[in]  Q_start_cur     Rotation accumulated *before* this sample.
+ * @param[in]  measured_accel  Acceleration as measured, in the IMU frame, which the sample noise depends on.
+ * @param[in]  measured_gyro   Gyroscope reading as measured, which the sample noise depends on.
+ * @param[in]  corrected_accel Bias and scale-corrected acceleration, in the IMU frame.
+ * @param[in]  corrected_gyro  Bias-corrected gyroscope reading.
+ * @param[in]  accel_scale     The accelerometer scale.
+ * @param[in]  imu_calibration The noise model of the IMU.
+ * @param      dt              Delta time
+ * @param[out] covariance      Out covariance matrix
+ */
+void
+propagateCovariance(const Quaterniond &Q_start_cur,
+                    const Vector3d &measured_accel,
+                    const Vector3d &measured_gyro,
+                    const Vector3d &corrected_accel,
+                    const Vector3d &corrected_gyro,
+                    const Vector3d &accel_scale,
+                    const xrt_imu_noise_calibration &imu_calibration,
+                    double dt,
+                    PoseCovarianceMatrix &covariance);
 
 
 struct PreintegratedImuSamples
@@ -218,9 +259,9 @@ struct PreintegratedImuSamples
 	Vector3d delta_position;
 
 	//! Whether the body angular velocity is valid.
-	bool body_angular_velocity_valid;
-	//! The body-frame angular velocity at the end of the window. Raw reading, apply calibration before using.
-	Vector3d body_angular_velocity;
+	bool imu_sample_valid;
+	//! The body-frame IMU sample at the end of the window. Raw reading, apply calibration before using.
+	xrt_imu_sample imu_sample;
 
 	//! The whitening matrix for this preintegration, the lower triangular.
 	PoseCovarianceMatrix whitening;
@@ -253,8 +294,8 @@ struct PreintegratedImuSamples
 		    .Q_start_end = Quaterniond::Identity(),
 		    .delta_velocity = Vector3d::Zero(),
 		    .delta_position = Vector3d::Zero(),
-		    .body_angular_velocity_valid = false,
-		    .body_angular_velocity = Vector3d::Zero(),
+		    .imu_sample_valid = false,
+		    .imu_sample = {},
 
 		    .whitening = PoseCovarianceMatrix::Zero(),
 
@@ -282,6 +323,7 @@ struct PreintegratedImuSamples
  * @param imu_samples The IMU samples to preintegrate
  * @param first_sample_after_end_time The first sample after the end timestamp
  * @param imu_bias The Jet-seeded IMU biases
+ * @param imu_calibration The noise model of the IMU the samples came from
  * @param start_time_ns The start time of the preintegration
  * @param end_time_ns The end time of the preintegration
  */
@@ -289,6 +331,7 @@ PreintegratedImuSamples
 preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
              const xrt_imu_sample &first_sample_after_end_time,
              const ImuBias<ImuBiasJet> &imu_bias,
+             const xrt_imu_noise_calibration &imu_calibration,
              timepoint_ns start_time_ns,
              timepoint_ns end_time_ns);
 
@@ -439,6 +482,13 @@ struct ImuBiasRandomWalkCostFunctor
 	//! Seconds spanned by this interval
 	double dt;
 
+	//! Accelerometer bias random walk, in (m/s^2)/sqrt(s).
+	double accel_bias_random_walk;
+	//! Gyroscope bias random walk, in (rad/s)/sqrt(s).
+	double gyro_bias_random_walk;
+	//! Accelerometer scale random walk, in 1/sqrt(s).
+	double accel_scale_random_walk;
+
 	template <typename T>
 	bool
 	operator()(const T *const start_bias_parameters, //
@@ -460,9 +510,9 @@ struct ImuBiasRandomWalkCostFunctor
 		 * Assume that the difference between the start and ending bias is close to zero (it should be),
 		 * whitened by how much we *expect* it to walk.
 		 */
-		accel_residual = (end.accel_bias - start.accel_bias) / (T(kAccelBiasRandomWalkSigma) * sqrt_dt);
-		gyro_residual = (end.gyro_bias - start.gyro_bias) / (T(kGyroBiasRandomWalkSigma) * sqrt_dt);
-		scale_residual = (end.accel_scale - start.accel_scale) / (T(kAccelScaleRandomWalkSigma) * sqrt_dt);
+		accel_residual = (end.accel_bias - start.accel_bias) / (T(this->accel_bias_random_walk) * sqrt_dt);
+		gyro_residual = (end.gyro_bias - start.gyro_bias) / (T(this->gyro_bias_random_walk) * sqrt_dt);
+		scale_residual = (end.accel_scale - start.accel_scale) / (T(this->accel_scale_random_walk) * sqrt_dt);
 
 		// @todo Manually write the jacobians for these for performance
 
@@ -483,6 +533,13 @@ struct ImuBiasAnchorCostFunctor
 
 	ImuBias<double> anchor;
 
+	//! Standard deviation of the accelerometer bias around the anchor, in m/s^2.
+	double accel_bias_sigma;
+	//! Standard deviation of the gyroscope bias around the anchor, in rad/s.
+	double gyro_bias_sigma;
+	//! Standard deviation of the accelerometer scale around the anchor, unitless.
+	double accel_scale_sigma;
+
 	template <typename T>
 	bool
 	operator()(const T *const bias_parameters, //
@@ -495,9 +552,9 @@ struct ImuBiasAnchorCostFunctor
 		Map<Vector3<T>> scale_residual(residuals + 6);
 
 		// Assume the IMU bias is close to what we expect it to be.
-		accel_residual = (bias.accel_bias - this->anchor.accel_bias) / T(kAccelBiasAnchorSigma);
-		gyro_residual = (bias.gyro_bias - this->anchor.gyro_bias) / T(kGyroBiasAnchorSigma);
-		scale_residual = (bias.accel_scale - this->anchor.accel_scale) / T(kAccelScaleAnchorSigma);
+		accel_residual = (bias.accel_bias - this->anchor.accel_bias) / T(this->accel_bias_sigma);
+		gyro_residual = (bias.gyro_bias - this->anchor.gyro_bias) / T(this->gyro_bias_sigma);
+		scale_residual = (bias.accel_scale - this->anchor.accel_scale) / T(this->accel_scale_sigma);
 
 		// @todo Manually write the jacobians for these for performance
 

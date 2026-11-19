@@ -38,9 +38,29 @@ public: // Methods
 	void
 	logSolve(const SolveSnapshot &snapshot);
 
+	/*!
+	 * Logs one dead reckoned IMU relation history entry to rerun.
+	 *
+	 * Logged only against its own `imu_time` timestamp timeline, and under its own entity, so it never moves the
+	 * solved device on the solve timelines.
+	 *
+	 * @param entry The entry as it was pushed to the IMU relation history.
+	 */
+	void
+	logImuRelation(const CovarianceRelationHistoryEntry &entry);
+
 private: // Methods
 	void
 	logStaticScene();
+
+	/*!
+	 * Logs a 3 sigma position covariance ellipsoid at @p entity, which must be a child of an entity carrying the
+	 * @p Tcv_world_device transform.
+	 */
+	void
+	logPositionCovariance(const std::string &entity,
+	                      const xrt_pose &Tcv_world_device,
+	                      const PoseCovarianceMatrix &covariance);
 
 	void
 	logSolveSummary(const SolveSnapshot &snapshot);

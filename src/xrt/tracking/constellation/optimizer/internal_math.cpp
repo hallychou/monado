@@ -12,6 +12,11 @@
 #include "internal_math.hpp"
 #include "imu_preintegration.hpp"
 
+#include <Eigen/Eigenvalues>
+#include <Eigen/SparseCore>
+
+#include <unordered_set>
+
 
 namespace xrt::tracking::constellation::optimizer {
 
@@ -115,86 +120,52 @@ quaternionJetToSO3Jacobian(const Quaternion<ceres::Jet<double, N>> &q_jet, int p
 }
 
 /*!
- * Propagates the covariance for this sample.
+ * Per-axis noise density squared of one sensor's reading, see @ref xrt_imu_sensor_calibration for the model.
  *
- * @param[in]  Q_start_cur     Rotation accumulated *before* this sample.
- * @param[in]  corrected_accel Bias and scale-corrected acceleration, in the IMU frame.
- * @param[in]  corrected_gyro  Bias-corrected gyroscope reading.
- * @param[in]  accel_scale     The accelerometer scale.
- * @param      dt              Delta time
- * @param[out] covariance      Out covariance matrix
+ * @param reading     The sensor reading.
+ * @param calibration The calibration of the sensor the reading came from.
  */
-static void
-propagateCovariance(const Quaterniond &Q_start_cur,
-                    const Vector3d &corrected_accel,
-                    const Vector3d &corrected_gyro,
-                    const Vector3d &accel_scale,
-                    double dt,
-                    PoseCovarianceMatrix &covariance)
+static Vector3d
+sampleNoiseDensitySquared(const Vector3d &reading, const xrt_imu_sensor_calibration &calibration)
 {
-	if (dt <= 0.0) {
-		// A duplicated sample timestamp contributes nothing and would divide by zero below.
-		return;
+	const Vector3d squared = reading.cwiseAbs2();
+	const double squared_sum = squared.sum();
+
+	const double noise = calibration.noise_density;
+	const double scale_factor = calibration.scale_factor_noise_density;
+	const double cross_axis = calibration.cross_axis_noise_density;
+	const double saturated = calibration.saturated_noise_density;
+
+	Vector3d density_squared;
+	for (int i = 0; i < 3; i++) {
+		if (std::abs(reading[i]) > calibration.axis_saturation) {
+			density_squared[i] = saturated * saturated;
+			continue;
+		}
+
+		density_squared[i] = noise * noise +                            //
+		                     scale_factor * scale_factor * squared[i] + //
+		                     cross_axis * cross_axis * (squared_sum - squared[i]);
 	}
 
-	const Matrix3d dR = Q_start_cur.toRotationMatrix();
-	const Matrix3d accel_skew = skew(corrected_accel);
-	const Matrix3d scale = accel_scale.asDiagonal();
-
-	/*
-	 * How the error already accumulated gets reshuffled by this sample's integration. The off-diagonal
-	 * blocks are where a rotation error leaks into velocity and position: point the accelerometer slightly
-	 * wrong and you integrate the acceleration slightly sideways.
-	 */
-	Matrix<double, kNumPoseCovIndices, kNumPoseCovIndices> A =
-	    Matrix<double, kNumPoseCovIndices, kNumPoseCovIndices>::Identity();
-	A.block<3, 3>(kPoseRotCovIndex, kPoseRotCovIndex) = //
-	    quat_exp_so3(Vector3d(-corrected_gyro * dt)).toRotationMatrix();
-	A.block<3, 3>(kPoseVelCovIndex, kPoseRotCovIndex) = //
-	    -dR * accel_skew * dt;
-	A.block<3, 3>(kPosePosCovIndex, kPoseRotCovIndex) = //
-	    -0.5 * dR * accel_skew * dt * dt;
-	A.block<3, 3>(kPosePosCovIndex, kPoseVelCovIndex) = //
-	    Matrix3d::Identity() * dt;
-
-	/*
-	 * How this sample's sensor noise enters. The gyro noise turns into a rotation through the right Jacobian.
-	 * The accel noise is scaled along with the signal, since the scale is applied to the reading.
-	 */
-	Matrix<double, kNumPoseCovIndices, 6> B = Matrix<double, kNumPoseCovIndices, 6>::Zero();
-	B.block<3, 3>(kPoseRotCovIndex, 0) = rightJacobianSo3(corrected_gyro * dt) * dt;
-	B.block<3, 3>(kPoseVelCovIndex, 3) = dR * scale * dt;
-	B.block<3, 3>(kPosePosCovIndex, 3) = 0.5 * dR * scale * dt * dt;
-
-	/*
-	 * Density squared over the interval this sample covers, so the partial steps at the keyframe
-	 * boundaries contribute proportionally less than a full 1ms one.
-	 */
-	Matrix<double, 6, 6> noise = Matrix<double, 6, 6>::Zero();
-	noise.block<3, 3>(0, 0) = Matrix3d::Identity() * (kGyroNoiseDensity * kGyroNoiseDensity / dt);
-	noise.block<3, 3>(3, 3) = Matrix3d::Identity() * (kAccelNoiseDensity * kAccelNoiseDensity / dt);
-
-	covariance = A * covariance * A.transpose() + B * noise * B.transpose();
+	return density_squared;
 }
 
 static void
 integrateSingleSample(const xrt_imu_sample &sample,
                       double dt,
-                      const Vector3<ImuBiasJet> &accel_bias,
-                      const Vector3<ImuBiasJet> &gyro_bias,
-                      const Vector3<ImuBiasJet> &accel_scale,
+                      const ImuBias<ImuBiasJet> &imu_bias,
+                      const xrt_imu_noise_calibration &imu_calibration,
                       Quaternion<ImuBiasJet> &Q_start_cur,
                       Vector3<ImuBiasJet> &delta_velocity,
                       Vector3<ImuBiasJet> &delta_position,
                       PoseCovarianceMatrix &covariance)
 {
-	// Convert the sample to a Jet type
-	Vector3<ImuBiasJet> cur_accel = map_vec3_f64(sample.accel_m_s2).cast<ImuBiasJet>();
-	Vector3<ImuBiasJet> cur_gyro = map_vec3_f64(sample.gyro_rad_secs).cast<ImuBiasJet>();
-
-	// Apply the bias and scale to the accelerometer and gyroscope readings.
-	cur_accel = (cur_accel - accel_bias).cwiseProduct(accel_scale);
-	cur_gyro = cur_gyro - gyro_bias;
+	// Convert the sample to a Jet type, then apply the bias and scale to the accelerometer and gyroscope readings.
+	const Vector3<ImuBiasJet> cur_accel =
+	    imu_bias.calibrateAccel(map_vec3_f64(sample.accel_m_s2).cast<ImuBiasJet>());
+	const Vector3<ImuBiasJet> cur_gyro =
+	    imu_bias.calibrateGyro(map_vec3_f64(sample.gyro_rad_secs).cast<ImuBiasJet>());
 
 	{
 		/*
@@ -202,16 +173,20 @@ integrateSingleSample(const xrt_imu_sample &sample,
 		 */
 		const Vector3d real_accel = {cur_accel.x().a, cur_accel.y().a, cur_accel.z().a};
 		const Vector3d real_gyro = {cur_gyro.x().a, cur_gyro.y().a, cur_gyro.z().a};
-		const Vector3d real_scale = {accel_scale.x().a, accel_scale.y().a, accel_scale.z().a};
+		const Vector3d real_scale = {imu_bias.accel_scale.x().a, imu_bias.accel_scale.y().a,
+		                             imu_bias.accel_scale.z().a};
 		const Quaterniond real_Q_start_cur = {Q_start_cur.w().a, Q_start_cur.x().a, //
 		                                      Q_start_cur.y().a, Q_start_cur.z().a};
 
-		propagateCovariance(real_Q_start_cur, //
-		                    real_accel,       //
-		                    real_gyro,        //
-		                    real_scale,       //
-		                    dt,               //
-		                    covariance);      //
+		propagateCovariance(real_Q_start_cur,                   //
+		                    map_vec3_f64(sample.accel_m_s2),    //
+		                    map_vec3_f64(sample.gyro_rad_secs), //
+		                    real_accel,                         //
+		                    real_gyro,                          //
+		                    real_scale,                         //
+		                    imu_calibration,                    //
+		                    dt,                                 //
+		                    covariance);                        //
 	}
 
 	// Rotate accel into starting frame, since it's in IMU frame when passed to us.
@@ -270,6 +245,65 @@ robustComputeSqrtAndPinvSqrt(const MatrixXd &a, MatrixXd &out_j, MatrixXd &out_j
  *
  */
 
+void
+propagateCovariance(const Quaterniond &Q_start_cur,
+                    const Vector3d &measured_accel,
+                    const Vector3d &measured_gyro,
+                    const Vector3d &corrected_accel,
+                    const Vector3d &corrected_gyro,
+                    const Vector3d &accel_scale,
+                    const xrt_imu_noise_calibration &imu_calibration,
+                    double dt,
+                    PoseCovarianceMatrix &covariance)
+{
+	if (dt <= 0.0) {
+		// A duplicated sample timestamp contributes nothing and would divide by zero below.
+		return;
+	}
+
+	const Matrix3d dR = Q_start_cur.toRotationMatrix();
+	const Matrix3d accel_skew = skew(corrected_accel);
+	const Matrix3d scale = accel_scale.asDiagonal();
+
+	/*
+	 * How the error already accumulated gets reshuffled by this sample's integration. The off-diagonal
+	 * blocks are where a rotation error leaks into velocity and position: point the accelerometer slightly
+	 * wrong and you integrate the acceleration slightly sideways.
+	 */
+	Matrix<double, kNumPoseCovIndices, kNumPoseCovIndices> A =
+	    Matrix<double, kNumPoseCovIndices, kNumPoseCovIndices>::Identity();
+	A.block<3, 3>(kPoseRotCovIndex, kPoseRotCovIndex) = //
+	    quat_exp_so3(Vector3d(-corrected_gyro * dt)).toRotationMatrix();
+	A.block<3, 3>(kPoseVelCovIndex, kPoseRotCovIndex) = //
+	    -dR * accel_skew * dt;
+	A.block<3, 3>(kPosePosCovIndex, kPoseRotCovIndex) = //
+	    -0.5 * dR * accel_skew * dt * dt;
+	A.block<3, 3>(kPosePosCovIndex, kPoseVelCovIndex) = //
+	    Matrix3d::Identity() * dt;
+
+	/*
+	 * How this sample's sensor noise enters. The gyro noise turns into a rotation through the right Jacobian.
+	 * The accel noise is scaled along with the signal, since the scale is applied to the reading.
+	 */
+	Matrix<double, kNumPoseCovIndices, 6> B = Matrix<double, kNumPoseCovIndices, 6>::Zero();
+	B.block<3, 3>(kPoseRotCovIndex, 0) = rightJacobianSo3(corrected_gyro * dt) * dt;
+	B.block<3, 3>(kPoseVelCovIndex, 3) = dR * scale * dt;
+	B.block<3, 3>(kPosePosCovIndex, 3) = 0.5 * dR * scale * dt * dt;
+
+	const Vector3d gyro_density_squared = sampleNoiseDensitySquared(measured_gyro, imu_calibration.gyro);
+	const Vector3d accel_density_squared = sampleNoiseDensitySquared(measured_accel, imu_calibration.accel);
+
+	/*
+	 * Density squared over the interval this sample covers, so the partial steps at the keyframe
+	 * boundaries contribute proportionally less than a full one.
+	 */
+	Matrix<double, 6, 6> noise = Matrix<double, 6, 6>::Zero();
+	noise.block<3, 3>(0, 0) = (gyro_density_squared / dt).asDiagonal();
+	noise.block<3, 3>(3, 3) = (accel_density_squared / dt).asDiagonal();
+
+	covariance = A * covariance * A.transpose() + B * noise * B.transpose();
+}
+
 FactorFitness
 evaluateFactorFitness(ceres::Problem &problem, const std::vector<ceres::ResidualBlockId> &residual_blocks)
 {
@@ -289,6 +323,107 @@ evaluateFactorFitness(ceres::Problem &problem, const std::vector<ceres::Residual
 
 	// Ceres reports half the sum of squares, matching its cost convention.
 	return {.num_residuals = residuals.size(), .chi_squared = cost * 2.0};
+}
+
+bool
+computeTangentCovariances(ceres::Problem &problem,
+                          const std::vector<const double *> &parameter_blocks,
+                          std::vector<Eigen::MatrixXd> &out_covariances)
+{
+	out_covariances.clear();
+	out_covariances.reserve(parameter_blocks.size());
+
+	/*
+	 * Every free block has to be in the evaluation, not just the requested ones, since the requested blocks'
+	 * covariance depends on everything they're correlated with. The requested ones go first, so their columns are
+	 * known. Constant blocks are left out entirely, which is how Ceres treats them too.
+	 */
+	ceres::Problem::EvaluateOptions options{};
+	options.apply_loss_function = true;
+	options.num_threads = 1;
+
+	std::vector<int> column_offsets(parameter_blocks.size(), -1);
+	std::unordered_set<const double *> requested;
+
+	int num_columns = 0;
+	for (size_t i = 0; i < parameter_blocks.size(); i++) {
+		const double *block = parameter_blocks[i];
+		requested.insert(block);
+
+		if (problem.IsParameterBlockConstant(block)) {
+			continue;
+		}
+
+		column_offsets[i] = num_columns;
+		num_columns += problem.ParameterBlockTangentSize(block);
+		// Evaluate only reads the values, it just doesn't take const pointers.
+		options.parameter_blocks.push_back(const_cast<double *>(block));
+	}
+
+	std::vector<double *> all_blocks;
+	problem.GetParameterBlocks(&all_blocks);
+	for (double *block : all_blocks) {
+		if (requested.count(block) != 0 || problem.IsParameterBlockConstant(block)) {
+			continue;
+		}
+
+		num_columns += problem.ParameterBlockTangentSize(block);
+		options.parameter_blocks.push_back(block);
+	}
+
+	ceres::CRSMatrix jacobian_crs;
+	if (!problem.Evaluate(options, nullptr, nullptr, nullptr, &jacobian_crs)) {
+		return false;
+	}
+	assert(jacobian_crs.num_cols == num_columns);
+
+	// The CRS arrays are already a row major sparse matrix, so this is a view rather than a copy.
+	const Eigen::Map<const Eigen::SparseMatrix<double, Eigen::RowMajor, int>> J( //
+	    jacobian_crs.num_rows,                                                   //
+	    jacobian_crs.num_cols,                                                   //
+	    static_cast<Eigen::Index>(jacobian_crs.values.size()),                   //
+	    jacobian_crs.rows.data(),                                                //
+	    jacobian_crs.cols.data(),                                                //
+	    jacobian_crs.values.data());                                             //
+
+	// The Jacobian is block sparse, so the product is cheap, and only the result needs to be dense.
+	const Eigen::SparseMatrix<double> JtJ_sparse = J.transpose() * J;
+	const MatrixXd JtJ = MatrixXd(JtJ_sparse);
+
+	Eigen::SelfAdjointEigenSolver<MatrixXd> saes(JtJ);
+	if (saes.info() != Eigen::Success) {
+		return false;
+	}
+
+	const VectorXd &eigenvalues = saes.eigenvalues();
+	const MatrixXd &eigenvectors = saes.eigenvectors();
+
+	/*
+	 * Ceres keeps singular values within sqrt(1e-14) of the largest, ie eigenvalues of JᵀJ within 1e-14 of the
+	 * largest. Clamped at zero, so an all-zero Hessian keeps nothing rather than everything.
+	 */
+	constexpr double kMinReciprocalConditionNumber = 1e-14;
+	const double tolerance = kMinReciprocalConditionNumber * std::max(eigenvalues.maxCoeff(), 0.0);
+
+	const auto keep = eigenvalues.array() > tolerance;
+	const VectorXd inverse_sqrt = keep.select(eigenvalues.array().max(tolerance).rsqrt(), 0.0);
+
+	// (JᵀJ)⁺ = W Wᵀ with W = E S^-1/2, so a diagonal block only needs W's rows for that block.
+	const MatrixXd W = eigenvectors * inverse_sqrt.asDiagonal();
+
+	for (size_t i = 0; i < parameter_blocks.size(); i++) {
+		const int size = problem.ParameterBlockTangentSize(parameter_blocks[i]);
+
+		if (column_offsets[i] < 0) {
+			out_covariances.emplace_back(MatrixXd::Zero(size, size));
+			continue;
+		}
+
+		const auto rows = W.middleRows(column_offsets[i], size);
+		out_covariances.emplace_back(rows * rows.transpose());
+	}
+
+	return true;
 }
 
 void
@@ -406,6 +541,7 @@ PreintegratedImuSamples
 preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
              const xrt_imu_sample &first_sample_after_end_time,
              const ImuBias<ImuBiasJet> &imu_bias,
+             const xrt_imu_noise_calibration &imu_calibration,
              timepoint_ns start_time_ns,
              timepoint_ns end_time_ns)
 {
@@ -414,10 +550,6 @@ preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
 	Quaternion<ImuBiasJet> Q_start_cur = Quaternion<ImuBiasJet>::Identity();
 	Vector3<ImuBiasJet> delta_velocity = Vector3<ImuBiasJet>::Zero();
 	Vector3<ImuBiasJet> delta_position = Vector3<ImuBiasJet>::Zero();
-
-	const auto &accel_bias = imu_bias.accel_bias;
-	const auto &gyro_bias = imu_bias.gyro_bias;
-	const auto &accel_scale = imu_bias.accel_scale;
 
 	PoseCovarianceMatrix covariance = PoseCovarianceMatrix::Zero();
 
@@ -433,7 +565,7 @@ preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
 		// Interpolate the first sample to the start time.
 		double dt = static_cast<double>(first_sample.timestamp_ns - start_time_ns) * 1e-9;
 
-		integrateSingleSample(first_sample, dt, accel_bias, gyro_bias, accel_scale, Q_start_cur, delta_velocity,
+		integrateSingleSample(first_sample, dt, imu_bias, imu_calibration, Q_start_cur, delta_velocity,
 		                      delta_position, covariance);
 	}
 
@@ -444,20 +576,20 @@ preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
 		const auto &next_sample = imu_samples[i + 1];
 		double dt = static_cast<double>(next_sample.timestamp_ns - sample.timestamp_ns) * 1e-9;
 
-		integrateSingleSample(next_sample, dt, accel_bias, gyro_bias, accel_scale, Q_start_cur, delta_velocity,
+		integrateSingleSample(next_sample, dt, imu_bias, imu_calibration, Q_start_cur, delta_velocity,
 		                      delta_position, covariance);
 	}
 
-	xrt_vec3_f64 body_angular_velocity = imu_samples.back().gyro_rad_secs;
+	xrt_imu_sample end_imu_sample = imu_samples.back();
 
 	// Integrate the last sample to end time, if necessary.
 	if (last_sample.timestamp_ns < end_time_ns) {
 		double dt = static_cast<double>(end_time_ns - last_sample.timestamp_ns) * 1e-9;
 
-		integrateSingleSample(first_sample_after_end_time, dt, accel_bias, gyro_bias, accel_scale, Q_start_cur,
+		integrateSingleSample(first_sample_after_end_time, dt, imu_bias, imu_calibration, Q_start_cur,
 		                      delta_velocity, delta_position, covariance);
 
-		body_angular_velocity = first_sample_after_end_time.gyro_rad_secs;
+		end_imu_sample = first_sample_after_end_time;
 	}
 
 	// Extract out the jacobians from Jet states.
@@ -468,17 +600,18 @@ preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
 	    .Q_start_end = {Q_start_cur.w().a, Q_start_cur.x().a, Q_start_cur.y().a, Q_start_cur.z().a},
 	    .delta_velocity = {delta_velocity[0].a, delta_velocity[1].a, delta_velocity[2].a},
 	    .delta_position = {delta_position[0].a, delta_position[1].a, delta_position[2].a},
-	    .body_angular_velocity_valid = true,
-	    .body_angular_velocity = map_vec3_f64(body_angular_velocity),
+	    .imu_sample_valid = true,
+	    .imu_sample = end_imu_sample,
 
 	    .whitening = {},
 
 	    .dt = static_cast<double>(end_time_ns - start_time_ns) * 1e-9,
 
-	    .accel_bias_at_integration = {accel_bias[0].a, accel_bias[1].a, accel_bias[2].a},
-	    .gyro_bias_at_integration = {gyro_bias[0].a, gyro_bias[1].a, gyro_bias[2].a},
+	    .accel_bias_at_integration = {imu_bias.accel_bias[0].a, imu_bias.accel_bias[1].a, imu_bias.accel_bias[2].a},
+	    .gyro_bias_at_integration = {imu_bias.gyro_bias[0].a, imu_bias.gyro_bias[1].a, imu_bias.gyro_bias[2].a},
 
-	    .accel_scale_at_integration = {accel_scale[0].a, accel_scale[1].a, accel_scale[2].a},
+	    .accel_scale_at_integration = {imu_bias.accel_scale[0].a, imu_bias.accel_scale[1].a,
+	                                   imu_bias.accel_scale[2].a},
 
 	    .J_R_bg = quaternionJetToSO3Jacobian(Q_start_cur, ImuBias<double>::kGyroBiasIndex),
 

@@ -510,6 +510,23 @@ void
 matrixCrsToEigen(const ceres::CRSMatrix &mat_crs, Eigen::MatrixXd &mat);
 
 /*!
+ * The tangent space covariance of each of @p parameter_blocks, as the matching diagonal blocks of the pseudo-inverse
+ * of the problem's Gauss-Newton Hessian `JᵀJ` at its current parameter values.
+ *
+ * @param problem          The problem, evaluated at its current parameter values. Loss functions are applied, as
+ *                         Ceres' covariance does by default.
+ * @param parameter_blocks The blocks to compute the covariance of, which must all be in @p problem. Not modified.
+ * @param out_covariances  One square matrix per entry of @p parameter_blocks, the size of its tangent space. Zero for
+ *                         a constant block.
+ *
+ * @return False if the problem could not be evaluated.
+ */
+bool
+computeTangentCovariances(ceres::Problem &problem,
+                          const std::vector<const double *> &parameter_blocks,
+                          std::vector<Eigen::MatrixXd> &out_covariances);
+
+/*!
  * Marginalize the first @p num_base_states states out of the linearized system given by @p jacobian and
  * @p residual, handing back the linear prior that replaces them.
  *
