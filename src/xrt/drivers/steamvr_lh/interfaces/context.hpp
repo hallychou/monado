@@ -103,7 +103,7 @@ private:
 	vr::IServerTrackedDeviceProvider *provider{nullptr};
 
 public:
-	Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::string &chaperone_info_path, const std::string &steamvr_install, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level);
+	Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::string &chaperone_info_path, const std::string &steamvr_install, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, xrt_system_devices * xsysd, u_logging_level level);
 
 	// These are owned by Monado, context is destroyed when these are destroyed
 	std::mutex devices_mut{};
@@ -114,6 +114,7 @@ public:
 	const u_logging_level log_level;
 	const std::string driver_name;
 	const std::string chaperone_info_path;
+	xrt_system_devices *xsysd;
 
 	void
 	wait_for_discover();
@@ -143,7 +144,8 @@ public:
 				const std::string &chaperone_info_path,
 				const std::string &steamvr_install,
 				const std::map<std::string, std::filesystem::path> &driver_name_to_directory,
-                vr::IServerTrackedDeviceProvider * provider);
+                vr::IServerTrackedDeviceProvider * provider,
+				xrt_system_devices * xsysd);
 
 	size_t
 	add_haptic_event(vr::VREvent_HapticVibration_t event, size_t old_event_index);

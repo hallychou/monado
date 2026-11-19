@@ -159,11 +159,12 @@ Context::create(const std::string &driver_path,
 				const std::string &chaperone_info_path,
 				const std::string &steamvr_install,
 				const std::map<std::string, std::filesystem::path> &driver_name_to_directory,
-                vr::IServerTrackedDeviceProvider * provider)
+                vr::IServerTrackedDeviceProvider * provider,
+                xrt_system_devices * xsysd)
 {
 	// xrt_tracking_origin initialization
 	std::shared_ptr<Context> c =
-	    std::make_shared<Context>(driver_path, driver_name, user_settings_path, chaperone_info_path, steamvr_install, driver_name_to_directory, debug_get_log_option_lh_log());
+	    std::make_shared<Context>(driver_path, driver_name, user_settings_path, chaperone_info_path, steamvr_install, driver_name_to_directory, xsysd, debug_get_log_option_lh_log());
 	c->provider = provider;
 	std::string tracking_name = "openvr " + driver_name + " driver tracking origin";
 	std::strncpy(c->name, tracking_name.c_str(), XRT_TRACKING_NAME_LEN);
@@ -187,9 +188,9 @@ Context::create(const std::string &driver_path,
 	return c;
 }
 
-Context::Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::string &chaperone_info_path, const std::string &steamvr_install, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, u_logging_level level)
+Context::Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::string &chaperone_info_path, const std::string &steamvr_install, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, xrt_system_devices * xsysd, u_logging_level level)
     : settings(driver_path, user_settings_path, this), resources(level, steamvr_install, driver_name_to_directory), log_level(level),
-      frame_thread_run(true), frame_thread(), driver_name(driver_name), chaperone_info_path(chaperone_info_path)
+      frame_thread_run(true), frame_thread(), driver_name(driver_name), chaperone_info_path(chaperone_info_path), xsysd(xsysd)
 {}
 
 Context::~Context()
@@ -594,19 +595,32 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
                                   vr::TrackedDevicePose_t *pTrackedDevicePoseArray,
                                   uint32_t unTrackedDevicePoseArrayCount)
 {
-	// This is the bare minimum required for SlimeVR's HMD feedback to work
-	if (unTrackedDevicePoseArrayCount != 10 || this->hmd == nullptr)
-		return;
+	U_LOG_I("Getting raw tracked device poses for %u devices at %.2f seconds from now", unTrackedDevicePoseArrayCount, fPredictedSecondsFromNow);
+
 	const int64_t time = os_monotonic_get_ns();
-	xrt_space_relation head = {};
-	xrt_device_get_tracked_pose(this->hmd, XRT_INPUT_GENERIC_HEAD_POSE, time, &head);
-	xrt_matrix_3x3 rot = {};
-	math_matrix_3x3_from_quat(&head.pose.orientation, &rot);
-	pTrackedDevicePoseArray[0].mDeviceToAbsoluteTracking = {{
-	    {rot.v[0], rot.v[3], rot.v[6], head.pose.position.x},
-	    {rot.v[1], rot.v[4], rot.v[7], head.pose.position.y},
-	    {rot.v[2], rot.v[5], rot.v[8], head.pose.position.z},
-	}};
+
+	// set pose helper function
+	auto set_pose = [&](int i, enum xrt_input_name name, xrt_device *device) {
+		xrt_space_relation space = {};
+		xrt_device_get_tracked_pose(device, name, time, &space);
+		xrt_matrix_3x3 rot = {};
+		math_matrix_3x3_from_quat(&space.pose.orientation, &rot);
+		pTrackedDevicePoseArray[i].mDeviceToAbsoluteTracking = {{
+		    {rot.v[0], rot.v[3], rot.v[6], space.pose.position.x},
+		    {rot.v[1], rot.v[4], rot.v[7], space.pose.position.y},
+		    {rot.v[2], rot.v[5], rot.v[8], space.pose.position.z},
+		}};
+	};
+
+	if(this->hmd != nullptr) {
+		set_pose(0, XRT_INPUT_GENERIC_HEAD_POSE, this->hmd);
+	}
+
+	for (uint32_t i = 0; i < MAX_CONTROLLERS; ++i) {
+		if (this->controller[i] != nullptr && i + 1 < unTrackedDevicePoseArrayCount) {
+			set_pose(i + 1, XRT_INPUT_GENERIC_TRACKER_POSE, this->controller[i]);
+		}
+	}
 }
 
 void
@@ -1215,7 +1229,7 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 			}
 		}
 
-		auto ctx = Context::create(driver_dir, driver_name, user_settings_path, chaperone_info_path, steamvr, driver_name_to_directory, driver);
+		auto ctx = Context::create(driver_dir, driver_name, user_settings_path, chaperone_info_path, steamvr, driver_name_to_directory, driver, xsysd);
 
 		if(!ctx) {
 			U_LOG_IFL_E(level, "Couldn't create context for driver %s", driver_name.c_str());
