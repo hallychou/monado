@@ -391,6 +391,7 @@ bool
 Camera::tryDevicePose(Device *device,
                       CameraSample &sample,
                       DeviceState &device_state,
+                      bool need_matching_ids,
                       const std::optional<xrt_space_relation> &Tcv_cam_device_prior,
                       const xrt_pose &Tcv_cam_device_candidate)
 {
@@ -408,18 +409,20 @@ Camera::tryDevicePose(Device *device,
 		    sample.blob_count,                           //
 		    &device->params.led_model,                   //
 		    device->id,                                  //
+		    sample.device_ids_by_distance.data(),        //
 		    &this->model,                                //
 		    NULL);                                       //
 	} else {
-		success = pose_metrics_evaluate_pose( //
-		    &score,                           //
-		    &Tcv_cam_device_candidate,        //
-		    sample.blobs,                     //
-		    sample.blob_count,                //
-		    &device->params.led_model,        //
-		    device->id,                       //
-		    &this->model,                     //
-		    NULL);                            //
+		success = pose_metrics_evaluate_pose(     //
+		    &score,                               //
+		    &Tcv_cam_device_candidate,            //
+		    sample.blobs,                         //
+		    sample.blob_count,                    //
+		    &device->params.led_model,            //
+		    device->id,                           //
+		    sample.device_ids_by_distance.data(), //
+		    &this->model,                         //
+		    NULL);                                //
 	}
 
 	// The actual call itself failed.
@@ -427,7 +430,10 @@ Camera::tryDevicePose(Device *device,
 		return false;
 	}
 
-	if (POSE_HAS_FLAGS(&score, POSE_MATCH_GOOD | POSE_MATCH_LED_IDS)) {
+	bool was_good = POSE_HAS_FLAGS(&score, POSE_MATCH_GOOD | (need_matching_ids ? POSE_MATCH_LED_IDS : 0));
+	bool was_strong = POSE_HAS_FLAGS(&score, POSE_MATCH_STRONG);
+
+	if (was_good || was_strong) {
 		this->pushPose(               //
 		    sample,                   //
 		    device_state,             //
@@ -515,11 +521,20 @@ Camera::tryDeviceBlobRecovery(Device *device,
 		    sample.blob_count,                           //
 		    &device->params.led_model,                   //
 		    device->id,                                  //
+		    sample.device_ids_by_distance.data(),        //
 		    &this->model,                                //
 		    NULL);
 	} else {
-		success = pose_metrics_evaluate_pose(&score, &Tcv_cam_device, sample.blobs, sample.blob_count,
-		                                     &device->params.led_model, device->id, &this->model, NULL);
+		success = pose_metrics_evaluate_pose(     //
+		    &score,                               //
+		    &Tcv_cam_device,                      //
+		    sample.blobs,                         //
+		    sample.blob_count,                    //
+		    &device->params.led_model,            //
+		    device->id,                           //
+		    sample.device_ids_by_distance.data(), //
+		    &this->model,                         //
+		    NULL);                                //
 	}
 
 	// If the evaluate failed entirely, this isn't a success.
@@ -559,7 +574,7 @@ Camera::tryDeviceBlobRecovery(Device *device,
 }
 
 void
-Camera::handleProcessingComplete(CameraSample &sample)
+Camera::handleStepComplete(CameraSample &sample)
 {
 	auto tracker = this->tracker;
 
@@ -599,6 +614,37 @@ Camera::handleProcessingComplete(CameraSample &sample)
 }
 
 void
+Camera::handleProcessingComplete(CameraSample &sample, const std::span<Device *> devices)
+{
+	std::shared_ptr<CameraMosaic> mosaic = this->mosaic.lock();
+	U_ASSERT_WEAK_PTR_RET(mosaic,
+	                      "Camera mosaic was destroyed while processing a sample, this should never happen since "
+	                      "the mosaic owns the camera");
+
+	int64_t sequence_id = static_cast<int64_t>(sample.sequence_id); // signed for math
+
+	// Update the "was seen" states
+	for (auto &device : devices) {
+		const auto device_state = sample.getDeviceState(device->id);
+		if (!device_state.has_value()) {
+			continue;
+		}
+
+		std::lock_guard<os::Mutex> lock(device->data_lock);
+
+		auto &per_camera_data =
+		    device->locked_data.per_camera[(mosaic->index * XRT_TRACKING_MAX_CAMS) + this->index];
+
+		// Only mark if this is the newest sample.
+		if (device_state.value()->found_pose.has_value() &&
+		    (!per_camera_data.last_seen_sequence_id.has_value() ||
+		     sequence_id > per_camera_data.last_seen_sequence_id.value())) {
+			per_camera_data.last_seen_sequence_id = sequence_id;
+		}
+	}
+}
+
+void
 Camera::processSampleSlow(CameraSample &sample)
 {
 	ConstellationTracker *tracker = this->tracker;
@@ -608,6 +654,11 @@ Camera::processSampleSlow(CameraSample &sample)
 	CT_TRACE(tracker, "Starting slow processing for camera %p with %u blobs", (void *)this, sample.blob_count);
 
 	correspondence_search_set_blobs(data.cs, sample.blobs, sample.blob_count);
+	// Copy in the device IDs by distance
+	std::memcpy(                                  //
+	    data.cs->device_ids_by_distance,          //
+	    sample.device_ids_by_distance.data(),     //
+	    sizeof(data.cs->device_ids_by_distance)); //
 
 	std::shared_ptr<CameraMosaic> mosaic = this->mosaic.lock();
 	U_ASSERT_WEAK_PTR_RET(mosaic,
@@ -640,6 +691,11 @@ Camera::processSampleSlow(CameraSample &sample)
 			{
 				std::lock_guard<os::Mutex> lock(device->data_lock);
 
+				auto &device_camera_data =
+				    device->locked_data
+				        .per_camera[(mosaic->index * XRT_TRACKING_MAX_CAMS) + this->index];
+				int64_t sequence_id = static_cast<int64_t>(sample.sequence_id); // signed for math
+
 				bool enable_slow_skip =
 				    device->locked_data.last_known_pose.has_value() && // device has been seen
 				    Txr_world_cam.has_value();                         // we have a pose
@@ -647,15 +703,23 @@ Camera::processSampleSlow(CameraSample &sample)
 				if (enable_slow_skip) {
 					const auto &last_known_pose = *device->locked_data.last_known_pose;
 
-					time_duration_ns time_since_solve_ns =
+					time_duration_ns time_since_any_solve_ns =
 					    sample.timestamp_ns - last_known_pose.timestamp_ns;
 
-					if (time_since_solve_ns < (U_TIME_1MS_IN_NS * 150LL)) {
-						// If the device has been seen in the last 150ms, don't try to brute
-						// force search it, hope that it will be seen by a fast solve in that
-						// time period.
+					bool seen_by_any_camera_recently =
+					    time_since_any_solve_ns < (U_TIME_1MS_IN_NS * 150LL);
+					bool seen_by_this_camera_recently =
+					    device_camera_data.last_seen_sequence_id.has_value() &&
+					    (sequence_id - device_camera_data.last_seen_sequence_id.value() <= 3);
+
+					if (seen_by_any_camera_recently && !seen_by_this_camera_recently) {
+						/*
+						 * If the device has not been seen in the most recent 3 frames in this
+						 * specific camera, and has been seen globally in the last 150ms, skip a
+						 * shallow search for it.
+						 */
 						continue;
-					} else if ((time_since_solve_ns < (U_TIME_1MS_IN_NS * 1000LL) ||
+					} else if ((time_since_any_solve_ns < (U_TIME_1MS_IN_NS * 1000LL) ||
 					            this->shallow_searches_failed.load() < 10) &&
 					           (search_flags & CS_FLAG_DEEP_SEARCH)) {
 						// Don't do a deep search until a shallow search has failed for one full
@@ -767,7 +831,9 @@ Camera::processSampleSlow(CameraSample &sample)
 
 	this->debugScribbleSample(sample, false);
 
-	this->handleProcessingComplete(sample);
+	this->handleStepComplete(sample);
+
+	this->handleProcessingComplete(sample, {devices.data(), device_count});
 }
 
 bool
@@ -827,6 +893,24 @@ Camera::processSampleFast(CameraSample &sample)
 	std::array<Device *, XRT_CONSTELLATION_MAX_DEVICES> devices{};
 	const uint32_t device_count = collect_devices_nearest_first(tracker, sample, devices);
 
+	{
+		uint32_t written_device_ids = 0;
+		for (uint32_t i = 0; i < device_count; i++) {
+			const auto device = devices[i];
+			const auto device_state = sample.getDeviceState(device->id).value();
+
+			// Only write the ID if the device has a pose in camera space.
+			if (device_state->Tcv_cam_device_predicted.has_value() &&
+			    device_state->Tcv_cam_device_predicted->relation_flags &
+			        XRT_SPACE_RELATION_POSITION_VALID_BIT) {
+				sample.device_ids_by_distance[written_device_ids++] = device->id;
+			}
+		}
+		for (uint32_t i = written_device_ids; i < XRT_CONSTELLATION_MAX_DEVICES; i++) {
+			sample.device_ids_by_distance[i] = XRT_CONSTELLATION_INVALID_DEVICE_ID;
+		}
+	}
+
 	bool need_slow_search = false;
 	for (uint32_t device_iter = 0; device_iter < device_count; device_iter++) {
 		Device *device = devices[device_iter];
@@ -852,11 +936,30 @@ Camera::processSampleFast(CameraSample &sample)
 			}
 		}
 
-		// if we have a valid prior pose, try to use it for fast matching
+		/*
+		 * if we have a valid prior pose, try to use it for fast matching, allowing down to 3 LEDs, but with
+		 * tight reprojection error checking against prior
+		 */
+		if (Tcv_cam_device_predicted.has_value() &&       //
+		    this->tryDevicePose(device,                   //
+		                        sample,                   //
+		                        device_state,             //
+		                        false,                    // need_matching_ids
+		                        Tcv_cam_device_predicted, //
+		                        Tcv_cam_device_predicted.value().pose)) {
+			CT_DEBUG(tracker, "Fast processing for device %d succeeded with predicted pose", device->id);
+			continue; // try the next device, we found a pose!
+		}
+
+		/*
+		 * if we have a valid prior pose, try to use it for fast matching, requiring more LEDs, but with looser
+		 * reprojection error checking against the prior
+		 */
 		if (Tcv_cam_device_predicted.has_value() && //
 		    this->tryDevicePose(device,             //
 		                        sample,             //
 		                        device_state,       //
+		                        false,              // need_matching_ids
 		                        std::nullopt,       //
 		                        Tcv_cam_device_predicted.value().pose)) {
 			CT_DEBUG(tracker, "Fast processing for device %d succeeded with predicted pose", device->id);
@@ -892,6 +995,7 @@ Camera::processSampleFast(CameraSample &sample)
 		    this->tryDevicePose(device,                   //
 		                        sample,                   //
 		                        device_state,             //
+		                        true,                     // need_matching_ids
 		                        Tcv_cam_device_predicted, //
 		                        Tcv_cam_device_last_known.value())) {
 			CT_DEBUG(tracker, "Fast processing for device %d succeeded with last known pose", device->id);
@@ -926,7 +1030,11 @@ Camera::processSampleFast(CameraSample &sample)
 	 * Handle any poses that this sample may now have, it's okay if this is called again in the slow thread, that's
 	 * what @ref FoundDevicePose::handled is for.
 	 */
-	this->handleProcessingComplete(sample);
+	this->handleStepComplete(sample);
+
+	if (!need_slow_search) {
+		this->handleProcessingComplete(sample, {devices.data(), device_count});
+	}
 
 	return need_slow_search;
 }
@@ -948,8 +1056,15 @@ Camera::pushPose(CameraSample &camera_sample,
 
 	// Match visible blobs to the pose we found
 	pose_metrics_blob_match_info blob_match_info;
-	pose_metrics_match_pose_to_blobs(&Tcv_cam_device_initial, camera_sample.blobs, camera_sample.blob_count,
-	                                 &device->params.led_model, device->id, &this->model, &blob_match_info);
+	pose_metrics_match_pose_to_blobs(                //
+	    &Tcv_cam_device_initial,                     //
+	    camera_sample.blobs,                         //
+	    camera_sample.blob_count,                    //
+	    &device->params.led_model,                   //
+	    device->id,                                  //
+	    camera_sample.device_ids_by_distance.data(), //
+	    &this->model,                                //
+	    &blob_match_info);                           //
 
 	// Mark all the new blobs using the match info
 	camera_sample.markMatchingBlobs(tracker, device->params.led_model, device->id, blob_match_info);
@@ -978,6 +1093,8 @@ Camera::pushPose(CameraSample &camera_sample,
 			         "blobs failed",
 			         0, 0, device->id, camera_sample.blob_count);
 		} else {
+			Tcv_cam_device = Tcv_cam_device_optimized;
+
 			CT_DEBUG(tracker,
 			         "Camera %d (group %d) RANSAC-PnP refinement for device %d from %u "
 			         "blobs. Produced pose %f,%f,%f,%f pos %f,%f,%f",
@@ -986,12 +1103,16 @@ Camera::pushPose(CameraSample &camera_sample,
 			         Tcv_cam_device.orientation.w, Tcv_cam_device.position.x, Tcv_cam_device.position.y,
 			         Tcv_cam_device.position.z);
 
-			Tcv_cam_device = Tcv_cam_device_optimized;
-
 			// Now that we've optimized the pose, we gotta update the match info
-			pose_metrics_match_pose_to_blobs(&Tcv_cam_device, camera_sample.blobs, camera_sample.blob_count,
-			                                 &device->params.led_model, device->id, &this->model,
-			                                 &blob_match_info);
+			pose_metrics_match_pose_to_blobs(                //
+			    &Tcv_cam_device,                             //
+			    camera_sample.blobs,                         //
+			    camera_sample.blob_count,                    //
+			    &device->params.led_model,                   //
+			    device->id,                                  //
+			    camera_sample.device_ids_by_distance.data(), //
+			    &this->model,                                //
+			    &blob_match_info);                           //
 
 			// Unmark any other blobs
 			camera_sample.markMatchingBlobs(tracker, device->params.led_model, device->id, blob_match_info);
@@ -1004,15 +1125,16 @@ Camera::pushPose(CameraSample &camera_sample,
 		}
 
 		// We need to re-evaluate the pose after optimization, since the reprojection error may have changed.
-		pose_metrics_evaluate_pose(    //
-		    &score,                    //
-		    &Tcv_cam_device,           //
-		    camera_sample.blobs,       //
-		    camera_sample.blob_count,  //
-		    &device->params.led_model, //
-		    device->id,                //
-		    &this->model,              //
-		    NULL);                     //
+		pose_metrics_evaluate_pose(                      //
+		    &score,                                      //
+		    &Tcv_cam_device,                             //
+		    camera_sample.blobs,                         //
+		    camera_sample.blob_count,                    //
+		    &device->params.led_model,                   //
+		    device->id,                                  //
+		    camera_sample.device_ids_by_distance.data(), //
+		    &this->model,                                //
+		    NULL);                                       //
 	}
 
 	// Move to OpenXR space
@@ -1177,8 +1299,15 @@ Device::Device(ConstellationTracker *tracker,
                t_constellation_tracker_device_params *params,
                t_constellation_tracker_device *device,
                t_constellation_device_id_t id)
-    : params(*params), device(device), id(id), tracker(tracker), data_lock(),
-      locked_data({.last_known_pose = std::nullopt})
+    : params(*params),  //
+      device(device),   //
+      id(id),           //
+      tracker(tracker), //
+      data_lock(),      //
+      locked_data({
+          .last_known_pose = std::nullopt,
+          .per_camera = {},
+      })
 {
 	this->imu_sink = {
 	    .push_imu =

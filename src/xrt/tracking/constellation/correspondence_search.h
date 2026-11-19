@@ -98,6 +98,7 @@ struct correspondence_search
 	int num_points;
 	struct cs_image_point *points;
 	struct t_blob *blobs; /* Original blobs structs [num_points] */
+	t_constellation_device_id_t device_ids_by_distance[XRT_CONSTELLATION_MAX_DEVICES];
 
 	unsigned int num_trials;
 	unsigned int num_pose_checks;

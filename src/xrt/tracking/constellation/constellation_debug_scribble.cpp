@@ -48,8 +48,15 @@ scribble_led_model(xrt_frame *frame,
 	};
 
 	pose_metrics_blob_match_info visible_info = {};
-	pose_metrics_match_pose_to_blobs(&Tcv_cam_model, sample.blobs, sample.blob_count, led_model, device_id,
-	                                 &camera.model, &visible_info);
+	pose_metrics_match_pose_to_blobs( //
+	    &Tcv_cam_model,               //
+	    sample.blobs,                 //
+	    sample.blob_count,            //
+	    led_model,                    //
+	    device_id,                    //
+	    nullptr,                      //
+	    &camera.model,                //
+	    &visible_info);               //
 
 	xrt_vec2 projected_model_origin_point;
 	if (t_camera_models_project(&camera.model.calib_true, Tcv_cam_model.position.x, Tcv_cam_model.position.y,

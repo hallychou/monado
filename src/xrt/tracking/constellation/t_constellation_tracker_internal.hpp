@@ -42,6 +42,7 @@
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
+#include <span>
 #include <stdexcept>
 #include <vector>
 
@@ -136,6 +137,7 @@ public: // Fields
 	//! The camera's position in the constellation tracker's tracking origin
 	std::optional<xrt_pose> Txr_world_cam{std::nullopt};
 
+	std::array<t_constellation_device_id_t, XRT_CONSTELLATION_MAX_DEVICES> device_ids_by_distance{};
 	std::array<DeviceState, XRT_CONSTELLATION_MAX_DEVICES> device_states{};
 	uint32_t device_count{};
 
@@ -294,6 +296,7 @@ public: // Methods (t_constellation_tracker.cpp)
 	tryDevicePose(Device *device,
 	              CameraSample &sample,
 	              DeviceState &device_state,
+	              bool need_matching_ids,
 	              const std::optional<xrt_space_relation> &Tcv_cam_device_prior,
 	              const xrt_pose &Tcv_cam_device_candidate);
 
@@ -303,8 +306,13 @@ public: // Methods (t_constellation_tracker.cpp)
 	                      DeviceState &device_state,
 	                      const std::optional<xrt_space_relation> &Tcv_cam_device_prior);
 
+	//! Handles a single step (fast,slow) being complete
 	void
-	handleProcessingComplete(CameraSample &sample);
+	handleStepComplete(CameraSample &sample);
+
+	//! Handles complete processing of a sample, hold the devices lock while you call this.
+	void
+	handleProcessingComplete(CameraSample &sample, const std::span<Device *> devices);
 
 	void
 	processSampleSlow(CameraSample &sample);
@@ -392,6 +400,12 @@ public: // Fields
 	struct
 	{
 		std::optional<DeviceLastPose> last_known_pose;
+
+		struct
+		{
+			//! The latest sequence ID this device was seen at.
+			std::optional<int64_t> last_seen_sequence_id{std::nullopt};
+		} per_camera[XRT_CONSTELLATION_MAX_TRACKING_MOSAICS * XRT_TRACKING_MAX_CAMS];
 	} locked_data;
 	// clang-format on
 

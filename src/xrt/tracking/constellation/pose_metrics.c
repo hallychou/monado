@@ -289,6 +289,23 @@ get_visible_leds_bounds(struct pose_metrics_visible_led_info *visible_led_points
 	return true;
 }
 
+static uint32_t
+get_distance_priority(t_constellation_device_id_t device_id,
+                      t_constellation_device_id_t device_ids_by_distance[XRT_CONSTELLATION_MAX_DEVICES])
+{
+	if (device_ids_by_distance == NULL) {
+		return UINT32_MAX;
+	}
+
+	for (uint32_t i = 0; i < XRT_CONSTELLATION_MAX_DEVICES; i++) {
+		if (device_id == device_ids_by_distance[i]) {
+			return i;
+		}
+	}
+
+	return UINT32_MAX;
+}
+
 /*
  * Exported functions.
  */
@@ -299,6 +316,7 @@ pose_metrics_match_pose_to_blobs(const struct xrt_pose *pose,
                                  int num_blobs,
                                  struct t_constellation_tracker_led_model *led_model,
                                  t_constellation_device_id_t device_id,
+                                 t_constellation_device_id_t device_ids_by_distance[XRT_CONSTELLATION_MAX_DEVICES],
                                  struct camera_model *calib,
                                  struct pose_metrics_blob_match_info *match_info)
 {
@@ -318,6 +336,8 @@ pose_metrics_match_pose_to_blobs(const struct xrt_pose *pose,
 		return false;
 	}
 
+	uint32_t distance_priority = get_distance_priority(device_id, device_ids_by_distance);
+
 	const struct pose_rect *bounds = &match_info->bounds;
 	LOG_SPEW("Bounding box for pose is %f,%f -> %f,%f", bounds->left, bounds->top, bounds->right, bounds->bottom);
 
@@ -328,15 +348,21 @@ pose_metrics_match_pose_to_blobs(const struct xrt_pose *pose,
 		struct t_blob *b = &blobs[i];
 		t_constellation_device_id_t led_object_id = b->matched_device_id;
 
-		// Skip blobs which already have an ID not belonging to this device
-		if (led_object_id != XRT_CONSTELLATION_INVALID_DEVICE_ID && led_object_id != device_id) {
-			continue;
-		}
-
 		// Ignore blobs that are outside the pose bounding box
 		if (b->center_undistorted.x < bounds->left || b->center_undistorted.y < bounds->top ||
 		    b->center_undistorted.x > bounds->right || b->center_undistorted.y > bounds->bottom) {
 			continue;
+		}
+
+		// Skip blobs which already have an ID not belonging to this device
+		if (led_object_id != XRT_CONSTELLATION_INVALID_DEVICE_ID && led_object_id != device_id) {
+			uint32_t led_object_distance_priority =
+			    get_distance_priority(led_object_id, device_ids_by_distance);
+
+			// If the LED's current object is closer than this new object, skip this LED
+			if (led_object_distance_priority <= distance_priority) {
+				continue;
+			}
 		}
 
 		double sqerror = 0.f;
@@ -386,11 +412,24 @@ pose_metrics_evaluate_pose(struct pose_metrics *score,
                            int num_blobs,
                            struct t_constellation_tracker_led_model *led_model,
                            t_constellation_device_id_t device_id,
+                           t_constellation_device_id_t device_ids_by_distance[XRT_CONSTELLATION_MAX_DEVICES],
                            struct camera_model *calib,
                            struct pose_rect *out_bounds)
 {
-	return pose_metrics_evaluate_pose_with_prior(score, pose, false, NULL, NULL, NULL, blobs, num_blobs, led_model,
-	                                             device_id, calib, out_bounds);
+	return pose_metrics_evaluate_pose_with_prior( //
+	    score,                                    //
+	    pose,                                     //
+	    false,                                    //
+	    NULL,                                     //
+	    NULL,                                     //
+	    NULL,                                     //
+	    blobs,                                    //
+	    num_blobs,                                //
+	    led_model,                                //
+	    device_id,                                //
+	    device_ids_by_distance,                   //
+	    calib,                                    //
+	    out_bounds);                              //
 }
 
 bool
@@ -404,6 +443,7 @@ pose_metrics_evaluate_pose_with_prior(struct pose_metrics *score,
                                       int num_blobs,
                                       struct t_constellation_tracker_led_model *led_model,
                                       t_constellation_device_id_t device_id,
+                                      t_constellation_device_id_t device_ids_by_distance[XRT_CONSTELLATION_MAX_DEVICES],
                                       struct camera_model *calib,
                                       struct pose_rect *out_bounds)
 {
@@ -415,7 +455,15 @@ pose_metrics_evaluate_pose_with_prior(struct pose_metrics *score,
 	 */
 	struct pose_metrics_blob_match_info blob_match_info = {0};
 
-	if (!pose_metrics_match_pose_to_blobs(pose, blobs, num_blobs, led_model, device_id, calib, &blob_match_info)) {
+	if (!pose_metrics_match_pose_to_blobs( //
+	        pose,                          //
+	        blobs,                         //
+	        num_blobs,                     //
+	        led_model,                     //
+	        device_id,                     //
+	        device_ids_by_distance,        //
+	        calib,                         //
+	        &blob_match_info)) {
 		return false;
 	}
 

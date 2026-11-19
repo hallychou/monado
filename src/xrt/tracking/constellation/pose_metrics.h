@@ -122,6 +122,7 @@ pose_metrics_match_pose_to_blobs(const struct xrt_pose *pose,
                                  int num_blobs,
                                  struct t_constellation_tracker_led_model *led_model,
                                  t_constellation_device_id_t device_id,
+                                 t_constellation_device_id_t device_ids_by_distance[XRT_CONSTELLATION_MAX_DEVICES],
                                  struct camera_model *calib,
                                  struct pose_metrics_blob_match_info *match_info);
 
@@ -132,6 +133,7 @@ pose_metrics_evaluate_pose(struct pose_metrics *score,
                            int num_blobs,
                            struct t_constellation_tracker_led_model *leds_model,
                            t_constellation_device_id_t device_id,
+                           t_constellation_device_id_t device_ids_by_distance[XRT_CONSTELLATION_MAX_DEVICES],
                            struct camera_model *calib,
                            struct pose_rect *out_bounds);
 
@@ -147,6 +149,7 @@ pose_metrics_evaluate_pose_with_prior(struct pose_metrics *score,
                                       int num_blobs,
                                       struct t_constellation_tracker_led_model *led_model,
                                       t_constellation_device_id_t device_id,
+                                      t_constellation_device_id_t device_ids_by_distance[XRT_CONSTELLATION_MAX_DEVICES],
                                       struct camera_model *calib,
                                       struct pose_rect *out_bounds);
 
