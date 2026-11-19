@@ -595,14 +595,20 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
                                   vr::TrackedDevicePose_t *pTrackedDevicePoseArray,
                                   uint32_t unTrackedDevicePoseArrayCount)
 {
-	U_LOG_I("Getting raw tracked device poses for %u devices at %.2f seconds from now", unTrackedDevicePoseArrayCount, fPredictedSecondsFromNow);
+	U_LOG_IFL_T(log_level, "Getting raw tracked device poses for %u devices at %.2f seconds from now", unTrackedDevicePoseArrayCount, fPredictedSecondsFromNow);
 
 	const int64_t time = os_monotonic_get_ns();
 
 	// set pose helper function
 	auto set_pose = [&](int i, enum xrt_input_name name, xrt_device *device) {
 		xrt_space_relation space = {};
-		xrt_device_get_tracked_pose(device, name, time, &space);
+		if(xrt_device_get_tracked_pose(device, name, time, &space) != XRT_SUCCESS) {
+			U_LOG_IFL_W(log_level, "Failed to get pose for device %d %s (%s)", i, device->str, device->serial);
+			pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Uninitialized;
+			pTrackedDevicePoseArray[i].bPoseIsValid = false;
+			pTrackedDevicePoseArray[i].bDeviceIsConnected = false;
+			return;
+		}
 		xrt_matrix_3x3 rot = {};
 		math_matrix_3x3_from_quat(&space.pose.orientation, &rot);
 		pTrackedDevicePoseArray[i].mDeviceToAbsoluteTracking = {{
@@ -620,14 +626,30 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 		           space.pose.orientation.w);
 	};
 
-	if(this->hmd != nullptr) {
-		set_pose(0, XRT_INPUT_GENERIC_HEAD_POSE, this->hmd);
+	
+
+	if(this->xsysd->static_roles.head != nullptr && unTrackedDevicePoseArrayCount > 0) {
+		set_pose(0, XRT_INPUT_GENERIC_HEAD_POSE, this->xsysd->static_roles.head);
+	} else {
+		U_LOG_IFL_W(log_level, "No head device found, skipping pose update for head");
 	}
 
-	for (uint32_t i = 0; i < MAX_CONTROLLERS; ++i) {
-		if (this->controller[i] != nullptr && i + 1 < unTrackedDevicePoseArrayCount) {
-			set_pose(i + 1, XRT_INPUT_GENERIC_TRACKER_POSE, this->controller[i]);
+	int device_index = 1;
+
+	for (uint32_t i = 0; i < this->xsysd->static_xdev_count && device_index < unTrackedDevicePoseArrayCount; ++i) {
+		if(this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
+			this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER || 
+			this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER) {
+			set_pose(device_index, XRT_INPUT_GENERIC_PALM_POSE, this->xsysd->static_xdevs[i]);
+		} else if(this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_UNKNOWN) {
+			set_pose(device_index, XRT_INPUT_GENERIC_LOCAL_SPACE_POSE, this->xsysd->static_xdevs[i]);
+		} else if(this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_GENERIC_TRACKER) {
+			set_pose(device_index, XRT_INPUT_GENERIC_TRACKER_POSE, this->xsysd->static_xdevs[i]);
+		} else {
+			U_LOG_IFL_W(log_level, "Device %s (%s) is not a controller or tracker but a %d, skipping pose update", this->xsysd->static_xdevs[i]->str, this->xsysd->static_xdevs[i]->serial, this->xsysd->static_xdevs[i]->device_type);
+			continue;
 		}
+		device_index++;
 	}
 }
 
