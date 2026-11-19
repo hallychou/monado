@@ -610,8 +610,11 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 		    {rot.v[1], rot.v[4], rot.v[7], space.pose.position.y},
 		    {rot.v[2], rot.v[5], rot.v[8], space.pose.position.z},
 		}};
+		pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Running_OK;
+		pTrackedDevicePoseArray[i].bPoseIsValid = true;
+		pTrackedDevicePoseArray[i].bDeviceIsConnected = true;
 
-		U_LOG_IFL_T(log_level, "Pose for device %d: pos=(%.2f, %.2f, %.2f) rot=(%.2f, %.2f, %.2f, %.2f)", i,
+		U_LOG_IFL_T(log_level, "Pose for device %d %s (%s): pos=(%.2f, %.2f, %.2f) rot=(%.2f, %.2f, %.2f, %.2f)", i, device->str, device->serial,
 		           space.pose.position.x, space.pose.position.y, space.pose.position.z,
 		           space.pose.orientation.x, space.pose.orientation.y, space.pose.orientation.z,
 		           space.pose.orientation.w);
