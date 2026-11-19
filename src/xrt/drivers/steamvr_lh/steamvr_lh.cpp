@@ -502,6 +502,8 @@ Context::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t
 		return;
 	}
 
+	U_LOG_IFL_T(log_level, "Updating pose for device %u, (%.2f, %.2f, %.2f)", unWhichDevice, newPose.vecPosition[0], newPose.vecPosition[1], newPose.vecPosition[2]);
+
 	dev->update_pose(newPose);
 }
 
