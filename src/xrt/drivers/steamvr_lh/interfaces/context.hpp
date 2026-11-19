@@ -11,6 +11,7 @@
 
 #include <condition_variable>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <optional>
 #include <chrono>
@@ -83,6 +84,10 @@ private:
 	size_t events_tail{0};
 	std::mutex event_queue_mut;
 	std::condition_variable event_popped;
+
+	std::vector<Device *> devices = { nullptr }; // devices[0] is reserved for the head device
+	std::unordered_set<Device *> registered_devices = {};
+	std::vector<Device *> get_devices();
 
 	Device *
 	prop_container_to_device(vr::PropertyContainerHandle_t handle);

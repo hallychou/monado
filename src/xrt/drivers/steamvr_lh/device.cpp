@@ -1554,6 +1554,7 @@ Device::handle_generic_property_write(const vr::PropertyWrite_t &prop)
 vr::ETrackedPropertyError
 Device::handle_generic_property_read(vr::PropertyRead_t &prop)
 {
+	DEV_DEBUG("Device %s: Reading property %d", this->str, prop.prop);
 	if (properties.count(prop.prop) == 0) {
 		// not verified if this is the correct error
 		return vr::ETrackedPropertyError::TrackedProp_UnknownProperty;
