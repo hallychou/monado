@@ -266,6 +266,9 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 		// input components from within Activate, and those callbacks have to be able to find it.
 		std::lock_guard lk(this->devices_mut);
 		this->hmd = hmd;
+		devices[0] = hmd;
+		registered_devices.insert(hmd);
+		internal_devices.insert(hmd);
 	}
 
 #define VERIFY(expr, msg)                                                                                              \
@@ -376,6 +379,7 @@ Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *dr
 		controller[controller_idx] = device;
 		devices.push_back(device);
 		registered_devices.insert(device);
+		internal_devices.insert(device);
 	}
 
 	// Never call into the driver with `devices_mut` held: it takes its own locks here, and calls back into
@@ -599,7 +603,6 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
                                   vr::TrackedDevicePose_t *pTrackedDevicePoseArray,
                                   uint32_t unTrackedDevicePoseArrayCount)
 {
-	U_LOG_IFL_T(log_level, "Getting raw tracked device poses for %u devices at %.2f seconds from now", unTrackedDevicePoseArrayCount, fPredictedSecondsFromNow);
 
 	const int64_t time = os_monotonic_get_ns();
 
@@ -624,34 +627,35 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 		pTrackedDevicePoseArray[i].bPoseIsValid = true;
 		pTrackedDevicePoseArray[i].bDeviceIsConnected = true;
 
-		U_LOG_IFL_T(log_level, "Pose for device %d %s (%s): pos=(%.2f, %.2f, %.2f) rot=(%.2f, %.2f, %.2f, %.2f)", i, device->str, device->serial,
-		           space.pose.position.x, space.pose.position.y, space.pose.position.z,
-		           space.pose.orientation.x, space.pose.orientation.y, space.pose.orientation.z,
-		           space.pose.orientation.w);
+		// U_LOG_IFL_T(log_level, "Pose for device %d %s (%s): pos=(%.2f, %.2f, %.2f) rot=(%.2f, %.2f, %.2f, %.2f)", i, device->str, device->serial,
+		//            space.pose.position.x, space.pose.position.y, space.pose.position.z,
+		//            space.pose.orientation.x, space.pose.orientation.y, space.pose.orientation.z,
+		//            space.pose.orientation.w);
 	};
 
-	if(this->xsysd->static_roles.head != nullptr && unTrackedDevicePoseArrayCount > 0) {
-		set_pose(0, XRT_INPUT_GENERIC_HEAD_POSE, this->xsysd->static_roles.head);
-	} else {
-		U_LOG_IFL_W(log_level, "No head device found, skipping pose update for head");
-	}
+	// U_LOG_IFL_T(log_level, "Getting raw tracked device poses for %u devices at %.2f seconds from now", unTrackedDevicePoseArrayCount, fPredictedSecondsFromNow);
 
-	int device_index = 1;
+	std::vector<xrt_device *> devices = get_devices();
 
-	for (uint32_t i = 0; i < this->xsysd->static_xdev_count && device_index < unTrackedDevicePoseArrayCount; ++i) {
-		if(this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
-			this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER || 
-			this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER) {
-			set_pose(device_index, XRT_INPUT_GENERIC_PALM_POSE, this->xsysd->static_xdevs[i]);
-		} else if(this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_UNKNOWN) {
-			set_pose(device_index, XRT_INPUT_GENERIC_LOCAL_SPACE_POSE, this->xsysd->static_xdevs[i]);
-		} else if(this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_GENERIC_TRACKER) {
-			set_pose(device_index, XRT_INPUT_GENERIC_TRACKER_POSE, this->xsysd->static_xdevs[i]);
-		} else {
-			U_LOG_IFL_W(log_level, "Device %s (%s) is not a controller or tracker but a %d, skipping pose update", this->xsysd->static_xdevs[i]->str, this->xsysd->static_xdevs[i]->serial, this->xsysd->static_xdevs[i]->device_type);
+	for (size_t i = 0; i < devices.size() && i < unTrackedDevicePoseArrayCount; ++i) {
+		if(devices[i] == nullptr) {
+			pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Uninitialized;
+			pTrackedDevicePoseArray[i].bPoseIsValid = false;
+			pTrackedDevicePoseArray[i].bDeviceIsConnected = false;
+			U_LOG_IFL_W(log_level, "Device at index %zu is null", i);
 			continue;
 		}
-		device_index++;
+		if(devices[i]->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
+			devices[i]->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER || 
+			devices[i]->device_type == XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER) {
+			set_pose(i, XRT_INPUT_GENERIC_PALM_POSE, devices[i]);
+		} else if(devices[i]->device_type == XRT_DEVICE_TYPE_UNKNOWN) {
+			set_pose(i, XRT_INPUT_GENERIC_LOCAL_SPACE_POSE, devices[i]);
+		} else if(devices[i]->device_type == XRT_DEVICE_TYPE_GENERIC_TRACKER) {
+			set_pose(i, XRT_INPUT_GENERIC_TRACKER_POSE, devices[i]);
+		} else {
+			continue;
+		}
 	}
 }
 
@@ -695,8 +699,8 @@ Context::create_component_common(vr::PropertyContainerHandle_t container,
 	*pHandle = vr::k_ulInvalidInputComponentHandle;
 
 	std::lock_guard lk(this->devices_mut);
-	Device *device = prop_container_to_device(container);
-	if (!device) {
+	Device *device = static_cast<Device *>(prop_container_to_device(container));
+	if (!device || this->internal_devices.count(device) == 0) {
 		return vr::VRInputError_InvalidHandle;
 	}
 
@@ -758,8 +762,8 @@ Context::CreateScalarComponent(vr::PropertyContainerHandle_t ulContainer,
 	if (second_last == '/' && (end == 'x' || end == 'y')) {
 		std::lock_guard lk(this->devices_mut);
 
-		Device *device = this->prop_container_to_device(ulContainer);
-		if (!device) {
+		Device *device = static_cast<Device *>(prop_container_to_device(ulContainer));
+		if (!device || this->internal_devices.count(device) == 0) {
 			return vr::VRInputError_InvalidHandle;
 		}
 
@@ -848,22 +852,22 @@ Context::CreateHapticComponent(vr::PropertyContainerHandle_t ulContainer,
 	*pHandle = vr::k_ulInvalidInputComponentHandle;
 
 	std::lock_guard lk(this->devices_mut);
-	Device *d = prop_container_to_device(ulContainer);
-	if (!d) {
+	Device *device = static_cast<Device *>(prop_container_to_device(ulContainer));
+	if (!device || this->internal_devices.count(device) == 0) {
 		return vr::VRInputError_InvalidHandle;
 	}
 
 	// Assuming HMDs won't have haptics.
 	// Maybe a wrong assumption.
-	if (d == hmd) {
+	if (device == hmd) {
 		CTX_WARN("Didn't expect HMD with haptics.");
 		return vr::VRInputError_InvalidHandle;
 	}
 
-	auto *device = static_cast<ControllerDevice *>(d);
-	vr::VRInputComponentHandle_t handle = device->new_input_handle_locked();
+	auto *controller = static_cast<ControllerDevice *>(device);
+	vr::VRInputComponentHandle_t handle = controller->new_input_handle_locked();
 	this->input.handle_to_input[handle] = nullptr;
-	device->set_haptic_handle(handle);
+	controller->set_haptic_handle(handle);
 	*pHandle = handle;
 
 	return vr::VRInputError_None;
@@ -892,7 +896,10 @@ Context::CreateSkeletonComponent(vr::PropertyContainerHandle_t ulContainer,
 
 	std::lock_guard lk(this->devices_mut);
 
-	auto *device = static_cast<ControllerDevice *>(prop_container_to_device(ulContainer));
+	ControllerDevice *device = static_cast<ControllerDevice *>(prop_container_to_device(ulContainer));
+	if (!device || this->internal_devices.count(device) == 0) {
+		return vr::VRInputError_InvalidHandle;
+	}
 	path.remove_prefix(skeleton_pfx.size());
 	xrt_hand hand;
 	if (path == "left") {
@@ -980,12 +987,17 @@ Context::ReadPropertyBatch(vr::PropertyContainerHandle_t ulContainerHandle,
 {
 	std::lock_guard lk(this->devices_mut);
 
-	Device *device = prop_container_to_device(ulContainerHandle);
+	
+	xrt_device *device = prop_container_to_device(ulContainerHandle);
 	if (!device)
 		return vr::TrackedProp_InvalidContainer;
 	if (!pBatch)
 		return vr::TrackedProp_InvalidOperation; // not verified vs steamvr
-	return device->handle_read_properties(pBatch, unBatchEntryCount);
+
+	if(this->internal_devices.count(device) == 0) {
+		return handle_external_read_properties(device, pBatch, unBatchEntryCount);
+	}
+	return static_cast<Device *>(device)->handle_read_properties(pBatch, unBatchEntryCount);
 }
 
 vr::ETrackedPropertyError
@@ -995,9 +1007,10 @@ Context::WritePropertyBatch(vr::PropertyContainerHandle_t ulContainerHandle,
 {
 	std::lock_guard lk(this->devices_mut);
 
-	Device *device = prop_container_to_device(ulContainerHandle);
-	if (!device)
+	Device *device = static_cast<Device *>(prop_container_to_device(ulContainerHandle));
+	if (!device || this->internal_devices.count(device) == 0) {
 		return vr::TrackedProp_InvalidContainer;
+	}
 	if (!pBatch)
 		return vr::TrackedProp_InvalidOperation; // not verified vs steamvr
 	return device->handle_properties(pBatch, unBatchEntryCount);
@@ -1010,63 +1023,77 @@ Context::GetPropErrorNameFromEnum(vr::ETrackedPropertyError error)
 }
 
 
-std::vector<Device *>
+
+std::vector<xrt_device *>
 Context::get_devices()
 {
 	if(this->xsysd->static_roles.head != nullptr) {
-		Device *device = static_cast<Device *>(this->xsysd->static_roles.head);
+		xrt_device *device = this->xsysd->static_roles.head;
 		if(devices[0] != device) {
 			if(devices[0] != nullptr) {
 				registered_devices.erase(devices[0]);
-				U_LOG_IFL_I(log_level, "Removed head device %s (%s) from devices[0]", devices[0]->str, devices[0]->serial);
+				CTX_INFO("Removed head device %s (%s) from devices[0]", devices[0]->str, devices[0]->serial);
 			}
-
-			// todo handle if xrt_device is not a Device* from a non lighthouse driver
-
 			devices[0] = device;
 			registered_devices.insert(device);
-			U_LOG_IFL_I(log_level, "Added head device %s (%s) to devices[0]", device->str, device->serial);
+			CTX_INFO("Added head device %s (%s) to devices[0]", device->str, device->serial);
 		}
 	}
 
 	for (uint32_t i = 0; i < this->xsysd->static_xdev_count; ++i) {
 		if(this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_HMD) continue;
-		Device *device = static_cast<Device *>(this->xsysd->static_xdevs[i]);
+		xrt_device *device = this->xsysd->static_xdevs[i];
 		if(registered_devices.count(device)) continue;
-
-		// todo handle if xrt_device is not a Device* from a non lighthouse driver
-		
 		devices.push_back(device);
 		registered_devices.insert(device);
-		U_LOG_IFL_I(log_level, "Added device %s (%s) to devices[%zu]", device->str, device->serial, devices.size() - 1);
+		CTX_INFO("Added device %s (%s) to devices[%zu]", device->str, device->serial, devices.size() - 1);
 	}
 
 	return devices;
 }
 
-Device *
+xrt_device *
 Context::prop_container_to_device(vr::PropertyContainerHandle_t handle)
 {
-	std::vector<Device *> devices = get_devices();
+	std::vector<xrt_device *> devices = get_devices();
 
-	if (handle <= MAX_CONTROLLERS && devices.size() >= handle) {
+	if (handle != vr::k_ulInvalidPropertyContainer && handle <= MAX_CONTROLLERS && devices.size() >= handle) {
 		return devices[handle - 1];
 	}
 
-	U_LOG_IFL_W(log_level, "Invalid property container handle %u for device lookup", handle);
+	CTX_WARN("Invalid property container handle %u for device lookup", handle);
 
 	return nullptr;
+}
+
+vr::ETrackedPropertyError
+Context::handle_external_read_properties(xrt_device *device, vr::PropertyRead_t *batch, uint32_t count)
+{
+	// This is a placeholder implementation. In a real scenario, you would read properties from the external device.
+	// For now, we will just log the request and return an error indicating that the operation is not supported.
+
+	CTX_WARN("Attempted to read properties from an external device %s (%s) with %u batch entries", device->str, device->serial, count);
+
+	for (uint32_t i = 0; i < count; ++i) {
+		batch[i].eError = vr::TrackedProp_InvalidOperation; // Indicate that the operation is not supported
+	}
+
+	return vr::TrackedProp_InvalidOperation;
 }
 
 vr::PropertyContainerHandle_t
 Context::TrackedDeviceToPropertyContainer(vr::TrackedDeviceIndex_t nDevice)
 {
-	std::vector<Device *> devices = get_devices();
-	if (nDevice <= MAX_CONTROLLERS && devices.size() > nDevice && devices[nDevice]) {
+	std::vector<xrt_device *> devices = get_devices();
+	if (nDevice <= MAX_CONTROLLERS && devices.size() > nDevice) {
+		if(devices[nDevice] == nullptr) {
+			CTX_WARN("Device at index %u is null", nDevice);
+			return vr::k_ulInvalidPropertyContainer;
+		}
 		return nDevice + 1;
 	}
 
-	U_LOG_IFL_W(log_level, "Invalid device index %u for property container lookup", nDevice);
+	CTX_WARN("Invalid device index %u for property container lookup", nDevice);
 
 	return vr::k_ulInvalidPropertyContainer;
 }

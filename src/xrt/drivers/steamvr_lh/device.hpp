@@ -61,15 +61,6 @@ struct DeviceBuilder
 	operator=(const DeviceBuilder &) = delete;
 };
 
-class Property
-{
-public:
-	Property(vr::PropertyTypeTag_t tag, void *buffer, uint32_t bufferSize);
-
-	vr::PropertyTypeTag_t tag;
-	std::vector<uint8_t> buffer;
-};
-
 class Device : public xrt_device
 {
 public:

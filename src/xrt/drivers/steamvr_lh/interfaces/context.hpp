@@ -32,6 +32,15 @@
 #include "xrt/xrt_tracking.h"
 #include <filesystem>
 
+class Property
+{
+public:
+	Property(vr::PropertyTypeTag_t tag, void *buffer, uint32_t bufferSize);
+
+	vr::PropertyTypeTag_t tag;
+	std::vector<uint8_t> buffer;
+};
+
 struct xrt_input;
 class Device;
 class ControllerDevice;
@@ -85,12 +94,21 @@ private:
 	std::mutex event_queue_mut;
 	std::condition_variable event_popped;
 
-	std::vector<Device *> devices = { nullptr }; // devices[0] is reserved for the head device
-	std::unordered_set<Device *> registered_devices = {};
-	std::vector<Device *> get_devices();
+	std::vector<xrt_device *> devices = { nullptr }; // devices[0] is reserved for the head device
+	std::unordered_set<xrt_device *> registered_devices = {};
+	std::unordered_set<xrt_device *> internal_devices = {};
+	std::vector<xrt_device *> get_devices();
 
-	Device *
+	xrt_device *
 	prop_container_to_device(vr::PropertyContainerHandle_t handle);
+
+	vr::ETrackedPropertyError
+	handle_external_read_properties(xrt_device *device, vr::PropertyRead_t *batch, uint32_t count);
+
+	vr::ETrackedPropertyError
+	handle_external_read_property(xrt_device *device, vr::PropertyRead_t &prop);
+
+	std::unordered_map<xrt_device *, std::unordered_map<vr::ETrackedDeviceProperty, Property>> external_properties;
 
 	vr::EVRInputError
 	create_component_common(vr::PropertyContainerHandle_t container,
