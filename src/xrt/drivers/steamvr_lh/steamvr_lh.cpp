@@ -633,8 +633,6 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 		//            space.pose.orientation.w);
 	};
 
-	// U_LOG_IFL_T(log_level, "Getting raw tracked device poses for %u devices at %.2f seconds from now", unTrackedDevicePoseArrayCount, fPredictedSecondsFromNow);
-
 	std::vector<xrt_device *> devices = get_devices();
 
 	for (size_t i = 0; i < devices.size() && i < unTrackedDevicePoseArrayCount; ++i) {
@@ -645,15 +643,22 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 			U_LOG_IFL_W(log_level, "Device at index %zu is null", i);
 			continue;
 		}
-		if(devices[i]->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
+		if(devices[i]->device_type == XRT_DEVICE_TYPE_HMD) {
+			// CTX_DEBUG("Setting pose for device %d %s (%s) as HMD", i, devices[i]->str, devices[i]->serial);
+			set_pose(i, XRT_INPUT_GENERIC_HEAD_POSE, devices[i]);
+		} else if(devices[i]->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
 			devices[i]->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER || 
 			devices[i]->device_type == XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER) {
+			// CTX_DEBUG("Setting pose for device %d %s (%s) as controller", i, devices[i]->str, devices[i]->serial);
 			set_pose(i, XRT_INPUT_GENERIC_PALM_POSE, devices[i]);
 		} else if(devices[i]->device_type == XRT_DEVICE_TYPE_UNKNOWN) {
+			// CTX_DEBUG("Setting pose for device %d %s (%s) as local space pose", i, devices[i]->str, devices[i]->serial);
 			set_pose(i, XRT_INPUT_GENERIC_LOCAL_SPACE_POSE, devices[i]);
 		} else if(devices[i]->device_type == XRT_DEVICE_TYPE_GENERIC_TRACKER) {
+			// CTX_DEBUG("Setting pose for device %d %s (%s) as generic tracker", i, devices[i]->str, devices[i]->serial);
 			set_pose(i, XRT_INPUT_GENERIC_TRACKER_POSE, devices[i]);
 		} else {
+			// CTX_WARN("Device at index %zu has unknown device type %d, skipping pose update", i, devices[i]->device_type);
 			continue;
 		}
 	}
@@ -987,10 +992,11 @@ Context::ReadPropertyBatch(vr::PropertyContainerHandle_t ulContainerHandle,
 {
 	std::lock_guard lk(this->devices_mut);
 
-	
 	xrt_device *device = prop_container_to_device(ulContainerHandle);
-	if (!device)
+	if (!device) {
+		CTX_WARN("Invalid property container handle %u for device lookup", ulContainerHandle);
 		return vr::TrackedProp_InvalidContainer;
+	}
 	if (!pBatch)
 		return vr::TrackedProp_InvalidOperation; // not verified vs steamvr
 
@@ -1069,16 +1075,83 @@ Context::prop_container_to_device(vr::PropertyContainerHandle_t handle)
 vr::ETrackedPropertyError
 Context::handle_external_read_properties(xrt_device *device, vr::PropertyRead_t *batch, uint32_t count)
 {
-	// This is a placeholder implementation. In a real scenario, you would read properties from the external device.
-	// For now, we will just log the request and return an error indicating that the operation is not supported.
-
-	CTX_WARN("Attempted to read properties from an external device %s (%s) with %u batch entries", device->str, device->serial, count);
-
 	for (uint32_t i = 0; i < count; ++i) {
-		batch[i].eError = vr::TrackedProp_InvalidOperation; // Indicate that the operation is not supported
+		vr::ETrackedPropertyError err = handle_external_read_property(device, batch[i]);
+		if (err != vr::ETrackedPropertyError::TrackedProp_Success) {
+			return err;
+		}
+	}
+	return vr::ETrackedPropertyError::TrackedProp_Success;
+}
+
+vr::ETrackedPropertyError
+Context::handle_external_read_property(xrt_device *device, vr::PropertyRead_t &prop)
+{
+	// CTX_DEBUG("Device %s: Reading external property %d", device->str, prop.prop);
+
+	if(external_properties.count(device) == 0) {
+		external_properties.emplace(device, std::unordered_map<vr::ETrackedDeviceProperty, Property>());
+	}
+	std::unordered_map<vr::ETrackedDeviceProperty, Property> device_properties = external_properties.at(device);
+
+	switch (prop.prop) {
+		case vr::ETrackedDeviceProperty::Prop_DeviceClass_Int32:
+			if(device_properties.count(prop.prop) == 0) {
+				vr::ETrackedDeviceClass value = vr::ETrackedDeviceClass::TrackedDeviceClass_Invalid;
+				if(device->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER) {
+					value = vr::ETrackedDeviceClass::TrackedDeviceClass_Controller;
+				} else if(device->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER) {
+					value = vr::ETrackedDeviceClass::TrackedDeviceClass_Controller;
+				} else if(device->device_type == XRT_DEVICE_TYPE_GENERIC_TRACKER) {
+					value = vr::ETrackedDeviceClass::TrackedDeviceClass_GenericTracker;
+				} else if(device->device_type == XRT_DEVICE_TYPE_HMD) {
+					value = vr::ETrackedDeviceClass::TrackedDeviceClass_HMD;
+				}
+				CTX_DEBUG("Device %s: External property Prop_DeviceClass_Int32 is %d", device->str, value);
+				device_properties.emplace(prop.prop, Property(vr::k_unInt32PropertyTag, &value, (uint32_t)sizeof(int32_t)));
+			}
+			break;
+		case vr::ETrackedDeviceProperty::Prop_SerialNumber_String:
+			if(device_properties.count(prop.prop) == 0) {
+				std::string serial = device->serial;
+				CTX_DEBUG("Device %s: External property Prop_SerialNumber_String is %s", device->str, serial.c_str());
+				device_properties.emplace(prop.prop, Property(vr::k_unStringPropertyTag, (void *)serial.c_str(), (uint32_t)(serial.size() + 1)));
+			}
+			break;
+		case vr::ETrackedDeviceProperty::Prop_ControllerRoleHint_Int32:
+			if(device_properties.count(prop.prop) == 0) {
+				vr::ETrackedControllerRole value = vr::ETrackedControllerRole::TrackedControllerRole_Invalid;
+				if (device->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER) {
+					value = vr::ETrackedControllerRole::TrackedControllerRole_LeftHand;
+				} else if (device->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER) {
+					value = vr::ETrackedControllerRole::TrackedControllerRole_RightHand;
+				}
+				CTX_DEBUG("Device %s: External property Prop_ControllerRoleHint_Int32 is %d", device->str, value);
+				device_properties.emplace(prop.prop, Property(vr::k_unInt32PropertyTag, &value, (uint32_t)sizeof(int32_t)));
+			}
+			break;
+		case 10987: // VendorSpecific_Standable_987
+			break;
+		default:
+			CTX_WARN("Unsupported property type %u for external device %s (%s)", prop.prop, device->str, device->serial);
+			prop.eError = vr::ETrackedPropertyError::TrackedProp_UnknownProperty;
 	}
 
-	return vr::TrackedProp_InvalidOperation;
+	if(device_properties.count(prop.prop)) {
+		Property property = device_properties.at(prop.prop);
+		prop.unTag = property.tag;
+		prop.unRequiredBufferSize = property.buffer.size();
+		if (prop.pvBuffer == nullptr || prop.unBufferSize < property.buffer.size()) {
+			prop.eError = vr::ETrackedPropertyError::TrackedProp_BufferTooSmall;
+			return prop.eError;
+		}
+		std::memcpy(prop.pvBuffer, property.buffer.data(), property.buffer.size());
+		prop.eError = vr::ETrackedPropertyError::TrackedProp_Success;
+	} else {
+		prop.eError = vr::ETrackedPropertyError::TrackedProp_UnknownProperty;
+	}
+
+	return prop.eError;
 }
 
 vr::PropertyContainerHandle_t
