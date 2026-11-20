@@ -140,6 +140,9 @@ b_system_devices_static_allocate(void);
  * will always return these devices for the left and right role. This function
  * must be called before @ref xrt_system_devices_get_roles is called.
  *
+ * The @ref xrt_system_devices::static_roles must be set before calling this,
+ * as it also fills in @ref xrt_system_devices::supported from them.
+ *
  * @ingroup base
  */
 xrt_result_t

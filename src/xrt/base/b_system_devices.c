@@ -17,6 +17,7 @@
 #include "util/u_logging.h"
 #include "util/u_misc.h"
 #include "util/u_system_devices.h"
+#include "util/u_system_helpers.h"
 
 #include "xrt/xrt_device.h"
 
@@ -359,6 +360,8 @@ b_system_devices_static_finalize(struct b_system_devices_static *bsysds,
 	bsysds->cached.left = left_index;
 	bsysds->cached.right = right_index;
 	bsysds->cached.gamepad = gamepad_index;
+
+	u_system_devices_supported_from_static_roles(xsysd, &xsysd->supported);
 
 	return notify_chirality(bsysds);
 }

@@ -12,6 +12,7 @@
 #include "util/u_misc.h"
 #include "util/u_debug.h"
 #include "util/u_system_devices.h"
+#include "util/u_system_helpers.h"
 
 #include "b_body_tracker.h"
 #include "b_hand_tracker.h"
@@ -496,6 +497,8 @@ r_create_devices(uint16_t port,
 	r->base.static_roles.head = head;
 	r->base.static_roles.hand_tracking.conforming.left = left;
 	r->base.static_roles.hand_tracking.conforming.right = right;
+
+	u_system_devices_supported_from_static_roles(&r->base, &r->base.supported);
 
 
 	/*

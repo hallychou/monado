@@ -96,6 +96,50 @@ u_system_devices_get_ht_device_conforming_right(struct xrt_system_devices *xsysd
 	return u_system_devices_get_ht_device(xsysd, XRT_INPUT_HT_CONFORMING_RIGHT);
 }
 
+/*!
+ * Computes the features supported by the given list of devices. A field in
+ * @p out_supported is set if any of the devices supports that feature (see
+ * @ref xrt_device_supported), and the plane capability flags are or'ed
+ * together. The per API body tracking fields are set if a device supports body
+ * tracking and has the input for that API.
+ *
+ * NULL entries in @p xdevs are skipped, so a list of (optional) role devices
+ * can be passed in directly.
+ *
+ * @param[in]  xdevs         Array of devices, entries may be NULL.
+ * @param[in]  xdev_count    Number of entries in @p xdevs.
+ * @param[out] out_supported Supported features of the devices.
+ *
+ * @ingroup aux_util
+ */
+void
+u_system_devices_supported_from_xdevs(struct xrt_device *const *xdevs,
+                                      uint32_t xdev_count,
+                                      struct xrt_system_devices_supported *out_supported);
+
+/*!
+ * Computes the features supported by the @ref xrt_system_devices, using the
+ * devices in @ref xrt_system_devices::static_roles that are responsible for
+ * each feature:
+ *
+ * - Hand tracking and force feedback from the hand-tracking roles.
+ * - Eye gaze from the eyes role.
+ * - Face tracking from the face role.
+ * - Body tracking (and calibration and fidelity) from the body role.
+ * - Everything else (tracking, presence and planes) from the head role.
+ *
+ * @note This only looks at the static roles. It might change in the future,
+ * for instance to consider all devices in the system.
+ *
+ * @param[in]  xsysd         System devices to query.
+ * @param[out] out_supported Supported features of the system devices.
+ *
+ * @ingroup aux_util
+ */
+void
+u_system_devices_supported_from_static_roles(const struct xrt_system_devices *xsysd,
+                                             struct xrt_system_devices_supported *out_supported);
+
 #ifdef __cplusplus
 }
 #endif

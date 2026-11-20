@@ -182,26 +182,6 @@ oxr_system_matches(struct oxr_logger *log, struct oxr_system *sys, XrFormFactor 
 	return xr_form_factor_to_xrt(form_factor) == sys->xsys->properties.form_factor;
 }
 
-static bool
-oxr_system_get_body_tracking_support(struct oxr_logger *log,
-                                     struct oxr_instance *inst,
-                                     const enum xrt_input_name body_tracking_name)
-{
-	struct oxr_system *sys = &inst->system;
-	const struct xrt_device *body = GET_STATIC_XDEV_BY_ROLE(sys, body);
-	if (body == NULL || !body->supported.body_tracking || body->inputs == NULL) {
-		return false;
-	}
-
-	for (size_t input_idx = 0; input_idx < body->input_count; ++input_idx) {
-		const struct xrt_input *input = &body->inputs[input_idx];
-		if (input->name == body_tracking_name) {
-			return true;
-		}
-	}
-	return false;
-}
-
 static XrResult
 oxr_system_fill_view_configs_locked(struct oxr_logger *log, uint32_t view_count, struct oxr_system *sys)
 {
@@ -698,49 +678,27 @@ oxr_system_fill_in(
 bool
 oxr_system_get_hand_tracking_support(struct oxr_logger *log, struct oxr_instance *inst)
 {
-	struct oxr_system *sys = &inst->system;
-#define OXR_CHECK_RET_IS_HT_SUPPORTED(HT_ROLE)                                                                         \
-	{                                                                                                              \
-		const struct xrt_device *ht = GET_STATIC_XDEV_BY_ROLE(sys, hand_tracking_##HT_ROLE);                   \
-		if (ht && ht->supported.hand_tracking) {                                                               \
-			return true;                                                                                   \
-		}                                                                                                      \
-	}
-	OXR_CHECK_RET_IS_HT_SUPPORTED(unobstructed_left)
-	OXR_CHECK_RET_IS_HT_SUPPORTED(unobstructed_right)
-	OXR_CHECK_RET_IS_HT_SUPPORTED(conforming_left)
-	OXR_CHECK_RET_IS_HT_SUPPORTED(conforming_right)
-#undef OXR_CHECK_RET_IS_HT_SUPPORTED
-	return false;
+	return inst->system.xsysd->supported.hand_tracking;
 }
 
 bool
 oxr_system_get_eye_gaze_support(struct oxr_logger *log, struct oxr_instance *inst)
 {
-	struct oxr_system *sys = &inst->system;
-	struct xrt_device *eyes = GET_STATIC_XDEV_BY_ROLE(sys, eyes);
-
-	return eyes && eyes->supported.eye_gaze;
+	return inst->system.xsysd->supported.eye_gaze;
 }
 
 bool
 oxr_system_get_force_feedback_support(struct oxr_logger *log, struct oxr_instance *inst)
 {
-	struct oxr_system *sys = &inst->system;
-#define OXR_CHECK_RET_IS_FFB_SUPPORTED(HT_ROLE)                                                                        \
-	{                                                                                                              \
-		const struct xrt_device *ffb = GET_STATIC_XDEV_BY_ROLE(sys, hand_tracking_##HT_ROLE);                  \
-		if (ffb && ffb->supported.force_feedback) {                                                            \
-			return true;                                                                                   \
-		}                                                                                                      \
-	}
-	OXR_CHECK_RET_IS_FFB_SUPPORTED(unobstructed_left)
-	OXR_CHECK_RET_IS_FFB_SUPPORTED(unobstructed_right)
-	OXR_CHECK_RET_IS_FFB_SUPPORTED(conforming_left)
-	OXR_CHECK_RET_IS_FFB_SUPPORTED(conforming_right)
-#undef OXR_CHECK_RET_IS_FFB_SUPPORTED
-	return false;
+	return inst->system.xsysd->supported.force_feedback;
 }
+
+/*
+ * @todo In the future an xrt_face_tracker interface should be added, and the
+ * single face_tracking bool in xrt_system_devices_supported should be split up
+ * into one per face tracking API version, so these functions don't need to
+ * look at the inputs of the face device.
+ */
 
 void
 oxr_system_get_face_tracking_android_support(struct oxr_logger *log, struct oxr_instance *inst, bool *supported)
@@ -751,7 +709,7 @@ oxr_system_get_face_tracking_android_support(struct oxr_logger *log, struct oxr_
 	struct oxr_system *sys = &inst->system;
 	const struct xrt_device *face_xdev = GET_STATIC_XDEV_BY_ROLE(sys, face);
 
-	if (face_xdev == NULL || !face_xdev->supported.face_tracking || face_xdev->inputs == NULL) {
+	if (!sys->xsysd->supported.face_tracking || face_xdev == NULL || face_xdev->inputs == NULL) {
 		return;
 	}
 
@@ -778,7 +736,7 @@ oxr_system_get_face_tracking_htc_support(struct oxr_logger *log,
 	if (supports_lip)
 		*supports_lip = false;
 
-	if (face_xdev == NULL || !face_xdev->supported.face_tracking || face_xdev->inputs == NULL) {
+	if (!sys->xsysd->supported.face_tracking || face_xdev == NULL || face_xdev->inputs == NULL) {
 		return;
 	}
 
@@ -808,7 +766,7 @@ oxr_system_get_face_tracking2_fb_support(struct oxr_logger *log,
 	struct oxr_system *sys = &inst->system;
 	struct xrt_device *face_xdev = GET_STATIC_XDEV_BY_ROLE(sys, face);
 
-	if (face_xdev == NULL || !face_xdev->supported.face_tracking || face_xdev->inputs == NULL) {
+	if (!sys->xsysd->supported.face_tracking || face_xdev == NULL || face_xdev->inputs == NULL) {
 		return;
 	}
 
@@ -826,13 +784,13 @@ oxr_system_get_face_tracking2_fb_support(struct oxr_logger *log,
 bool
 oxr_system_get_body_tracking_fb_support(struct oxr_logger *log, struct oxr_instance *inst)
 {
-	return oxr_system_get_body_tracking_support(log, inst, XRT_INPUT_FB_BODY_TRACKING);
+	return inst->system.xsysd->supported.body_tracking_fb;
 }
 
 bool
 oxr_system_get_full_body_tracking_meta_support(struct oxr_logger *log, struct oxr_instance *inst)
 {
-	return oxr_system_get_body_tracking_support(log, inst, XRT_INPUT_META_FULL_BODY_TRACKING);
+	return inst->system.xsysd->supported.full_body_tracking_meta;
 }
 
 bool
@@ -842,9 +800,7 @@ oxr_system_get_body_tracking_calibration_meta_support(struct oxr_logger *log, st
 	    !oxr_system_get_full_body_tracking_meta_support(log, inst)) {
 		return false;
 	}
-	struct oxr_system *sys = &inst->system;
-	const struct xrt_device *body = GET_STATIC_XDEV_BY_ROLE(sys, body);
-	return body->supported.body_tracking_calibration;
+	return inst->system.xsysd->supported.body_tracking_calibration;
 }
 
 bool
@@ -854,9 +810,7 @@ oxr_system_get_body_tracking_fidelity_meta_support(struct oxr_logger *log, struc
 	    !oxr_system_get_full_body_tracking_meta_support(log, inst)) {
 		return false;
 	}
-	struct oxr_system *sys = &inst->system;
-	const struct xrt_device *body = GET_STATIC_XDEV_BY_ROLE(sys, body);
-	return body->supported.body_tracking_fidelity;
+	return inst->system.xsysd->supported.body_tracking_fidelity;
 }
 
 XrResult
@@ -865,8 +819,6 @@ oxr_system_get_properties(struct oxr_logger *log, struct oxr_system *sys, XrSyst
 	properties->systemId = sys->systemId;
 	properties->vendorId = sys->xsys->properties.vendor_id;
 	memcpy(properties->systemName, sys->xsys->properties.name, sizeof(properties->systemName));
-
-	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sys, head);
 
 	// Get from compositor.
 	struct xrt_system_compositor_info *info = sys->xsysc ? &sys->xsysc->info : NULL;
@@ -879,8 +831,8 @@ oxr_system_get_properties(struct oxr_logger *log, struct oxr_system *sys, XrSyst
 	}
 	properties->graphicsProperties.maxSwapchainImageWidth = 1024 * 16;
 	properties->graphicsProperties.maxSwapchainImageHeight = 1024 * 16;
-	properties->trackingProperties.orientationTracking = xdev->supported.orientation_tracking;
-	properties->trackingProperties.positionTracking = xdev->supported.position_tracking;
+	properties->trackingProperties.orientationTracking = sys->xsysd->supported.orientation_tracking;
+	properties->trackingProperties.positionTracking = sys->xsysd->supported.position_tracking;
 
 #ifdef OXR_HAVE_EXT_hand_tracking
 	XrSystemHandTrackingPropertiesEXT *hand_tracking_props = NULL;
@@ -1031,7 +983,7 @@ oxr_system_get_properties(struct oxr_logger *log, struct oxr_system *sys, XrSyst
 	if (plane_detection_props) {
 		// for now these are mapped 1:1
 		plane_detection_props->supportedFeatures =
-		    (XrPlaneDetectionCapabilityFlagsEXT)xdev->supported.plane_capability_flags;
+		    (XrPlaneDetectionCapabilityFlagsEXT)sys->xsysd->supported.plane_capability_flags;
 	}
 #endif // OXR_HAVE_EXT_plane_detection
 
@@ -1043,7 +995,7 @@ oxr_system_get_properties(struct oxr_logger *log, struct oxr_system *sys, XrSyst
 	}
 
 	if (user_presence_props) {
-		user_presence_props->supportsUserPresence = xdev->supported.presence;
+		user_presence_props->supportsUserPresence = sys->xsysd->supported.presence;
 	}
 #endif // OXR_HAVE_EXT_user_presence
 

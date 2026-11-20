@@ -263,6 +263,12 @@ struct ipc_shared_memory
 		} hand_tracking;
 	} roles;
 
+	/*!
+	 * Features supported by the service's system devices, see
+	 * @ref xrt_system_devices::supported.
+	 */
+	struct xrt_system_devices_supported supported;
+
 	struct
 	{
 		struct

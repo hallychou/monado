@@ -282,6 +282,8 @@ init_system_shm_state(struct ipc_server *s, volatile struct ipc_client_state *ic
 	SET_HT_ROLE(unobstructed)
 	SET_HT_ROLE(conforming)
 #undef SET_HT_ROLE
+
+	ism->supported = s->xsysd->supported;
 }
 
 static void

@@ -19,7 +19,6 @@
 #include "oxr_handle_base.h"
 #include "oxr_conversions.h"
 #include "oxr_chain.h"
-#include "oxr_roles.h"
 #include "oxr_xret.h"
 
 #include <stdio.h>
@@ -191,11 +190,7 @@ oxr_locate_body_joints_bd(struct oxr_logger *log,
 bool
 oxr_system_get_body_tracking_bd_support(struct oxr_logger *log, struct oxr_instance *inst)
 {
-	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(&inst->system, body);
-	if (xdev == NULL) {
-		return false;
-	}
-	return xdev->supported.body_tracking;
+	return inst->system.xsysd->supported.body_tracking_bd;
 }
 
 #endif // OXR_HAVE_BD_body_tracking

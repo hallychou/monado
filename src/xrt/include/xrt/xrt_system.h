@@ -207,6 +207,39 @@ struct xrt_system_roles
 		0, -1, -1, -1, XRT_DEVICE_INVALID, XRT_DEVICE_INVALID, XRT_DEVICE_INVALID,                             \
 	}
 
+/*!
+ * Features supported by a @ref xrt_system_devices as a whole, modeled after
+ * @ref xrt_device_supported.
+ *
+ * Filled in by the system when the system devices are created, and read by
+ * the state trackers so they don't have to inspect individual devices.
+ *
+ * @see xrt_device_supported, xrt_system_devices::supported
+ * @ingroup xrt_iface
+ */
+struct xrt_system_devices_supported
+{
+	bool orientation_tracking;
+	bool position_tracking;
+	bool hand_tracking;
+	bool eye_gaze;
+	bool presence;
+	bool force_feedback;
+	bool face_tracking;
+
+	//! Body tracking with @ref XRT_INPUT_FB_BODY_TRACKING.
+	bool body_tracking_fb;
+	//! Body tracking with @ref XRT_INPUT_META_FULL_BODY_TRACKING.
+	bool full_body_tracking_meta;
+	//! Body tracking with @ref XRT_INPUT_BD_BODY_TRACKING or @ref XRT_INPUT_BD_BODY_TRACKING_WITHOUT_ARM.
+	bool body_tracking_bd;
+	bool body_tracking_calibration;
+	bool body_tracking_fidelity;
+
+	bool planes;
+	enum xrt_plane_detection_capability_flags_ext plane_capability_flags;
+};
+
 
 /*!
  * A collection of @ref xrt_device, and an interface for identifying the roles
@@ -216,6 +249,21 @@ struct xrt_system_roles
  */
 struct xrt_system_devices
 {
+	/*!
+	 * Features supported by these system devices. Filled in by the system
+	 * at creation time and is static, it doesn't change during runtime.
+	 * State trackers use this field to decide which features to announce
+	 * support for to applications, for instance which extensions or system
+	 * properties to expose.
+	 *
+	 * On systems that support hot-plug the capabilities themselves may come
+	 * and go, for example a @ref xrt_hand_tracker object may stop returning
+	 * hand poses when a device is unplugged. So for features backed by
+	 * hot-plug capable interfaces, such as hand-tracking, these fields only
+	 * describe possible capabilities rather than currently available ones.
+	 */
+	struct xrt_system_devices_supported supported;
+
 	/*!
 	 * All devices known in the system.
 	 *
@@ -314,7 +362,6 @@ struct xrt_system_devices
 			} conforming;
 		} hand_tracking;
 	} static_roles;
-
 
 	/*!
 	 * Function to get the dynamic input device roles from this system

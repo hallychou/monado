@@ -14,6 +14,7 @@
 #include "util/u_misc.h"
 #include "util/u_trace_marker.h"
 #include "util/u_system_devices.h"
+#include "util/u_system_helpers.h"
 
 #include "b_system.h"
 #include "b_body_tracker.h"
@@ -179,6 +180,8 @@ sdl_system_devices_init(struct sdl_program *sp)
 	sp->xsysd_base.static_xdevs[0] = head;
 	sp->xsysd_base.static_xdev_count = 1;
 	sp->xsysd_base.static_roles.head = head;
+
+	u_system_devices_supported_from_static_roles(&sp->xsysd_base, &sp->xsysd_base.supported);
 
 	struct xrt_pose T_stage_local = XRT_POSE_IDENTITY;
 	T_stage_local.position.y = 1.6;

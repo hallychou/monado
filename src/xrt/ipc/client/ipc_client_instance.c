@@ -208,6 +208,9 @@ ipc_client_instance_create_system(struct xrt_instance *xinst,
 
 #undef SET_ROLE
 
+	// Computed by the service, don't recompute it here.
+	xsysd->supported = ii->ipc_c.ism->supported;
+
 	// Done here now.
 	if (out_xsysc == NULL) {
 		goto out;
