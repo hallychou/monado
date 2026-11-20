@@ -492,28 +492,15 @@ Context::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t
 {
 	assert(sizeof(newPose) == unPoseStructSize);
 
-	// Check for valid device index, allowing for the HMD plus up to MAX_CONTROLLERS controllers
-	if (unWhichDevice > MAX_CONTROLLERS)
-		return;
-
-	Device *dev = nullptr;
-
 	std::lock_guard lk(this->devices_mut);
 
-	// If unWhichDevice is 0, it refers to the HMD; otherwise, it refers to one of the controllers
-	if (unWhichDevice == 0) {
-		dev = static_cast<Device *>(this->hmd);
-	} else {
-		// unWhichDevice - 1 will give the index into the controller array
-		dev = static_cast<Device *>(this->controller[unWhichDevice - 1]);
-	}
-
-	// This means the device was destroyed by Monado after we created it.
-	if (dev == nullptr) {
+	Device *device = static_cast<Device *>(get_devices()[unWhichDevice]);
+	if (!device || this->internal_devices.count(device) == 0) {
+		CTX_WARN("TrackedDevicePoseUpdated called for unknown device index %u", unWhichDevice);
 		return;
 	}
 
-	dev->update_pose(newPose);
+	device->update_pose(newPose);
 }
 
 void
