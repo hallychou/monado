@@ -145,7 +145,7 @@ time_ms_f_to_ns(double ms_f)
 static inline bool
 time_is_within_range_of_each_other(timepoint_ns a, timepoint_ns b, int64_t range)
 {
-	int64_t t = a - b;
+	const int64_t t = a - b;
 	return (-range < t) && (t < range);
 }
 

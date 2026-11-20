@@ -289,7 +289,7 @@ template <typename T> struct Pose
 	template <typename TransformType> Pose(const Eigen::Transform<TransformType, 3, Eigen::Isometry> &transform)
 	{
 		this->translation = transform.translation().template cast<T>();
-		Quaternion<TransformType> q(transform.rotation());
+		const Quaternion<TransformType> q(transform.rotation());
 		this->rotation = q.template cast<T>();
 	}
 

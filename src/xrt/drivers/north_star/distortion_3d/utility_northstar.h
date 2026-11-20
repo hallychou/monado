@@ -146,29 +146,25 @@ public:
 
 	inline float static Dot(Vector3 const &lhs, Vector3 const &rhs)
 	{
-		float result = (lhs.x * rhs.x) + (lhs.y * rhs.y) + (lhs.z * rhs.z);
-		return result;
+		return (lhs.x * rhs.x) + (lhs.y * rhs.y) + (lhs.z * rhs.z);
 	}
 
 	inline float
 	Dot(Vector3 const &rhs) const
 	{
-		float result = (x * rhs.x) + (y * rhs.y) + (z * rhs.z);
-		return result;
+		return (x * rhs.x) + (y * rhs.y) + (z * rhs.z);
 	}
 
 	inline static float
 	Angle(const Vector3 &v0, const Vector3 &v1)
 	{
-		Vector3 dir0 = v0.Normalized();
-		Vector3 dir1 = v1.Normalized();
+		const Vector3 dir0 = v0.Normalized();
+		const Vector3 dir1 = v1.Normalized();
 
 		float dot = dir0.Dot(dir1);
 		dot = (dot < -1.f ? -1.f : (dot > 1.f ? 1.f : dot));
 
-		float angle = acos(dot);
-
-		return angle;
+		return acos(dot);
 	}
 
 	inline float
@@ -204,7 +200,7 @@ public:
 	inline void
 	Normalize()
 	{
-		float mag = Magnitude();
+		const float mag = Magnitude();
 		if (mag > kEpsilon) {
 			x = x / mag;
 			y = y / mag;
@@ -220,7 +216,7 @@ public:
 	Normalized() const
 	{
 		Vector3 ret;
-		float mag = Magnitude();
+		const float mag = Magnitude();
 		if (mag > kEpsilon) {
 			ret.x = x / mag;
 			ret.y = y / mag;
@@ -237,8 +233,8 @@ public:
 	inline void
 	rotate(const Vector3 &axis, float radians)
 	{
-		float cos_theta = cosf(radians);
-		float sin_theta = sinf(radians);
+		const float cos_theta = cosf(radians);
+		const float sin_theta = sinf(radians);
 
 		x = (x * cos_theta) + (Vector3::Cross(axis) * sin_theta).x +
 		    (axis.x * Vector3::Dot(axis, *this)) * (1 - cos_theta);
@@ -604,24 +600,24 @@ public:
 	inline Matrix4x4
 	Inverse() const
 	{
-		float A2323 = m22 * m33 - m23 * m32;
-		float A1323 = m21 * m33 - m23 * m31;
-		float A1223 = m21 * m32 - m22 * m31;
-		float A0323 = m20 * m33 - m23 * m30;
-		float A0223 = m20 * m32 - m22 * m30;
-		float A0123 = m20 * m31 - m21 * m30;
-		float A2313 = m12 * m33 - m13 * m32;
-		float A1313 = m11 * m33 - m13 * m31;
-		float A1213 = m11 * m32 - m12 * m31;
-		float A2312 = m12 * m23 - m13 * m22;
-		float A1312 = m11 * m23 - m13 * m21;
-		float A1212 = m11 * m22 - m12 * m21;
-		float A0313 = m10 * m33 - m13 * m30;
-		float A0213 = m10 * m32 - m12 * m30;
-		float A0312 = m10 * m23 - m13 * m20;
-		float A0212 = m10 * m22 - m12 * m20;
-		float A0113 = m10 * m31 - m11 * m30;
-		float A0112 = m10 * m21 - m11 * m20;
+		const float A2323 = m22 * m33 - m23 * m32;
+		const float A1323 = m21 * m33 - m23 * m31;
+		const float A1223 = m21 * m32 - m22 * m31;
+		const float A0323 = m20 * m33 - m23 * m30;
+		const float A0223 = m20 * m32 - m22 * m30;
+		const float A0123 = m20 * m31 - m21 * m30;
+		const float A2313 = m12 * m33 - m13 * m32;
+		const float A1313 = m11 * m33 - m13 * m31;
+		const float A1213 = m11 * m32 - m12 * m31;
+		const float A2312 = m12 * m23 - m13 * m22;
+		const float A1312 = m11 * m23 - m13 * m21;
+		const float A1212 = m11 * m22 - m12 * m21;
+		const float A0313 = m10 * m33 - m13 * m30;
+		const float A0213 = m10 * m32 - m12 * m30;
+		const float A0312 = m10 * m23 - m13 * m20;
+		const float A0212 = m10 * m22 - m12 * m20;
+		const float A0113 = m10 * m31 - m11 * m30;
+		const float A0112 = m10 * m21 - m11 * m20;
 
 		float det =
 		    m00 * (m11 * A2323 - m12 * A1323 + m13 * A1223) - m01 * (m10 * A2323 - m12 * A0323 + m13 * A0223) +
@@ -700,19 +696,19 @@ public:
 		const float zNear = 0.07f;
 		const float zFar = 1000.f;
 
-		float fLeft = x;
-		float fRight = y;
-		float fTop = z;
-		float fBottom = w;
+		const float fLeft = x;
+		const float fRight = y;
+		const float fTop = z;
+		const float fBottom = w;
 
-		float idx = 1.0f / (fRight - fLeft);
-		float idy = 1.0f / (fBottom - fTop);
+		const float idx = 1.0f / (fRight - fLeft);
+		const float idy = 1.0f / (fBottom - fTop);
 		// float idz = 1.0f / (zFar - zNear);
-		float sx = fRight + fLeft;
-		float sy = fBottom + fTop;
+		const float sx = fRight + fLeft;
+		const float sy = fBottom + fTop;
 
-		float c = -(zFar + zNear) / (zFar - zNear);
-		float d = -(2.0F * zFar * zNear) / (zFar - zNear);
+		const float c = -(zFar + zNear) / (zFar - zNear);
+		const float d = -(2.0F * zFar * zNear) / (zFar - zNear);
 
 		Matrix4x4 m;
 		m.m00 = 2.f * idx;
@@ -850,19 +846,19 @@ public:
 	inline static void
 	ToEulerAngle(const Quaternion &q, float &roll, float &pitch, float &yaw)
 	{
-		float sinr = +2.0f * (q.w * q.x + q.y * q.z);
-		float cosr = +1.0f - 2.0f * (q.x * q.x + q.y * q.y);
+		const float sinr = +2.0f * (q.w * q.x + q.y * q.z);
+		const float cosr = +1.0f - 2.0f * (q.x * q.x + q.y * q.y);
 		roll = atan2f(sinr, cosr);
 
-		float sinp = +2.0f * (q.w * q.y - q.z * q.x);
+		const float sinp = +2.0f * (q.w * q.y - q.z * q.x);
 		if (fabs(sinp) >= 1.f) {
 			pitch = copysignf(M_PI / 2.f, sinp);
 		} else {
 			pitch = asinf(sinp);
 		}
 
-		float siny = +2.0f * (q.w * q.z + q.x * q.y);
-		float cosy = +1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+		const float siny = +2.0f * (q.w * q.z + q.x * q.y);
+		const float cosy = +1.0f - 2.0f * (q.y * q.y + q.z * q.z);
 		yaw = atan2f(siny, cosy);
 	}
 
@@ -872,16 +868,12 @@ public:
 		Vector3 euler;
 		const static float PI_OVER_2 = M_PI * 0.5f;
 		const static float EPSILON = 1e-10f;
-		float sqw;
-		float sqx;
-		float sqy;
-		float sqz;
 
 		// quick conversion to Euler angles to give tilt to user
-		sqw = in.w * in.w;
-		sqx = in.x * in.x;
-		sqy = in.y * in.y;
-		sqz = in.z * in.z;
+		const float sqw = in.w * in.w;
+		const float sqx = in.x * in.x;
+		const float sqy = in.y * in.y;
+		const float sqz = in.z * in.z;
 
 		euler.y = asinf(2.0f * (in.w * in.y - in.x * in.z));
 		if (PI_OVER_2 - fabs(euler.y) > EPSILON) {
@@ -903,18 +895,18 @@ public:
 	inline Vector3 // Until clang-format-11 is on the CI.
 	operator*(Vector3 const &vec) const
 	{
-		float num = x * 2.f;
-		float num2 = y * 2.f;
-		float num3 = z * 2.f;
-		float num4 = x * num;
-		float num5 = y * num2;
-		float num6 = z * num3;
-		float num7 = x * num2;
-		float num8 = x * num3;
-		float num9 = y * num3;
-		float num10 = w * num;
-		float num11 = w * num2;
-		float num12 = w * num3;
+		const float num = x * 2.f;
+		const float num2 = y * 2.f;
+		const float num3 = z * 2.f;
+		const float num4 = x * num;
+		const float num5 = y * num2;
+		const float num6 = z * num3;
+		const float num7 = x * num2;
+		const float num8 = x * num3;
+		const float num9 = y * num3;
+		const float num10 = w * num;
+		const float num11 = w * num2;
+		const float num12 = w * num3;
 		Vector3 result;
 		result.x = (1.f - (num5 + num6)) * vec.x + (num7 - num12) * vec.y + (num8 + num11) * vec.z;
 		result.y = (num7 + num12) * vec.x + (1.f - (num4 + num6)) * vec.y + (num9 - num10) * vec.z;
@@ -925,12 +917,12 @@ public:
 	inline static Quaternion
 	Euler(const Vector3 &euler)
 	{
-		float c1 = cos(euler.z * 0.5f);
-		float c2 = cos(euler.y * 0.5f);
-		float c3 = cos(euler.x * 0.5f);
-		float s1 = sin(euler.z * 0.5f);
-		float s2 = sin(euler.y * 0.5f);
-		float s3 = sin(euler.x * 0.5f);
+		const float c1 = cos(euler.z * 0.5f);
+		const float c2 = cos(euler.y * 0.5f);
+		const float c3 = cos(euler.x * 0.5f);
+		const float s1 = sin(euler.z * 0.5f);
+		const float s2 = sin(euler.y * 0.5f);
+		const float s3 = sin(euler.x * 0.5f);
 
 		Quaternion ret;
 		ret.x = c1 * c2 * s3 - s1 * s2 * c3;
@@ -979,8 +971,8 @@ public:
 	inline static Quaternion
 	AxisAngle(const Vector3 &axis, float angle)
 	{
-		float halfAngle = angle * .5f;
-		float s = (float)sin(halfAngle);
+		const float halfAngle = angle * .5f;
+		const float s = (float)sin(halfAngle);
 		Quaternion q;
 		q.x = axis.x * s;
 		q.y = axis.y * s;
@@ -992,9 +984,9 @@ public:
 	inline static Quaternion
 	LookAt(const Vector3 &sourcePoint, const Vector3 &destPoint)
 	{
-		Vector3 forwardVector = (destPoint - sourcePoint).Normalized();
+		const Vector3 forwardVector = (destPoint - sourcePoint).Normalized();
 
-		float dot = Vector3::Dot(Vector3::Forward(), forwardVector);
+		const float dot = Vector3::Dot(Vector3::Forward(), forwardVector);
 
 		if (fabs(dot - (-1.0f)) < 0.000001f) {
 			return Quaternion(Vector3::Up().x, Vector3::Up().y, Vector3::Up().z, 3.1415926535897932f);
@@ -1003,7 +995,7 @@ public:
 			return Quaternion();
 		}
 
-		float rotAngle = cos(dot);
+		const float rotAngle = cos(dot);
 		Vector3 rotAxis = Vector3::Forward().Cross(forwardVector);
 		rotAxis = rotAxis.Normalized();
 		return AxisAngle(rotAxis, rotAngle);
@@ -1012,22 +1004,21 @@ public:
 	inline static Quaternion
 	QuaternionLookRotation(const Vector3 &forward, const Vector3 &Up)
 	{
+		const Vector3 vector1 = forward.Normalized();
+		const Vector3 vector2 = (Up.Cross(vector1)).Normalized();
+		const Vector3 vector3 = vector1.Cross(vector2);
 
-		Vector3 vector1 = forward.Normalized();
-		Vector3 vector2 = (Up.Cross(vector1)).Normalized();
-		Vector3 vector3 = vector1.Cross(vector2);
+		const float m00 = vector2.x;
+		const float m01 = vector2.y;
+		const float m02 = vector2.z;
+		const float m10 = vector3.x;
+		const float m11 = vector3.y;
+		const float m12 = vector3.z;
+		const float m20 = vector1.x;
+		const float m21 = vector1.y;
+		const float m22 = vector1.z;
 
-		float m00 = vector2.x;
-		float m01 = vector2.y;
-		float m02 = vector2.z;
-		float m10 = vector3.x;
-		float m11 = vector3.y;
-		float m12 = vector3.z;
-		float m20 = vector1.x;
-		float m21 = vector1.y;
-		float m22 = vector1.z;
-
-		float num8 = (m00 + m11) + m22;
+		const float num8 = (m00 + m11) + m22;
 		Quaternion quaternion;
 		if (num8 > 0.f) {
 			float num = (float)sqrtf(num8 + 1.f);
@@ -1040,8 +1031,8 @@ public:
 		}
 
 		if ((m00 >= m11) && (m00 >= m22)) {
-			float num7 = (float)sqrtf(((1.f + m00) - m11) - m22);
-			float num4 = 0.5f / num7;
+			const float num7 = (float)sqrtf(((1.f + m00) - m11) - m22);
+			const float num4 = 0.5f / num7;
 			quaternion.x = 0.5f * num7;
 			quaternion.y = (m01 + m10) * num4;
 			quaternion.z = (m02 + m20) * num4;
@@ -1050,8 +1041,8 @@ public:
 		}
 
 		if (m11 > m22) {
-			float num6 = (float)sqrtf(((1.f + m11) - m00) - m22);
-			float num3 = 0.5f / num6;
+			const float num6 = (float)sqrtf(((1.f + m11) - m00) - m22);
+			const float num3 = 0.5f / num6;
 			quaternion.x = (m10 + m01) * num3;
 			quaternion.y = 0.5f * num6;
 			quaternion.z = (m21 + m12) * num3;
@@ -1059,8 +1050,8 @@ public:
 			return quaternion;
 		}
 
-		float num5 = (float)sqrtf(((1.f + m22) - m00) - m11);
-		float num2 = 0.5f / num5;
+		const float num5 = (float)sqrtf(((1.f + m22) - m00) - m11);
+		const float num2 = 0.5f / num5;
 		quaternion.x = (m20 + m02) * num2;
 		quaternion.y = (m21 + m12) * num2;
 		quaternion.z = 0.5f * num5;
@@ -1071,32 +1062,32 @@ public:
 	inline static Quaternion
 	FromMatrix(const Matrix4x4 &m)
 	{
-		float tr = m.m00 + m.m11 + m.m22;
+		const float tr = m.m00 + m.m11 + m.m22;
 		float qx;
 		float qy;
 		float qz;
 		float qw;
 
 		if (tr > 0) {
-			float S = sqrtf(tr + 1.f) * 2.f;
+			const float S = sqrtf(tr + 1.f) * 2.f;
 			qw = 0.25f * S;
 			qx = (m.m21 - m.m12) / S;
 			qy = (m.m02 - m.m20) / S;
 			qz = (m.m10 - m.m01) / S;
 		} else if ((m.m00 > m.m11) && (m.m00 > m.m22)) {
-			float S = sqrtf(1.f + m.m00 - m.m11 - m.m22) * 2.f;
+			const float S = sqrtf(1.f + m.m00 - m.m11 - m.m22) * 2.f;
 			qw = (m.m21 - m.m12) / S;
 			qx = 0.25f * S;
 			qy = (m.m01 + m.m10) / S;
 			qz = (m.m02 + m.m20) / S;
 		} else if (m.m11 > m.m22) {
-			float S = sqrtf(1.f + m.m11 - m.m00 - m.m22) * 2.f;
+			const float S = sqrtf(1.f + m.m11 - m.m00 - m.m22) * 2.f;
 			qw = (m.m02 - m.m20) / S;
 			qx = (m.m01 + m.m10) / S;
 			qy = 0.25f * S;
 			qz = (m.m12 + m.m21) / S;
 		} else {
-			float S = sqrtf(1.f + m.m22 - m.m00 - m.m11) * 2.f;
+			const float S = sqrtf(1.f + m.m22 - m.m00 - m.m11) * 2.f;
 			qw = (m.m10 - m.m01) / S;
 			qx = (m.m02 + m.m20) / S;
 			qy = (m.m12 + m.m21) / S;
@@ -1174,8 +1165,8 @@ public:
 	inline static Quaternion
 	FromToRotation(const Vector3 &dir0, const Vector3 &dir1)
 	{
-		Vector3 axis = dir0.Cross(dir1).Normalized();
-		float angle = Vector3::Angle(dir0, dir1);
+		const Vector3 axis = dir0.Cross(dir1).Normalized();
+		const float angle = Vector3::Angle(dir0, dir1);
 		return Quaternion::AxisAngle(axis, angle);
 	}
 

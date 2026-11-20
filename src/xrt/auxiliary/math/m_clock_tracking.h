@@ -39,7 +39,7 @@ struct m_clock_bit_extender
 static inline time_duration_ns
 m_clock_bit_extender_update(struct m_clock_bit_extender *extender, uint32_t update, int64_t ns_per_unit)
 {
-	time_duration_ns delta = (int32_t)(update - extender->last) * ns_per_unit;
+	const time_duration_ns delta = (int32_t)(update - extender->last) * ns_per_unit;
 	extender->clock += delta;
 	extender->last = update;
 	return delta;
@@ -89,8 +89,8 @@ m_clock_offset_a2b(float freq, timepoint_ns a, timepoint_ns b, time_duration_ns 
 
 	// Totally arbitrary way of computing alpha, if you have a better one, replace it
 	const time_duration_ns alpha = 1000 * (1.0 - 12.5 / freq); // Weight to put on accumulated a2b
-	time_duration_ns old_a2b = *inout_a2b;
-	time_duration_ns got_a2b = b - a;
+	const time_duration_ns old_a2b = *inout_a2b;
+	const time_duration_ns got_a2b = b - a;
 	time_duration_ns new_a2b;
 	if (old_a2b == 0) { // a2b has not been set yet
 		new_a2b = got_a2b;

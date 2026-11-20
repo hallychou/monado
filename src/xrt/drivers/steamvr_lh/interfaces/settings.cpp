@@ -107,11 +107,11 @@ Settings::GetString(const char *pchSection,
 		*peError = vr::VRSettingsError_None;
 
 	auto get_string = [pchSection, pchSettingsKey](const JSONNode &root) -> std::optional<std::string> {
-		JSONNode section = root[pchSection];
+		const JSONNode section = root[pchSection];
 		if (!section.isValid())
 			return std::nullopt;
 
-		JSONNode value = section[pchSettingsKey];
+		const JSONNode value = section[pchSettingsKey];
 		if (!value.isValid() || !value.isString())
 			return std::nullopt;
 

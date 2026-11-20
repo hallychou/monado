@@ -199,7 +199,7 @@ typedef bool (*u_log_filter_func_t)(const char *file, int line, const char *func
  */
 #define U_LOG_CHK_AND_RET(COND_LEVEL, XRET, FUNC_STR)                                                                  \
 	do {                                                                                                           \
-		xrt_result_t _ret = XRET;                                                                              \
+		const xrt_result_t _ret = XRET;                                                                        \
 		if (_ret != XRT_SUCCESS) {                                                                             \
 			u_log_print_result(COND_LEVEL, __FILE__, __LINE__, __func__, _ret, FUNC_STR);                  \
 			return _ret;                                                                                   \
@@ -217,7 +217,7 @@ typedef bool (*u_log_filter_func_t)(const char *file, int line, const char *func
  */
 #define U_LOG_CHK_WITH_GOTO(COND_LEVEL, XRET, FUNC_STR, GOTO)                                                          \
 	do {                                                                                                           \
-		xrt_result_t _ret = XRET;                                                                              \
+		const xrt_result_t _ret = XRET;                                                                        \
 		if (_ret != XRT_SUCCESS) {                                                                             \
 			u_log_print_result(COND_LEVEL, __FILE__, __LINE__, __func__, _ret, FUNC_STR);                  \
 			goto GOTO;                                                                                     \
@@ -235,7 +235,7 @@ typedef bool (*u_log_filter_func_t)(const char *file, int line, const char *func
  */
 #define U_LOG_CHK_WITH_RET(COND_LEVEL, XRET, FUNC_STR, RET)                                                            \
 	do {                                                                                                           \
-		xrt_result_t _ret = XRET;                                                                              \
+		const xrt_result_t _ret = XRET;                                                                        \
 		if (_ret != XRT_SUCCESS) {                                                                             \
 			u_log_print_result(COND_LEVEL, __FILE__, __LINE__, __func__, _ret, FUNC_STR);                  \
 			return RET;                                                                                    \
@@ -252,7 +252,7 @@ typedef bool (*u_log_filter_func_t)(const char *file, int line, const char *func
  */
 #define U_LOG_CHK_ONLY_PRINT(COND_LEVEL, XRET, FUNC_STR)                                                               \
 	do {                                                                                                           \
-		xrt_result_t _ret = XRET;                                                                              \
+		const xrt_result_t _ret = XRET;                                                                        \
 		if (_ret != XRT_SUCCESS) {                                                                             \
 			u_log_print_result(COND_LEVEL, __FILE__, __LINE__, __func__, _ret, FUNC_STR);                  \
 		}                                                                                                      \
@@ -268,7 +268,7 @@ typedef bool (*u_log_filter_func_t)(const char *file, int line, const char *func
  */
 #define U_LOG_CHK_ALWAYS_RET(COND_LEVEL, XRET, FUNC_STR)                                                               \
 	do {                                                                                                           \
-		xrt_result_t _ret = XRET;                                                                              \
+		const xrt_result_t _ret = XRET;                                                                        \
 		if (_ret != XRT_SUCCESS) {                                                                             \
 			u_log_print_result(COND_LEVEL, __FILE__, __LINE__, __func__, _ret, FUNC_STR);                  \
 		}                                                                                                      \
@@ -524,7 +524,7 @@ u_log_set_filter(u_log_filter_func_t filter);
 #define U_LOG_XDEV_UNSUPPORTED_INPUT(xdev, cond_level, name)                                                           \
 	do {                                                                                                           \
 		struct u_pp_sink_stack_only sink;                                                                      \
-		u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);                                                 \
+		const u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);                                           \
 		u_pp_xrt_input_name(dg, name);                                                                         \
 		U_LOG_XDEV_IFL_E(xdev, cond_level, "Unsupported input: %s", sink.buffer);                              \
 	} while (false);
@@ -532,7 +532,7 @@ u_log_set_filter(u_log_filter_func_t filter);
 #define U_LOG_XDEV_UNSUPPORTED_OUTPUT(xdev, cond_level, name)                                                          \
 	do {                                                                                                           \
 		struct u_pp_sink_stack_only sink;                                                                      \
-		u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);                                                 \
+		const u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);                                           \
 		u_pp_xrt_output_name(dg, name);                                                                        \
 		U_LOG_XDEV_IFL_E(xdev, cond_level, "Unsupported output: %s", sink.buffer);                             \
 	} while (false);

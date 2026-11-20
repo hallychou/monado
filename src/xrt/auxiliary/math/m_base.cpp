@@ -241,11 +241,11 @@ math_quat_from_euler_angles(const struct xrt_vec3 *angles, struct xrt_quat *resu
 extern "C" void
 math_quat_to_euler_angles(const struct xrt_quat *quat, struct xrt_vec3 *euler_angles)
 {
-	Eigen::Quaternionf eigen_quat(quat->w, quat->x, quat->y, quat->z);
+	const Eigen::Quaternionf eigen_quat(quat->w, quat->x, quat->y, quat->z);
 #if EIGEN_MAJOR_VERSION >= 5
-	Eigen::Vector3f eigen_euler = eigen_quat.toRotationMatrix().canonicalEulerAngles(2, 1, 0);
+	const Eigen::Vector3f eigen_euler = eigen_quat.toRotationMatrix().canonicalEulerAngles(2, 1, 0);
 #else
-	Eigen::Vector3f eigen_euler = eigen_quat.toRotationMatrix().eulerAngles(2, 1, 0);
+	const Eigen::Vector3f eigen_euler = eigen_quat.toRotationMatrix().eulerAngles(2, 1, 0);
 #endif
 
 	euler_angles->x = eigen_euler.x();
@@ -259,7 +259,7 @@ math_quat_from_matrix_3x3(const struct xrt_matrix_3x3 *mat, struct xrt_quat *res
 	Eigen::Matrix3f m;
 	m << mat->v[0], mat->v[1], mat->v[2], mat->v[3], mat->v[4], mat->v[5], mat->v[6], mat->v[7], mat->v[8];
 
-	Eigen::Quaternionf q(m);
+	const Eigen::Quaternionf q(m);
 	map_quat(*result) = q;
 }
 
@@ -269,7 +269,7 @@ math_quat_from_plus_x_z(const struct xrt_vec3 *plus_x, const struct xrt_vec3 *pl
 	xrt_vec3 plus_y;
 	math_vec3_cross(plus_z, plus_x, &plus_y);
 
-	xrt_matrix_3x3 m = {{
+	const xrt_matrix_3x3 m = {{
 	    plus_x->x,
 	    plus_y.x,
 	    plus_z->x,
@@ -440,7 +440,7 @@ math_quat_rotate_derivative(const struct xrt_quat *quat, const struct xrt_vec3 *
 
 	auto v = l * m * r;
 
-	struct xrt_vec3 ret = {v.x(), v.y(), v.z()};
+	const struct xrt_vec3 ret = {v.x(), v.y(), v.z()};
 	*result = ret;
 }
 
@@ -491,38 +491,38 @@ math_quat_from_swing_twist(const struct xrt_vec2 *swing, const float twist, stru
 	assert(swing != NULL);
 	assert(result != NULL);
 
-	float swing_x = swing->x;
-	float swing_y = swing->y;
+	const float swing_x = swing->x;
+	const float swing_y = swing->y;
 
-	float theta_squared_swing = swing_x * swing_x + swing_y * swing_y;
+	const float theta_squared_swing = swing_x * swing_x + swing_y * swing_y;
 
 	if (theta_squared_swing > float(0.0)) {
 		// theta_squared_swing is nonzero, so we the regular derived conversion.
 
-		float theta = sqrt(theta_squared_swing);
+		const float theta = sqrt(theta_squared_swing);
 
-		float half_theta = theta * float(0.5);
+		const float half_theta = theta * float(0.5);
 
 		// the "other" theta
-		float half_twist = twist * float(0.5);
+		const float half_twist = twist * float(0.5);
 
-		float cos_half_theta = cos(half_theta);
-		float cos_half_twist = cos(half_twist);
+		const float cos_half_theta = cos(half_theta);
+		const float cos_half_twist = cos(half_twist);
 
-		float sin_half_theta = sin(half_theta);
-		float sin_half_twist = sin(half_twist);
+		const float sin_half_theta = sin(half_theta);
+		const float sin_half_twist = sin(half_twist);
 
-		float sin_half_theta_over_theta = sin_half_theta / theta;
+		const float sin_half_theta_over_theta = sin_half_theta / theta;
 
 		result->w = cos_half_theta * cos_half_twist;
 
-		float x_part_1 = (swing_x * cos_half_twist * sin_half_theta_over_theta);
-		float x_part_2 = (swing_y * sin_half_twist * sin_half_theta_over_theta);
+		const float x_part_1 = (swing_x * cos_half_twist * sin_half_theta_over_theta);
+		const float x_part_2 = (swing_y * sin_half_twist * sin_half_theta_over_theta);
 
 		result->x = x_part_1 + x_part_2;
 
-		float y_part_1 = (swing_y * cos_half_twist * sin_half_theta_over_theta);
-		float y_part_2 = (swing_x * sin_half_twist * sin_half_theta_over_theta);
+		const float y_part_1 = (swing_y * cos_half_twist * sin_half_theta_over_theta);
+		const float y_part_2 = (swing_x * sin_half_twist * sin_half_theta_over_theta);
 
 		result->y = y_part_1 - y_part_2;
 
@@ -534,24 +534,24 @@ math_quat_from_swing_twist(const struct xrt_vec2 *swing, const float twist, stru
 		// Note the differences w/ lm_rotations.inl - we can skip some things as we're not using this to compute
 		// a jacobian.
 
-		float half_twist = twist * float(0.5);
+		const float half_twist = twist * float(0.5);
 
-		float cos_half_twist = cos(half_twist);
+		const float cos_half_twist = cos(half_twist);
 
-		float sin_half_twist = sin(half_twist);
+		const float sin_half_twist = sin(half_twist);
 
-		float sin_half_theta_over_theta = float(0.5);
+		const float sin_half_theta_over_theta = float(0.5);
 
 		// cos(0) is 1 so no cos_half_theta necessary
 		result->w = cos_half_twist;
 
-		float x_part_1 = (swing_x * cos_half_twist * sin_half_theta_over_theta);
-		float x_part_2 = (swing_y * sin_half_twist * sin_half_theta_over_theta);
+		const float x_part_1 = (swing_x * cos_half_twist * sin_half_theta_over_theta);
+		const float x_part_2 = (swing_y * sin_half_twist * sin_half_theta_over_theta);
 
 		result->x = x_part_1 + x_part_2;
 
-		float y_part_1 = (swing_y * cos_half_twist * sin_half_theta_over_theta);
-		float y_part_2 = (swing_x * sin_half_twist * sin_half_theta_over_theta);
+		const float y_part_1 = (swing_y * cos_half_twist * sin_half_theta_over_theta);
+		const float y_part_2 = (swing_x * sin_half_twist * sin_half_theta_over_theta);
 
 		result->y = y_part_1 - y_part_2;
 
@@ -568,13 +568,13 @@ math_quat_from_swing_twist(const struct xrt_vec2 *swing, const float twist, stru
 extern "C" void
 math_quat_to_swing_twist(const struct xrt_quat *in, struct xrt_vec2 *out_swing, float *out_twist)
 {
-	Eigen::Quaternionf rot = map_quat(*in);
+	const Eigen::Quaternionf rot = map_quat(*in);
 
-	Eigen::Vector3f our_z = rot * (Eigen::Vector3f::UnitZ());
+	const Eigen::Vector3f our_z = rot * (Eigen::Vector3f::UnitZ());
 
-	Eigen::Quaternionf swing = Eigen::Quaternionf().setFromTwoVectors(Eigen::Vector3f::UnitZ(), our_z);
+	const Eigen::Quaternionf swing = Eigen::Quaternionf().setFromTwoVectors(Eigen::Vector3f::UnitZ(), our_z);
 
-	Eigen::Quaternionf twist = swing.inverse() * rot;
+	const Eigen::Quaternionf twist = swing.inverse() * rot;
 
 	Eigen::AngleAxisf twist_aax = Eigen::AngleAxisf(twist);
 
@@ -642,7 +642,7 @@ math_matrix_3x3_identity(struct xrt_matrix_3x3 *mat)
 extern "C" void
 math_matrix_3x3_from_quat(const struct xrt_quat *q, struct xrt_matrix_3x3 *result_out)
 {
-	struct xrt_matrix_3x3 result = {{
+	const struct xrt_matrix_3x3 result = {{
 	    1 - 2 * q->y * q->y - 2 * q->z * q->z,
 	    2 * q->x * q->y - 2 * q->w * q->z,
 	    2 * q->x * q->z + 2 * q->w * q->y,
@@ -700,7 +700,7 @@ math_matrix_3x3_f64_from_plus_x_z(const struct xrt_vec3_f64 *plus_x,
 extern "C" void
 math_matrix_3x3_rotation_from_isometry(const struct xrt_matrix_4x4 *isometry, struct xrt_matrix_3x3 *result)
 {
-	Eigen::Isometry3f transform{map_matrix_4x4(*isometry)};
+	const Eigen::Isometry3f transform{map_matrix_4x4(*isometry)};
 	map_matrix_3x3(*result) = transform.linear();
 }
 
@@ -722,7 +722,7 @@ math_matrix_4x4_transform_vec3(const struct xrt_matrix_4x4 *left,
                                const struct xrt_vec3 *right,
                                struct xrt_vec3 *result_out)
 {
-	Eigen::Matrix4f m = copy(left);
+	const Eigen::Matrix4f m = copy(left);
 
 	Eigen::Vector4f v;
 	v << right->x, right->y, right->z, 1.0;
@@ -743,7 +743,7 @@ math_matrix_3x3_multiply(const struct xrt_matrix_3x3 *left,
 	const struct xrt_matrix_3x3 l = *left;
 	const struct xrt_matrix_3x3 r = *right;
 
-	struct xrt_matrix_3x3 result = {{
+	const struct xrt_matrix_3x3 result = {{
 	    l.v[0] * r.v[0] + l.v[1] * r.v[3] + l.v[2] * r.v[6],
 	    l.v[0] * r.v[1] + l.v[1] * r.v[4] + l.v[2] * r.v[7],
 	    l.v[0] * r.v[2] + l.v[1] * r.v[5] + l.v[2] * r.v[8],
@@ -761,14 +761,14 @@ math_matrix_3x3_multiply(const struct xrt_matrix_3x3 *left,
 extern "C" void
 math_matrix_3x3_inverse(const struct xrt_matrix_3x3 *in, struct xrt_matrix_3x3 *result)
 {
-	Eigen::Matrix3f m = copy(in);
+	const Eigen::Matrix3f m = copy(in);
 	map_matrix_3x3(*result) = m.inverse();
 }
 
 extern "C" void
 math_matrix_3x3_transpose(const struct xrt_matrix_3x3 *in, struct xrt_matrix_3x3 *result)
 {
-	Eigen::Matrix3f m = copy(in);
+	const Eigen::Matrix3f m = copy(in);
 	map_matrix_3x3(*result) = m.transpose();
 }
 
@@ -789,32 +789,32 @@ math_matrix_4x4_multiply(const struct xrt_matrix_4x4 *left,
 extern "C" void
 math_matrix_4x4_inverse(const struct xrt_matrix_4x4 *in, struct xrt_matrix_4x4 *result)
 {
-	Eigen::Matrix4f m = copy(in);
+	const Eigen::Matrix4f m = copy(in);
 	map_matrix_4x4(*result) = m.inverse();
 }
 
 extern "C" void
 math_matrix_4x4_transpose(const struct xrt_matrix_4x4 *in, struct xrt_matrix_4x4 *result)
 {
-	Eigen::Matrix4f m = copy(in);
+	const Eigen::Matrix4f m = copy(in);
 	map_matrix_4x4(*result) = m.transpose();
 }
 
 extern "C" void
 math_matrix_4x4_isometry_inverse(const struct xrt_matrix_4x4 *in, struct xrt_matrix_4x4 *result)
 {
-	Eigen::Isometry3f m{copy(in)};
+	const Eigen::Isometry3f m{copy(in)};
 	map_matrix_4x4(*result) = m.inverse().matrix();
 }
 
 extern "C" void
 math_matrix_4x4_view_from_pose(const struct xrt_pose *pose, struct xrt_matrix_4x4 *result)
 {
-	Eigen::Vector3f position = copy(&pose->position);
-	Eigen::Quaternionf orientation = copy(&pose->orientation);
+	const Eigen::Vector3f position = copy(&pose->position);
+	const Eigen::Quaternionf orientation = copy(&pose->orientation);
 
-	Eigen::Translation3f translation(position);
-	Eigen::Isometry3f transformation = translation * orientation;
+	const Eigen::Translation3f translation(position);
+	const Eigen::Isometry3f transformation = translation * orientation;
 
 	map_matrix_4x4(*result) = transformation.inverse().matrix();
 }
@@ -833,20 +833,20 @@ math_matrix_4x4_isometry_from_rt(const struct xrt_matrix_3x3 *rotation,
 extern "C" void
 math_matrix_4x4_isometry_from_pose(const struct xrt_pose *pose, struct xrt_matrix_4x4 *result)
 {
-	Eigen::Isometry3f transform{Eigen::Translation3f{position(*pose)} * orientation(*pose)};
+	const Eigen::Isometry3f transform{Eigen::Translation3f{position(*pose)} * orientation(*pose)};
 	map_matrix_4x4(*result) = transform.matrix();
 }
 
 extern "C" void
 math_matrix_4x4_model(const struct xrt_pose *pose, const struct xrt_vec3 *size, struct xrt_matrix_4x4 *result)
 {
-	Eigen::Vector3f position = copy(&pose->position);
-	Eigen::Quaternionf orientation = copy(&pose->orientation);
+	const Eigen::Vector3f position = copy(&pose->position);
+	const Eigen::Quaternionf orientation = copy(&pose->orientation);
 
-	auto scale = Eigen::Scaling(size->x, size->y, size->z);
+	const auto scale = Eigen::Scaling(size->x, size->y, size->z);
 
-	Eigen::Translation3f translation(position);
-	Eigen::Affine3f transformation = translation * orientation * scale;
+	const Eigen::Translation3f translation(position);
+	const Eigen::Affine3f transformation = translation * orientation * scale;
 
 	map_matrix_4x4(*result) = transformation.matrix();
 }
@@ -856,10 +856,10 @@ math_matrix_4x4_inverse_view_projection(const struct xrt_matrix_4x4 *view,
                                         const struct xrt_matrix_4x4 *projection,
                                         struct xrt_matrix_4x4 *result)
 {
-	Eigen::Matrix4f v = copy(view);
+	const Eigen::Matrix4f v = copy(view);
 	Eigen::Matrix4f v3 = Eigen::Matrix4f::Identity();
 	v3.block<3, 3>(0, 0) = v.block<3, 3>(0, 0);
-	Eigen::Matrix4f vp = copy(projection) * v3;
+	const Eigen::Matrix4f vp = copy(projection) * v3;
 	map_matrix_4x4(*result) = vp.inverse();
 }
 
@@ -879,7 +879,7 @@ m_mat4_f64_identity(struct xrt_matrix_4x4_f64 *result)
 extern "C" void
 m_mat4_f64_invert(const struct xrt_matrix_4x4_f64 *matrix, struct xrt_matrix_4x4_f64 *result)
 {
-	Eigen::Matrix4d m = map_matrix_4x4_f64(*matrix);
+	const Eigen::Matrix4d m = map_matrix_4x4_f64(*matrix);
 	map_matrix_4x4_f64(*result) = m.inverse();
 }
 
@@ -888,8 +888,8 @@ m_mat4_f64_multiply(const struct xrt_matrix_4x4_f64 *left,
                     const struct xrt_matrix_4x4_f64 *right,
                     struct xrt_matrix_4x4_f64 *result)
 {
-	Eigen::Matrix4d l = map_matrix_4x4_f64(*left);
-	Eigen::Matrix4d r = map_matrix_4x4_f64(*right);
+	const Eigen::Matrix4d l = map_matrix_4x4_f64(*left);
+	const Eigen::Matrix4d r = map_matrix_4x4_f64(*right);
 
 	map_matrix_4x4_f64(*result) = l * r;
 }
@@ -903,13 +903,13 @@ m_mat4_f64_orientation(const struct xrt_quat *quat, struct xrt_matrix_4x4_f64 *r
 extern "C" void
 m_mat4_f64_model(const struct xrt_pose *pose, const struct xrt_vec3 *size, struct xrt_matrix_4x4_f64 *result)
 {
-	Eigen::Vector3d position = copyd(pose->position);
-	Eigen::Quaterniond orientation = copyd(pose->orientation);
+	const Eigen::Vector3d position = copyd(pose->position);
+	const Eigen::Quaterniond orientation = copyd(pose->orientation);
 
-	auto scale = Eigen::Scaling(copyd(size));
+	const auto scale = Eigen::Scaling(copyd(size));
 
-	Eigen::Translation3d translation(position);
-	Eigen::Affine3d transformation = translation * orientation * scale;
+	const Eigen::Translation3d translation(position);
+	const Eigen::Affine3d transformation = translation * orientation * scale;
 
 	map_matrix_4x4_f64(*result) = transformation.matrix();
 }
@@ -917,11 +917,11 @@ m_mat4_f64_model(const struct xrt_pose *pose, const struct xrt_vec3 *size, struc
 extern "C" void
 m_mat4_f64_view(const struct xrt_pose *pose, struct xrt_matrix_4x4_f64 *result)
 {
-	Eigen::Vector3d position = copyd(pose->position);
-	Eigen::Quaterniond orientation = copyd(pose->orientation);
+	const Eigen::Vector3d position = copyd(pose->position);
+	const Eigen::Quaterniond orientation = copyd(pose->orientation);
 
-	Eigen::Translation3d translation(position);
-	Eigen::Isometry3d transformation = translation * orientation;
+	const Eigen::Translation3d translation(position);
+	const Eigen::Isometry3d transformation = translation * orientation;
 
 	map_matrix_4x4_f64(*result) = transformation.inverse().matrix();
 }
@@ -944,8 +944,8 @@ math_pose_validate(const struct xrt_pose *pose)
 extern "C" void
 math_pose_invert(const struct xrt_pose *pose, struct xrt_pose *outPose)
 {
-	Eigen::Isometry3f transform{Eigen::Translation3f{position(*pose)} * orientation(*pose)};
-	Eigen::Isometry3f inverse = transform.inverse();
+	const Eigen::Isometry3f transform{Eigen::Translation3f{position(*pose)} * orientation(*pose)};
+	const Eigen::Isometry3f inverse = transform.inverse();
 	position(*outPose) = inverse.translation();
 	orientation(*outPose) = inverse.rotation();
 }

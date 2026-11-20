@@ -371,7 +371,7 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 		// The context outlives us until the last device releases it, and its frame thread keeps
 		// running that whole time - unregister before tearing anything down so it cannot reach us.
 		{
-			std::lock_guard lk(ctx->devices_mut);
+			const std::lock_guard lk(ctx->devices_mut);
 
 			for (auto handle : dev->handles) {
 				// Remove all the handles this device has from the global tables
@@ -413,7 +413,7 @@ Device::set_input_class(const InputClass *input_class)
 
 	// reserve to ensure our pointers don't get invalidated
 	inputs_vec.reserve(input_class->poses.size() + input_class->non_poses.size() + 1);
-	for (xrt_input_name input : input_class->poses) {
+	for (const xrt_input_name input : input_class->poses) {
 		inputs_vec.push_back({true, 0, input, {}});
 	}
 	for (const auto &[path, input] : input_class->non_poses) {
@@ -556,7 +556,7 @@ ControllerDevice::generate_palm_pose_offset(std::span<const vr::VRBoneTransform_
 	// The palm pose offset is generated from the OpenVR provided skeleton.
 	// https://github.com/ValveSoftware/openvr/blob/master/docs/Driver_API_Documentation.md#notes-on-the-skeleton
 
-	xrt_pose root = bone_to_pose(bones[eBone_Root]);
+	const xrt_pose root = bone_to_pose(bones[eBone_Root]);
 	xrt_pose wrist = bone_to_pose(bones[eBone_Wrist]);
 	xrt_pose metacarpal = bone_to_pose(bones[eBone_MiddleFinger0]);
 	xrt_pose proximal = bone_to_pose(bones[eBone_MiddleFinger1]);
@@ -609,7 +609,7 @@ ControllerDevice::update_skeleton_transforms(std::span<const vr::VRBoneTransform
 	joint_set.is_active = true;
 	auto &joints = joint_set.values.hand_joint_set_default;
 
-	xrt_pose root = bone_to_pose(bones[eBone_Root]);
+	const xrt_pose root = bone_to_pose(bones[eBone_Root]);
 	xrt_pose wrist = bone_to_pose(bones[eBone_Wrist]);
 
 	// Here we're doing the same transformation as seen in generate_palm_pose_offset.
@@ -746,8 +746,8 @@ ControllerDevice::get_hand_tracking(enum xrt_input_name name,
 	auto predict_joint_set = [out_value, out_timestamp_ns,
 	                          desired_timestamp_ns](const JointsWithTimestamp &joints) {
 		out_value->is_active = joints.joint_set.is_active;
-		int64_t delta_ns = desired_timestamp_ns - joints.timestamp;
-		double delta_s = time_ns_to_s(delta_ns);
+		const int64_t delta_ns = desired_timestamp_ns - joints.timestamp;
+		const double delta_s = time_ns_to_s(delta_ns);
 
 		*out_timestamp_ns = desired_timestamp_ns;
 		m_predict_relation(&joints.joint_set.hand_pose, delta_s, &out_value->hand_pose);
@@ -775,7 +775,7 @@ ControllerDevice::get_hand_tracking(enum xrt_input_name name,
 
 		auto delta_before = desired_timestamp_ns - it_previous->timestamp;
 		auto delta_after = it->timestamp - desired_timestamp_ns;
-		float lerp_amt = (float)delta_before / (float)(delta_after - delta_before);
+		const float lerp_amt = (float)delta_before / (float)(delta_after - delta_before);
 
 		auto interpolate = [lerp_amt](xrt_space_relation &previous, xrt_space_relation &next,
 		                              xrt_space_relation &out) {
@@ -838,7 +838,7 @@ HmdDevice::set_brightness(float brightness, bool relative)
 	if (variant == VIVE_VARIANT_PRO2 && vp2.hid != nullptr) {
 		brightness = relative ? vp2_get_brightness(vp2.hid) + brightness : brightness;
 
-		int ret = vp2_set_brightness(vp2.hid, brightness);
+		const int ret = vp2_set_brightness(vp2.hid, brightness);
 		if (ret < 0) {
 			DEV_ERR("Failed to set VP2 brightness, got error %d", ret);
 			return XRT_ERROR_OUTPUT_REQUEST_FAILURE;
@@ -885,7 +885,7 @@ HmdDevice::get_compositor_info(const struct xrt_device_compositor_mode *mode,
 	//! @todo Monado times based on first pixel out, not vsync, so this is wrong,
 	//        but it's equally as wrong as it was before (hardcoding 4ms for index was wrong),
 	//        so this is fine until we have a way of handling vsync vs. first pixel out.
-	time_duration_ns vsync_to_photon_ns = this->vsync_to_photon_ns.load();
+	const time_duration_ns vsync_to_photon_ns = this->vsync_to_photon_ns.load();
 
 	(*out_info) = {
 	    .panel_refresh_type = panel_refresh_type,
@@ -904,14 +904,14 @@ HmdDevice::getIpdM()
 	// On Vive Pro 2, we get this from the VP2 HID device.
 	if (this->vp2.hid) {
 		float lens_separation;
-		bool bret = vp2_get_status( //
-		    this->vp2.hid,          //
-		    nullptr,                //
-		    &lens_separation,       //
-		    nullptr,                //
-		    nullptr,                //
-		    nullptr,                //
-		    nullptr);               //
+		const bool bret = vp2_get_status( //
+		    this->vp2.hid,                //
+		    nullptr,                      //
+		    &lens_separation,             //
+		    nullptr,                      //
+		    nullptr,                      //
+		    nullptr,                      //
+		    nullptr);                     //
 		if (bret) {
 			return lens_separation;
 		}
@@ -926,14 +926,14 @@ HmdDevice::update_inputs()
 	// On Vive Pro 2, the proximity sensor and buttons are read from the VP2 HID device rather than lighthouse.
 	if (this->vp2.hid) {
 		bool proximity, system, volume_up, volume_down, mute_mic;
-		bool bret = vp2_get_status( //
-		    this->vp2.hid,          //
-		    &proximity,             //
-		    nullptr,                //
-		    &system,                //
-		    &volume_up,             //
-		    &volume_down,           //
-		    &mute_mic);             //
+		const bool bret = vp2_get_status( //
+		    this->vp2.hid,                //
+		    &proximity,                   //
+		    nullptr,                      //
+		    &system,                      //
+		    &volume_up,                   //
+		    &volume_down,                 //
+		    &mute_mic);                   //
 		if (bret) {
 			int64_t now = os_monotonic_get_ns();
 			auto set_bool = [&](std::string_view path, bool value) {
@@ -994,7 +994,7 @@ ControllerDevice::get_tracked_pose(xrt_input_name name, uint64_t at_timestamp_ns
 	m_relation_chain_push_relation(&relchain, &rel);
 	m_relation_chain_resolve(&relchain, out_relation);
 
-	struct xrt_pose *p = &out_relation->pose;
+	const struct xrt_pose *p = &out_relation->pose;
 	DEV_DEBUG("controller %u: GET_POSITION (%f %f %f) GET_ORIENTATION (%f, %f, %f, %f)", name, p->position.x,
 	          p->position.y, p->position.z, p->orientation.x, p->orientation.y, p->orientation.z, p->orientation.w);
 
@@ -1075,21 +1075,21 @@ HmdDevice::get_view_poses(const xrt_vec3 *default_eye_relation,
 
 	eye_relation.x = this->getIpdM();
 
-	float override_ipd_mm = debug_get_float_option_lh_override_ipd();
+	const float override_ipd_mm = debug_get_float_option_lh_override_ipd();
 	if (override_ipd_mm != -1.0f) {
 		// Convert from mm -> m
 		eye_relation.x = override_ipd_mm / 1000.0f;
 	}
 
-	xrt_result_t xret = u_device_get_view_poses( //
-	    this,                                    //
-	    &eye_relation,                           //
-	    at_timestamp_ns,                         //
-	    view_type,                               //
-	    view_count,                              //
-	    out_head_relation,                       //
-	    out_fovs,                                //
-	    out_poses);                              //
+	const xrt_result_t xret = u_device_get_view_poses( //
+	    this,                                          //
+	    &eye_relation,                                 //
+	    at_timestamp_ns,                               //
+	    view_type,                                     //
+	    view_count,                                    //
+	    out_head_relation,                             //
+	    out_fovs,                                      //
+	    out_poses);                                    //
 	if (xret != XRT_SUCCESS) {
 		return xret;
 	}
@@ -1117,7 +1117,7 @@ HmdDevice::compute_distortion(uint32_t view, float u, float v, xrt_uv_triplet *o
 	if (this->variant == VIVE_VARIANT_PRO2 && this->vp2.hid != nullptr) {
 		vp2_config *config = vp2_get_config(this->vp2.hid);
 
-		struct xrt_vec2 uv = {u, v};
+		const struct xrt_vec2 uv = {u, v};
 
 		// If computing through VP2 method fails, fall back to the standard method.
 		if (htc_config_compute_distortion(&config->base, view, &uv, out_result)) {
@@ -1137,8 +1137,8 @@ HmdDevice::compute_distortion(uint32_t view, float u, float v, xrt_uv_triplet *o
 	}
 #endif
 
-	vr::EVREye eye = (view == 0) ? vr::Eye_Left : vr::Eye_Right;
-	vr::DistortionCoordinates_t coords = this->hmd_parts->display->ComputeDistortion(eye, u, v);
+	const vr::EVREye eye = (view == 0) ? vr::Eye_Left : vr::Eye_Right;
+	const vr::DistortionCoordinates_t coords = this->hmd_parts->display->ComputeDistortion(eye, u, v);
 	out_result->r = {coords.rfRed[0], coords.rfRed[1]};
 	out_result->g = {coords.rfGreen[0], coords.rfGreen[1]};
 	out_result->b = {coords.rfBlue[0], coords.rfBlue[1]};
@@ -1149,7 +1149,7 @@ void
 HmdDevice::set_hmd_parts(std::unique_ptr<Parts> parts)
 {
 	{
-		std::lock_guard lk(hmd_parts_mut);
+		const std::lock_guard lk(hmd_parts_mut);
 		hmd_parts = std::move(parts);
 		this->hmd = &hmd_parts->base;
 	}
@@ -1331,7 +1331,7 @@ vr::ETrackedPropertyError
 Device::handle_properties(const vr::PropertyWrite_t *batch, uint32_t count)
 {
 	for (uint32_t i = 0; i < count; ++i) {
-		vr::ETrackedPropertyError err = handle_property_write(batch[i]);
+		const vr::ETrackedPropertyError err = handle_property_write(batch[i]);
 		if (err != vr::ETrackedPropertyError::TrackedProp_Success) {
 			return err;
 		}
@@ -1343,7 +1343,7 @@ vr::ETrackedPropertyError
 Device::handle_read_properties(vr::PropertyRead_t *batch, uint32_t count)
 {
 	for (uint32_t i = 0; i < count; ++i) {
-		vr::ETrackedPropertyError err = handle_generic_property_read(batch[i]);
+		const vr::ETrackedPropertyError err = handle_generic_property_read(batch[i]);
 		if (err != vr::ETrackedPropertyError::TrackedProp_Success) {
 			return err;
 		}
@@ -1377,8 +1377,8 @@ namespace {
 std::string_view
 parse_profile(std::string_view path)
 {
-	size_t name_start_idx = path.find_last_of('/') + 1;
-	size_t name_end_idx = path.find_last_of('_');
+	const size_t name_start_idx = path.find_last_of('/') + 1;
+	const size_t name_end_idx = path.find_last_of('_');
 	return path.substr(name_start_idx, name_end_idx - name_start_idx);
 }
 } // namespace
@@ -1563,7 +1563,7 @@ HmdDevice::init_pimax(pimax_p2_device *pdev)
 
 	pimax.dev = pdev;
 
-	bool bret = pimax_p2_setup_hmd(pimax.dev, &hmd_parts->base);
+	const bool bret = pimax_p2_setup_hmd(pimax.dev, &hmd_parts->base);
 	if (bret) {
 		std::strncpy(this->str, pimax.dev->display_name, sizeof(this->str));
 	}
@@ -1583,7 +1583,7 @@ HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 
 	switch (prop.prop) {
 	case vr::Prop_ModelNumber_String: {
-		std::string model_number(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
+		const std::string model_number(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
 
 		this->variant = vive_determine_variant(model_number.c_str());
 
@@ -1594,8 +1594,8 @@ HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 	}
 	case vr::Prop_DisplayFrequency_Float: {
 		assert(prop.unBufferSize == sizeof(float));
-		double freq = *static_cast<float *>(prop.pvBuffer);
-		int64_t interval_ns = time_s_to_ns(1. / freq);
+		const double freq = *static_cast<float *>(prop.pvBuffer);
+		const int64_t interval_ns = time_s_to_ns(1. / freq);
 		set_nominal_frame_interval(interval_ns);
 		break;
 	}
@@ -1610,19 +1610,19 @@ HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		break;
 	}
 	case vr::Prop_DeviceProvidesBatteryStatus_Bool: {
-		float supported = *static_cast<bool *>(prop.pvBuffer);
+		const float supported = *static_cast<bool *>(prop.pvBuffer);
 		this->provides_battery_status = supported;
 		DEV_DEBUG("Has battery status: HMD: %s", supported ? "true" : "false");
 		break;
 	}
 	case vr::Prop_DeviceIsCharging_Bool: {
-		float charging = *static_cast<bool *>(prop.pvBuffer);
+		const float charging = *static_cast<bool *>(prop.pvBuffer);
 		this->charging = charging;
 		DEV_DEBUG("Charging: HMD: %s", charging ? "true" : "false");
 		break;
 	}
 	case vr::Prop_DeviceBatteryPercentage_Float: {
-		float bat = *static_cast<float *>(prop.pvBuffer);
+		const float bat = *static_cast<float *>(prop.pvBuffer);
 		this->charge = bat;
 		DEV_DEBUG("Battery: HMD: %f", bat);
 		break;
@@ -1664,7 +1664,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 
 	switch (prop.prop) {
 	case vr::Prop_InputProfilePath_String: {
-		std::string_view profile =
+		const std::string_view profile =
 		    parse_profile(std::string_view(static_cast<char *>(prop.pvBuffer), prop.unBufferSize));
 		auto input_class = controller_classes.find(profile);
 		if (input_class == controller_classes.end()) {
@@ -1692,7 +1692,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		return Device::handle_property_write(fixedProp);
 	}
 	case vr::Prop_ControllerRoleHint_Int32: {
-		vr::ETrackedControllerRole role = *static_cast<vr::ETrackedControllerRole *>(prop.pvBuffer);
+		const vr::ETrackedControllerRole role = *static_cast<vr::ETrackedControllerRole *>(prop.pvBuffer);
 		switch (role) {
 		case vr::TrackedControllerRole_Invalid: {
 			this->device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
@@ -1721,7 +1721,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		break;
 	}
 	case vr::Prop_DeviceProvidesBatteryStatus_Bool: {
-		float supported = *static_cast<bool *>(prop.pvBuffer);
+		const float supported = *static_cast<bool *>(prop.pvBuffer);
 		const char *name;
 		switch (this->device_type) {
 		case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER: {
@@ -1742,7 +1742,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		break;
 	}
 	case vr::Prop_DeviceIsCharging_Bool: {
-		float charging = *static_cast<bool *>(prop.pvBuffer);
+		const float charging = *static_cast<bool *>(prop.pvBuffer);
 		const char *name;
 		switch (this->device_type) {
 		case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER: {
@@ -1762,7 +1762,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		break;
 	}
 	case vr::Prop_DeviceBatteryPercentage_Float: {
-		float bat = *static_cast<float *>(prop.pvBuffer);
+		const float bat = *static_cast<float *>(prop.pvBuffer);
 		const char *name;
 		switch (this->device_type) {
 		case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER: {

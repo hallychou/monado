@@ -78,14 +78,14 @@ static void
 process_frame_yuv(class DebugHSVPicker &d, struct xrt_frame *xf)
 {
 	for (uint32_t y = 0; y < xf->height; y++) {
-		uint8_t *src = (uint8_t *)xf->data + y * xf->stride;
+		const uint8_t *src = (uint8_t *)xf->data + y * xf->stride;
 		auto *hsv = d.debug.hsv.ptr<uint8_t>(y);
 		for (uint32_t x = 0; x < xf->width; x++) {
-			uint8_t y = src[0];
-			uint8_t cb = src[1];
-			uint8_t cr = src[2];
+			const uint8_t y = src[0];
+			const uint8_t cb = src[1];
+			const uint8_t cr = src[2];
 
-			uint8_t *hsv1 = d.yuv_to_hsv.v[y][cb][cr];
+			const uint8_t *hsv1 = d.yuv_to_hsv.v[y][cb][cr];
 
 			hsv[0] = hsv1[0];
 			hsv[1] = hsv1[1];
@@ -105,16 +105,16 @@ static void
 process_frame_yuyv(class DebugHSVPicker &d, struct xrt_frame *xf)
 {
 	for (uint32_t y = 0; y < xf->height; y++) {
-		uint8_t *src = (uint8_t *)xf->data + y * xf->stride;
+		const uint8_t *src = (uint8_t *)xf->data + y * xf->stride;
 		auto *hsv = d.debug.hsv.ptr<uint8_t>(y);
 		for (uint32_t x = 0; x < xf->width; x += 2) {
-			uint8_t y1 = src[0];
-			uint8_t cb = src[1];
-			uint8_t y2 = src[2];
-			uint8_t cr = src[3];
+			const uint8_t y1 = src[0];
+			const uint8_t cb = src[1];
+			const uint8_t y2 = src[2];
+			const uint8_t cr = src[3];
 
-			uint8_t *hsv1 = d.yuv_to_hsv.v[y1][cb][cr];
-			uint8_t *hsv2 = d.yuv_to_hsv.v[y2][cb][cr];
+			const uint8_t *hsv1 = d.yuv_to_hsv.v[y1][cb][cr];
+			const uint8_t *hsv2 = d.yuv_to_hsv.v[y2][cb][cr];
 
 			hsv[0] = hsv1[0];
 			hsv[1] = hsv1[1];

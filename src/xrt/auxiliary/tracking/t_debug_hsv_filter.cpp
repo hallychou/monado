@@ -54,7 +54,7 @@ public:
 extern "C" void
 t_debug_hsv_filter_frame0(struct xrt_frame_sink *xsink, struct xrt_frame *xf)
 {
-	cv::Mat tmp(xf->height, xf->width, CV_8UC1, xf->data, xf->stride);
+	const cv::Mat tmp(xf->height, xf->width, CV_8UC1, xf->data, xf->stride);
 
 	cv::imshow(HSV0_WIN, tmp);
 }
@@ -62,7 +62,7 @@ t_debug_hsv_filter_frame0(struct xrt_frame_sink *xsink, struct xrt_frame *xf)
 extern "C" void
 t_debug_hsv_filter_frame1(struct xrt_frame_sink *xsink, struct xrt_frame *xf)
 {
-	cv::Mat tmp(xf->height, xf->width, CV_8UC1, xf->data, xf->stride);
+	const cv::Mat tmp(xf->height, xf->width, CV_8UC1, xf->data, xf->stride);
 
 	cv::imshow(HSV1_WIN, tmp);
 }
@@ -70,7 +70,7 @@ t_debug_hsv_filter_frame1(struct xrt_frame_sink *xsink, struct xrt_frame *xf)
 extern "C" void
 t_debug_hsv_filter_frame2(struct xrt_frame_sink *xsink, struct xrt_frame *xf)
 {
-	cv::Mat tmp(xf->height, xf->width, CV_8UC1, xf->data, xf->stride);
+	const cv::Mat tmp(xf->height, xf->width, CV_8UC1, xf->data, xf->stride);
 
 	cv::imshow(HSV2_WIN, tmp);
 }
@@ -78,7 +78,7 @@ t_debug_hsv_filter_frame2(struct xrt_frame_sink *xsink, struct xrt_frame *xf)
 extern "C" void
 t_debug_hsv_filter_frame3(struct xrt_frame_sink *xsink, struct xrt_frame *xf)
 {
-	cv::Mat tmp(xf->height, xf->width, CV_8UC1, xf->data, xf->stride);
+	const cv::Mat tmp(xf->height, xf->width, CV_8UC1, xf->data, xf->stride);
 
 	cv::imshow(HSV3_WIN, tmp);
 }

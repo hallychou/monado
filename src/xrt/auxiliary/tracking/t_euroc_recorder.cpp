@@ -90,10 +90,10 @@ struct euroc_recorder
 static void
 euroc_recorder_mkfiles(struct euroc_recorder *er)
 {
-	string path = er->path;
+	const string path = er->path;
 
 	for (int i = 0; i < er->imu_count; i++) {
-		string data_path = path + "/mav0/imu" + to_string(i);
+		const string data_path = path + "/mav0/imu" + to_string(i);
 		create_directories(data_path);
 		er->imus_csv[i] = new ofstream{data_path + "/data.csv"};
 		*er->imus_csv[i] << std::fixed << std::setprecision(CSV_PRECISION);
@@ -108,7 +108,7 @@ euroc_recorder_mkfiles(struct euroc_recorder *er)
 	               "q_RS_w [],q_RS_x [],q_RS_y [],q_RS_z []" CSV_EOL;
 
 	for (int i = 0; i < er->cam_count; i++) {
-		string data_path = path + "/mav0/cam" + to_string(i) + "/data";
+		const string data_path = path + "/mav0/cam" + to_string(i) + "/data";
 		create_directories(data_path);
 		er->cams_csv[i] = new ofstream{data_path + ".csv"};
 		*er->cams_csv[i] << "#timestamp [ns],filename" CSV_EOL;
@@ -123,7 +123,7 @@ euroc_recorder_flush(struct euroc_recorder *er)
 		vector<xrt_imu_sample> imu_samples;
 
 		{ // Move samples out of imu_queue into vector to minimize mutex contention
-			lock_guard lock{er->imu_queue_locks[i]};
+			const lock_guard lock{er->imu_queue_locks[i]};
 			queue<xrt_imu_sample> &imu_queue = er->imu_queues[i];
 			imu_samples.reserve(imu_queue.size());
 			while (!imu_queue.empty()) {
@@ -142,7 +142,7 @@ euroc_recorder_flush(struct euroc_recorder *er)
 	vector<xrt_pose_sample> gt_samples;
 
 	{ // Move samples out of gt_queue into vector to minimize mutex contention
-		lock_guard lock{er->gt_queue_lock};
+		const lock_guard lock{er->gt_queue_lock};
 		gt_samples.reserve(er->gt_queue.size());
 		while (!er->gt_queue.empty()) {
 			gt_samples.push_back(er->gt_queue.front());
@@ -168,9 +168,9 @@ euroc_recorder_flush(struct euroc_recorder *er)
 static void
 euroc_recorder_save_imu_sample(struct euroc_recorder *er, struct xrt_imu_sample *sample, int imu_index)
 {
-	timepoint_ns ts = sample->timestamp_ns;
-	xrt_vec3_f64 a = sample->accel_m_s2;
-	xrt_vec3_f64 w = sample->gyro_rad_secs;
+	const timepoint_ns ts = sample->timestamp_ns;
+	const xrt_vec3_f64 a = sample->accel_m_s2;
+	const xrt_vec3_f64 w = sample->gyro_rad_secs;
 
 	*er->imus_csv[imu_index] << ts << ",";
 	*er->imus_csv[imu_index] << w.x << "," << w.y << "," << w.z << ",";
@@ -195,11 +195,11 @@ static void (*euroc_recorder_save_imu[XRT_TRACKING_MAX_IMUS])(struct xrt_imu_sin
 extern "C" void
 euroc_recorder_save_gt(xrt_pose_sink *sink, struct xrt_pose_sample *sample)
 {
-	euroc_recorder *er = container_of(sink, euroc_recorder, writer_gt_sink);
+	const euroc_recorder *er = container_of(sink, euroc_recorder, writer_gt_sink);
 
-	timepoint_ns ts = sample->timestamp_ns;
-	xrt_vec3 p = sample->pose.position;
-	xrt_quat o = sample->pose.orientation;
+	const timepoint_ns ts = sample->timestamp_ns;
+	const xrt_vec3 p = sample->pose.position;
+	const xrt_quat o = sample->pose.orientation;
 
 	*er->gt_csv << ts << ",";
 	*er->gt_csv << p.x << "," << p.y << "," << p.z << ",";
@@ -209,17 +209,17 @@ euroc_recorder_save_gt(xrt_pose_sink *sink, struct xrt_pose_sample *sample)
 static void
 euroc_recorder_save_frame(euroc_recorder *er, struct xrt_frame *frame, int cam_index)
 {
-	string cam_name = "cam" + to_string(cam_index);
-	uint64_t ts = frame->timestamp;
+	const string cam_name = "cam" + to_string(cam_index);
+	const uint64_t ts = frame->timestamp;
 
 	assert(frame->format == XRT_FORMAT_L8 || frame->format == XRT_FORMAT_R8G8B8); // Only formats supported
-	string file_extension = er->use_jpg ? ".jpg" : ".png";
-	string filename = std::to_string(ts) + file_extension;
-	string img_path = er->path + "/mav0/" + cam_name + "/data/" + filename;
+	const string file_extension = er->use_jpg ? ".jpg" : ".png";
+	const string filename = std::to_string(ts) + file_extension;
+	const string img_path = er->path + "/mav0/" + cam_name + "/data/" + filename;
 
 #ifdef XRT_HAVE_OPENCV
-	auto img_type = frame->format == XRT_FORMAT_L8 ? CV_8UC1 : CV_8UC3;
-	cv::Mat img{(int)frame->height, (int)frame->width, img_type, frame->data, frame->stride};
+	const auto img_type = frame->format == XRT_FORMAT_L8 ? CV_8UC1 : CV_8UC3;
+	const cv::Mat img{(int)frame->height, (int)frame->width, img_type, frame->data, frame->stride};
 	cv::imwrite(img_path, img);
 #else
 	U_LOG_W("OpenCV not built, unable to save %s", img_path.c_str());
@@ -264,7 +264,7 @@ euroc_recorder_receive_imu_sample(struct euroc_recorder *er, struct xrt_imu_samp
 	}
 
 	{
-		lock_guard lock{er->imu_queue_locks[i]};
+		const lock_guard lock{er->imu_queue_locks[i]};
 		er->imu_queues[i].push(*sample);
 	}
 }
@@ -300,7 +300,7 @@ euroc_recorder_receive_gt(xrt_pose_sink *sink, struct xrt_pose_sample *sample)
 	}
 
 	{
-		lock_guard lock{er->gt_queue_lock};
+		const lock_guard lock{er->gt_queue_lock};
 		er->gt_queue.push(*sample);
 	}
 }
@@ -350,7 +350,7 @@ euroc_recorder_node_break_apart(struct xrt_frame_node *node)
 extern "C" void
 euroc_recorder_node_destroy(struct xrt_frame_node *node)
 {
-	struct euroc_recorder *er = container_of(node, struct euroc_recorder, node);
+	const struct euroc_recorder *er = container_of(node, struct euroc_recorder, node);
 	for (int i = 0; i < er->imu_count; i++) {
 		delete er->imus_csv[i];
 	}
@@ -447,11 +447,11 @@ euroc_recorder_start(struct xrt_slam_sinks *er_sinks)
 	}
 
 	// Create dataset directories with current datetime suffix
-	time_t seconds = os_realtime_get_ns() / U_TIME_1S_IN_NS;
+	const time_t seconds = os_realtime_get_ns() / U_TIME_1S_IN_NS;
 	constexpr size_t size = sizeof("YYYYMMDDHHmmss");
 	char datetime[size] = {0};
 	(void)strftime(datetime, size, "%Y%m%d%H%M%S", localtime(&seconds));
-	string default_path = er->path_prefix + "_" + datetime;
+	const string default_path = er->path_prefix + "_" + datetime;
 	er->path = default_path;
 
 	euroc_recorder_mkfiles(er);

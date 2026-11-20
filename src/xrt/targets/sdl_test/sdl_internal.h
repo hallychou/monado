@@ -256,7 +256,7 @@ from_comp(struct xrt_compositor *xc)
  */
 #define CHECK_GL()                                                                                                     \
 	do {                                                                                                           \
-		GLint err = glGetError();                                                                              \
+		const GLint err = glGetError();                                                                        \
 		if (err != 0) {                                                                                        \
 			U_LOG_RAW("%s:%u: error: 0x%04x", __func__, __LINE__, err);                                    \
 		}                                                                                                      \

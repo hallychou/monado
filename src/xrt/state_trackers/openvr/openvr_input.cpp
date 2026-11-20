@@ -41,7 +41,7 @@ Input::setDominantHand(vr::ETrackedControllerRole dominant_hand)
 		return vr::EVRInputError::VRInputError_InvalidParam;
 	}
 
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	this->dominant_hand = dominant_hand;
 
@@ -51,7 +51,7 @@ Input::setDominantHand(vr::ETrackedControllerRole dominant_hand)
 vr::EVRInputError
 Input::getDominantHand(vr::ETrackedControllerRole &dominant_hand)
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	dominant_hand = this->dominant_hand;
 
@@ -61,7 +61,7 @@ Input::getDominantHand(vr::ETrackedControllerRole &dominant_hand)
 vr::EVRInputError
 Input::getActionSetHandle(const std::string &name, vr::VRActionSetHandle_t &handle)
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	auto it = this->action_set_handles.find(name);
 	if (it == this->action_set_handles.end()) {
@@ -75,7 +75,7 @@ Input::getActionSetHandle(const std::string &name, vr::VRActionSetHandle_t &hand
 vr::EVRInputError
 Input::getActionHandle(const std::string &name, vr::VRActionHandle_t &handle)
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	auto it = this->action_handles.find(name);
 	if (it == this->action_handles.end()) {
@@ -89,7 +89,7 @@ Input::getActionHandle(const std::string &name, vr::VRActionHandle_t &handle)
 vr::EVRInputError
 Input::getInputSourceHandle(const std::string &path, vr::VRInputValueHandle_t &handle)
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	auto it = this->input_source_handles.find(path);
 	if (it == this->input_source_handles.end()) {

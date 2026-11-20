@@ -195,7 +195,7 @@ struct DistortParamKB4CostFunctor
 
 		for (int y_index = 0; y_index < m_nSteps; y_index++) {
 			for (int x_index = 0; x_index < m_nSteps; x_index++) {
-				int residual_index = 2 * (y_index * m_nSteps + x_index);
+				const int residual_index = 2 * (y_index * m_nSteps + x_index);
 				TargetPoint *p = &m_targetPointGrid[(y_index * m_nSteps) + x_index];
 
 				if (!kb4_distort_func<T>(m_calib, distort_params, p->point, out_point))
@@ -216,7 +216,7 @@ rift_s_get_cam_calib(struct rift_s_camera_calibration_block *camera_calibration,
 {
 	struct t_camera_calibration tcc;
 
-	struct rift_s_camera_calibration *rift_s_cam = &camera_calibration->cameras[cam_id];
+	const struct rift_s_camera_calibration *rift_s_cam = &camera_calibration->cameras[cam_id];
 	tcc.image_size_pixels.h = rift_s_cam->roi.extent.h;
 	tcc.image_size_pixels.w = rift_s_cam->roi.extent.w;
 	tcc.intrinsics[0][0] = rift_s_cam->projection.fx;
@@ -240,8 +240,8 @@ rift_s_get_cam_calib(struct rift_s_camera_calibration_block *camera_calibration,
 	 * project onto the points of grid spaced across the pixel image plane */
 	for (int y_index = 0; y_index < STEPS; y_index++) {
 		for (int x_index = 0; x_index < STEPS; x_index++) {
-			int x = x_index * (tcc.image_size_pixels.w - 1) / (STEPS - 1);
-			int y = y_index * (tcc.image_size_pixels.h - 1) / (STEPS - 1);
+			const int x = x_index * (tcc.image_size_pixels.w - 1) / (STEPS - 1);
+			const int y = y_index * (tcc.image_size_pixels.h - 1) / (STEPS - 1);
 			TargetPoint *p = &xy[(y_index * STEPS) + x_index];
 
 			p->distorted[0] = x;
@@ -250,8 +250,8 @@ rift_s_get_cam_calib(struct rift_s_camera_calibration_block *camera_calibration,
 			Eigen::Matrix<double, 2, 1> result(0, 0);
 
 			using AutoDiffUndistortFunction = TinySolverAutoDiffFunction<UndistortCostFunctor, 2, 2>;
-			UndistortCostFunctor undistort_functor(&tcc, fisheye62_distort_params, p->distorted);
-			AutoDiffUndistortFunction f(undistort_functor);
+			const UndistortCostFunctor undistort_functor(&tcc, fisheye62_distort_params, p->distorted);
+			const AutoDiffUndistortFunction f(undistort_functor);
 
 			TinySolver<AutoDiffUndistortFunction> solver;
 			solver.Solve(f, &result);
@@ -267,8 +267,8 @@ rift_s_get_cam_calib(struct rift_s_camera_calibration_block *camera_calibration,
 
 		using AutoDiffDistortParamKB4Function =
 		    TinySolverAutoDiffFunction<DistortParamKB4CostFunctor, 2 * STEPS * STEPS, N_KB4_DISTORT_PARAMS>;
-		DistortParamKB4CostFunctor distort_param_kb4_functor(&tcc, STEPS, xy);
-		AutoDiffDistortParamKB4Function f(distort_param_kb4_functor);
+		const DistortParamKB4CostFunctor distort_param_kb4_functor(&tcc, STEPS, xy);
+		const AutoDiffDistortParamKB4Function f(distort_param_kb4_functor);
 
 		TinySolver<AutoDiffDistortParamKB4Function> solver;
 		solver.Solve(f, &kb4_distort_params);
@@ -296,12 +296,12 @@ rift_s_create_stereo_camera_calib_rotated(struct rift_s_camera_calibration_block
 	struct t_stereo_camera_calibration *calib = NULL;
 	t_stereo_camera_calibration_alloc(&calib, T_DISTORTION_FISHEYE_KB4);
 
-	struct rift_s_camera_calibration *left = &camera_calibration->cameras[RIFT_S_CAMERA_FRONT_LEFT];
-	struct rift_s_camera_calibration *right = &camera_calibration->cameras[RIFT_S_CAMERA_FRONT_RIGHT];
+	const struct rift_s_camera_calibration *left = &camera_calibration->cameras[RIFT_S_CAMERA_FRONT_LEFT];
+	const struct rift_s_camera_calibration *right = &camera_calibration->cameras[RIFT_S_CAMERA_FRONT_RIGHT];
 
 	// Intrinsics
 	for (int view = 0; view < 2; view++) {
-		enum rift_s_camera_id cam_id = view == 0 ? RIFT_S_CAMERA_FRONT_LEFT : RIFT_S_CAMERA_FRONT_RIGHT;
+		const enum rift_s_camera_id cam_id = view == 0 ? RIFT_S_CAMERA_FRONT_LEFT : RIFT_S_CAMERA_FRONT_RIGHT;
 		calib->view[view] = rift_s_get_cam_calib(camera_calibration, cam_id);
 	}
 

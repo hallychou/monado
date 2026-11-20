@@ -85,7 +85,7 @@ constructObservation(SensorFusion *fusion,
 		const auto &blob = sample.blobs[bi];
 
 		if (blob.matched_device_id == device.device_id) {
-			int32_t led_idx = findLedIndexById(led_model, blob.matched_device_led_id);
+			const int32_t led_idx = findLedIndexById(led_model, blob.matched_device_led_id);
 
 			// Ignore blob
 			if (led_idx == -1) {
@@ -1174,7 +1174,7 @@ thread_runner(void *ptr)
 
 	os_thread_helper_lock(&fusion->thread);
 	while (os_thread_helper_is_running_locked(&fusion->thread)) {
-		timepoint_ns now_ns = os_monotonic_get_ns();
+		const timepoint_ns now_ns = os_monotonic_get_ns();
 
 		if (!fusion->pullReadyCameraSamplesLocked(now_ns, pending)) {
 			os_thread_helper_wait_locked(&fusion->thread);
@@ -1195,7 +1195,7 @@ thread_runner(void *ptr)
 			 * Hold fusion lock since we're doing fusion work now and don't want to have our work
 			 * overwritten by a reset.
 			 */
-			std::lock_guard<os::Mutex> lock{fusion->lock};
+			const std::lock_guard<os::Mutex> lock{fusion->lock};
 
 			// Update the latest device relation history
 			fusion->updateDeviceRelationHistoryLocked();
@@ -1701,7 +1701,7 @@ struct SensorFusionProblem
 			bool has_keyframe_block = false;
 
 			for (const MarginalizationPrior::Block &block : prior.blocks) {
-				double *values = blocks.resolve(block.ref);
+				const double *values = blocks.resolve(block.ref);
 
 				/*
 				 * dropPriorIfBlocksMissingLocked() has already thrown away any prior naming a block
@@ -1714,7 +1714,7 @@ struct SensorFusionProblem
 					break;
 				}
 
-				prior_parameters.push_back(values);
+				prior_parameters.push_back(const_cast<double *>(values));
 				prior_blocks.push_back(
 				    {block.linearization_point, this->manifoldForKind(block.ref.kind)});
 
@@ -2100,7 +2100,7 @@ struct SensorFusionProblem
 		 * No lock of its own, and none needed: eviction reaches this from the fusion thread's fold pass, which
 		 * is the same thread that builds and solves. Nothing else can be looking at the problem.
 		 */
-		uint32_t idx = fusion.keyframeIdxLocked(age);
+		const uint32_t idx = fusion.keyframeIdxLocked(age);
 
 		/*
 		 * The lists have to come from a build that no earlier eviction has marginalized against yet, see
@@ -2199,7 +2199,7 @@ struct SensorFusionProblem
 				 * counted in tangent dimensions rather than in parameter blocks.
 				 */
 				int num_base_states = 0;
-				for (double *base_parameter : base_parameters) {
+				for (const double *base_parameter : base_parameters) {
 					num_base_states += this->problem.ParameterBlockTangentSize(base_parameter);
 				}
 
@@ -2225,7 +2225,7 @@ struct SensorFusionProblem
 				this->invalidatePriorLocked();
 
 				bool blocks_resolved = true;
-				for (double *connected_parameter : connected_parameters_set) {
+				for (const double *connected_parameter : connected_parameters_set) {
 					const auto it = this->parameter_blocks.block_refs.find(connected_parameter);
 
 					/*
@@ -2418,7 +2418,7 @@ SensorFusion::pushKeyframeLocked(const constellation::CameraSample &sample)
 	 * The slot about to be reused holds the keyframe falling out of the window, so evict it.
 	 */
 	if (this->num_keyframes == kSlidingWindowSize) {
-		uint32_t evicted_age = kSlidingWindowSize - 1;
+		const uint32_t evicted_age = kSlidingWindowSize - 1;
 
 		/*
 		 * Marginalization may only ever fold in sealed keyframes, and this is the last moment one is
@@ -2538,7 +2538,7 @@ SensorFusion::pullReadyCameraSamplesLocked(timepoint_ns now_ns, std::vector<cons
 		};
 	};
 
-	timepoint_ns latest_imu_ts_ns = this->device.latest_imu_ts_ns.load();
+	const timepoint_ns latest_imu_ts_ns = this->device.latest_imu_ts_ns.load();
 
 	if (std::none_of(queue.begin(), queue.end(), is_ready(now_ns, latest_imu_ts_ns))) {
 		return false;
@@ -2608,7 +2608,7 @@ SensorFusion::~SensorFusion()
 void
 SensorFusion::addCamera(const CameraDescription &camera_description)
 {
-	std::lock_guard<os::Mutex> lock{this->lock};
+	const std::lock_guard<os::Mutex> lock{this->lock};
 
 	// Copy the camera description in
 	this->cameras[camera_description.mosaic_idx][camera_description.camera_idx] = camera_description;
@@ -2617,7 +2617,7 @@ SensorFusion::addCamera(const CameraDescription &camera_description)
 void
 SensorFusion::setDeviceImuCalibration(const DeviceImuCalibration &calibration)
 {
-	std::lock_guard<os::Mutex> lock{this->lock};
+	const std::lock_guard<os::Mutex> lock{this->lock};
 
 	this->device.stored_imu_calibration = calibration;
 
@@ -2971,10 +2971,10 @@ SensorFusion::preintegrateDeviceLocked(bool &work_remaining)
 {
 	const auto &imu_calibration = this->device.getLatestImuCalibration();
 
-	ImuBias<ImuBiasJet> bias = ImuBias<double>(map_vec3_f64(imu_calibration.accel_bias),  //
-	                                           map_vec3_f64(imu_calibration.gyro_bias),   //
-	                                           map_vec3_f64(imu_calibration.accel_scale)) //
-	                               .seed();
+	const ImuBias<ImuBiasJet> bias = ImuBias<double>(map_vec3_f64(imu_calibration.accel_bias),  //
+	                                                 map_vec3_f64(imu_calibration.gyro_bias),   //
+	                                                 map_vec3_f64(imu_calibration.accel_scale)) //
+	                                     .seed();
 
 	bool interval_closed = false;
 
@@ -2993,7 +2993,7 @@ SensorFusion::preintegrateDeviceLocked(bool &work_remaining)
 		const uint32_t start_age = end_age + 1;
 
 		const auto &end_keyframe = this->keyframeLocked(end_age);
-		Keyframe *start_keyframe = &this->keyframeLocked(start_age);
+		const Keyframe *start_keyframe = &this->keyframeLocked(start_age);
 
 		if (end_keyframe.timestamp_ns == start_keyframe->timestamp_ns) {
 			/*
@@ -3307,7 +3307,7 @@ SensorFusion::tickLocked(bool have_new_input)
 		    map_vec3_f64(keyframe.device.accel_scale),               //
 		    map_quat(snapshot.device.Qcv_model_imu).cast<double>()); //
 
-		bool success = this->device.keyframe_relation_history.pushOrUpdate(entry, true);
+		const bool success = this->device.keyframe_relation_history.pushOrUpdate(entry, true);
 
 		if (!success) {
 			SF_DEBUG(this, "Failed to write keyframe relation at ts %" PRId64, keyframe.timestamp_ns);

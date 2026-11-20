@@ -63,9 +63,9 @@
 static inline double
 reduced_cubic_real_root(double b, double c, double d)
 {
-	double t1 = b * b;
-	double t2 = 3.0 * c;
-	double t3 = -b / 3.0;
+	const double t1 = b * b;
+	const double t2 = 3.0 * c;
+	const double t3 = -b / 3.0;
 	double r0;
 
 	if (t1 <= t2) {
@@ -81,13 +81,13 @@ reduced_cubic_real_root(double b, double c, double d)
 		 *
 		 * If f(cl) > 0, go left from there, else go right from cr.
 		 */
-		double t4 = sqrt(t1 - t2) / 3.0;
-		double cl = t3 - t4;
-		double fx = cl * (cl * (cl + b) + c) + d;
+		const double t4 = sqrt(t1 - t2) / 3.0;
+		const double cl = t3 - t4;
+		const double fx = cl * (cl * (cl + b) + c) + d;
 		if (fx > 0) {
 			r0 = cl - t4 / 4.0;
 		} else {
-			double cr = t3 + t4;
+			const double cr = t3 + t4;
 			r0 = cr + t4 / 4.0;
 		}
 	}
@@ -95,8 +95,8 @@ reduced_cubic_real_root(double b, double c, double d)
 	/* Newton-Raphson - r0 = r0 - f(r0)/f'(r0) */
 	int i = CUBIC_MAX_ITERS;
 	do {
-		double fx = r0 * (r0 * (r0 + b) + c) + d;
-		double dx = fx / (r0 * (3 * r0 + 2 * b) + c);
+		const double fx = r0 * (r0 * (r0 + b) + c) + d;
+		const double dx = fx / (r0 * (3 * r0 + 2 * b) + c);
 
 		/* If we converged, exit or if the delta gets really small, break out too,
 		 * because we're not moving any closer */

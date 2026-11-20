@@ -318,7 +318,7 @@ os_monotonic_get_ns(void)
 {
 #if defined(XRT_OS_LINUX) || defined(XRT_OS_OSX)
 	struct timespec ts;
-	int ret = clock_gettime(CLOCK_MONOTONIC, &ts);
+	const int ret = clock_gettime(CLOCK_MONOTONIC, &ts);
 	if (ret != 0) {
 		return 0;
 	}
@@ -338,7 +338,7 @@ static inline int64_t
 os_realtime_get_ns(void)
 {
 	struct timespec ts;
-	int ret = clock_gettime(CLOCK_REALTIME, &ts);
+	const int ret = clock_gettime(CLOCK_REALTIME, &ts);
 	if (ret != 0) {
 		return 0;
 	}

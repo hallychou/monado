@@ -44,7 +44,7 @@ public:
 	void
 	signalStartupComplete(ipc_server *s)
 	{
-		std::unique_lock<std::mutex> lock{server_mutex};
+		const std::unique_lock<std::mutex> lock{server_mutex};
 		startup_complete = true;
 		server = s;
 		startup_cond.notify_all();
@@ -53,7 +53,7 @@ public:
 	void
 	startServer()
 	{
-		std::unique_lock lock(server_mutex);
+		const std::unique_lock lock(server_mutex);
 		if (!server && !server_thread) {
 			server_thread =
 			    std::make_unique<std::thread>([&]() { ipc_server_main_common(&ismi, &callbacks, this); });
@@ -110,7 +110,7 @@ public:
 
 		{
 			// Wait until IPC server stop
-			std::unique_lock lock(server_mutex);
+			const std::unique_lock lock(server_mutex);
 			ipc_server_handle_shutdown_signal(server);
 			server_thread->join();
 			server_thread.reset(nullptr);
@@ -128,7 +128,8 @@ private:
 	waitForStartupComplete()
 	{
 		std::unique_lock<std::mutex> lock{server_mutex};
-		bool completed = startup_cond.wait_for(lock, START_TIMEOUT_SECONDS, [&]() { return startup_complete; });
+		const bool completed =
+		    startup_cond.wait_for(lock, START_TIMEOUT_SECONDS, [&]() { return startup_complete; });
 
 		if (!server) {
 			U_LOG_E("Failed to create ipc server");
@@ -184,7 +185,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_freedesktop_monado_ipc_MonadoImpl_nativeStartServer(JNIEnv *env, jobject thiz, jobject context)
 {
 	JavaVM *jvm = nullptr;
-	jint result = env->GetJavaVM(&jvm);
+	const jint result = env->GetJavaVM(&jvm);
 
 	assert(result == JNI_OK);
 	if (result != JNI_OK) {
@@ -197,7 +198,7 @@ Java_org_freedesktop_monado_ipc_MonadoImpl_nativeStartServer(JNIEnv *env, jobjec
 	}
 
 	jni::init(env);
-	jni::Object monadoImpl(thiz);
+	const jni::Object monadoImpl(thiz);
 	U_LOG_D("service: Called nativeStartServer");
 
 	android_globals_store_vm_and_context(jvm, context);
@@ -209,10 +210,10 @@ extern "C" JNIEXPORT jint JNICALL
 Java_org_freedesktop_monado_ipc_MonadoImpl_nativeAddClient(JNIEnv *env, jobject thiz, int fd)
 {
 	jni::init(env);
-	jni::Object monadoImpl(thiz);
+	const jni::Object monadoImpl(thiz);
 	U_LOG_D("service: Called nativeAddClient with fd %d", fd);
 
-	int native_fd = dup(fd);
+	const int native_fd = dup(fd);
 	U_LOG_D("service: transfer ownership to native and native_fd %d", native_fd);
 
 	// We try pushing the fd number to the server. If and only if we get a 0 return, has the server taken ownership.
@@ -223,8 +224,8 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_freedesktop_monado_ipc_MonadoImpl_nativeAppSurface(JNIEnv *env, jobject thiz, jobject surface)
 {
 	jni::init(env);
-	Surface surf(surface);
-	jni::Object monadoImpl(thiz);
+	const Surface surf(surface);
+	const jni::Object monadoImpl(thiz);
 
 	ANativeWindow *nativeWindow = ANativeWindow_fromSurface(env, surface);
 	android_globals_store_window((struct _ANativeWindow *)nativeWindow);
@@ -235,7 +236,7 @@ extern "C" JNIEXPORT jint JNICALL
 Java_org_freedesktop_monado_ipc_MonadoImpl_nativeShutdownServer(JNIEnv *env, jobject thiz)
 {
 	jni::init(env);
-	jni::Object monadoImpl(thiz);
+	const jni::Object monadoImpl(thiz);
 
 	return IpcServerHelper::instance().shutdownServer();
 }

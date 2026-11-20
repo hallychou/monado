@@ -353,7 +353,7 @@ DataSerializer::write(const t_camera_calibration &value)
 
 	// @todo remove when clang-format is updated in CI
 	// clang-format off
-	double *intrinsics_as_array = reinterpret_cast<double *>(const_cast<double (*)[3][3]>(&value.intrinsics));
+	const double *intrinsics_as_array = reinterpret_cast<double *>(const_cast<double (*)[3][3]>(&value.intrinsics));
 	// clang-format on
 
 	for (size_t i = 0; i < 9; i++) {
@@ -494,7 +494,7 @@ DataRecorder::DataRecorder(ConstellationTracker *tracker, std::string out_file) 
 void
 DataRecorder::recordSample(const CameraSample &sample)
 {
-	std::lock_guard<std::mutex> guard(this->lock);
+	const std::lock_guard<std::mutex> guard(this->lock);
 
 	this->serializer.write(static_cast<uint8_t>(PACKET_TYPE_CAMERA_SAMPLE));
 	this->serializer.write(sample);
@@ -504,7 +504,7 @@ DataRecorder::recordSample(const CameraSample &sample)
 void
 DataRecorder::recordDeviceInfo(const Device &device)
 {
-	std::lock_guard<std::mutex> guard(this->lock);
+	const std::lock_guard<std::mutex> guard(this->lock);
 
 	this->serializer.write(static_cast<uint8_t>(PACKET_TYPE_DEVICE_INFO));
 	this->serializer.write(static_cast<uint8_t>(device.id));

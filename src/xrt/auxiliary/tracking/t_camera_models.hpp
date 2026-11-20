@@ -89,7 +89,7 @@ pinhole_project(const t_camera_model_params &dist, //
 	out_x = ((CAST(dist.fx) * x / z) + CAST(dist.cx));
 	out_y = ((CAST(dist.fy) * y / z) + CAST(dist.cy));
 
-	bool is_valid = z >= kSqrtEpsilon;
+	const bool is_valid = z >= kSqrtEpsilon;
 	return is_valid;
 }
 
@@ -290,9 +290,9 @@ rt8_project(const t_camera_model_params &dist, //
 
 	const float rpmax = dist.rt8.metric_radius;
 
-	bool positive_z = z >= kSqrtEpsilon; // Sophus::Constants<Scalar>::epsilonSqrt();
-	bool in_injective_area = rpmax == 0.0 ? true : rp2 <= rpmax * rpmax;
-	bool is_valid = positive_z && in_injective_area;
+	const bool positive_z = z >= kSqrtEpsilon; // Sophus::Constants<Scalar>::epsilonSqrt();
+	const bool in_injective_area = rpmax == 0.0 ? true : rp2 <= rpmax * rpmax;
+	const bool is_valid = positive_z && in_injective_area;
 
 	return is_valid;
 }
@@ -371,7 +371,7 @@ rt8_undistort(const t_camera_model_params &params, const T &u, const T &v, T &ou
 	//! the max rpp2 value computed in the optimization of `computeRpmax()`.
 
 	// Newton solver
-	Vector2<T> dist = {x0, y0};
+	const Vector2<T> dist = {x0, y0};
 	Vector2<T> undist = dist;
 
 	const int N = 5; // Max iterations
@@ -380,7 +380,7 @@ rt8_undistort(const t_camera_model_params &params, const T &u, const T &v, T &ou
 		Vector2<T> fundist;
 
 		rt8_distort(params, undist, fundist, J);
-		Vector2<T> residual = fundist.sub(dist);
+		const Vector2<T> residual = fundist.sub(dist);
 
 		// fundist - dist;
 		Matrix2x2<T> J_inverse;
@@ -414,9 +414,9 @@ rt8_unproject(const t_camera_model_params &params, const T &u, const T &v, T &ou
 	out_z = norm_inv;
 
 	const T rp2 = xp * xp + yp * yp;
-	bool in_injective_area =
+	const bool in_injective_area =
 	    params.rt8.metric_radius == 0.0f ? true : rp2 <= CAST(params.rt8.metric_radius * params.rt8.metric_radius);
-	bool is_valid = in_injective_area;
+	const bool is_valid = in_injective_area;
 
 	return is_valid;
 }

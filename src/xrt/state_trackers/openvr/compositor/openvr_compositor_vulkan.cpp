@@ -122,7 +122,7 @@ resolveSwapchainSampleFormat(VkFormat format, vr::EColorSpace color_space)
 {
 	color_space = resolveColorSpace(format, color_space);
 
-	VkFormat srgb_to_unorm = vk_format_convert_srgb_to_unorm(format);
+	const VkFormat srgb_to_unorm = vk_format_convert_srgb_to_unorm(format);
 
 	if (srgb_to_unorm != VK_FORMAT_UNDEFINED) {
 		// If the format is an sRGB format, we need to return the sRGB version of it for sampling, since the
@@ -145,7 +145,7 @@ resolveSwapchainStorageFormat(VkFormat source_format, VkFormat sample_format)
 		return sample_format;
 	}
 
-	VkFormat srgb_storage_format = vk_format_convert_srgb_to_unorm(sample_format);
+	const VkFormat srgb_storage_format = vk_format_convert_srgb_to_unorm(sample_format);
 	if (srgb_storage_format != VK_FORMAT_UNDEFINED) {
 		// If the sample format is sRGB, we need to return the UNORM version of it for storage, since we'll be
 		// doing a manual sRGB->linear conversion in the shader.
@@ -161,7 +161,7 @@ determineBlitResolveColorMode(VkFormat format, vr::EColorSpace color_space)
 {
 	color_space = resolveColorSpace(format, color_space);
 
-	VkFormat srgb_to_unorm = vk_format_convert_srgb_to_unorm(format);
+	const VkFormat srgb_to_unorm = vk_format_convert_srgb_to_unorm(format);
 
 	if (srgb_to_unorm != VK_FORMAT_UNDEFINED) {
 		// If the format is an sRGB format, we need to check if the runtime expects gamma bytes in a linear
@@ -194,8 +194,8 @@ calculateDispatchDimensions(const VkExtent2D extent, uint32_t *out_w, uint32_t *
 {
 	// Power of two divide and round up.
 #define P2_DIVIDE_ROUND_UP(v, div) ((v + (div - 1)) / div)
-	uint32_t w = P2_DIVIDE_ROUND_UP(extent.width, 8);
-	uint32_t h = P2_DIVIDE_ROUND_UP(extent.height, 8);
+	const uint32_t w = P2_DIVIDE_ROUND_UP(extent.width, 8);
+	const uint32_t h = P2_DIVIDE_ROUND_UP(extent.height, 8);
 #undef P2_DIVIDE_ROUND_UP
 
 	*out_w = w;
@@ -221,7 +221,7 @@ Compositor::setupBlitPipelines(openvr_logger &logger)
 
 	render_shaders_load(&this->shaders, this->vk);
 
-	struct vk_descriptor_pool_info blit_pool_info = {
+	const struct vk_descriptor_pool_info blit_pool_info = {
 	    .uniform_per_descriptor_count = 0,
 	    .sampler_per_descriptor_count = 1,
 	    .storage_image_per_descriptor_count = 1,
@@ -264,7 +264,7 @@ Compositor::setupBlitPipelines(openvr_logger &logger)
 	    },
 	};
 
-	VkDescriptorSetLayoutCreateInfo set_layout_info = {
+	const VkDescriptorSetLayoutCreateInfo set_layout_info = {
 	    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -284,12 +284,12 @@ Compositor::setupBlitPipelines(openvr_logger &logger)
 	VK_NAME_DESCRIPTOR_SET_LAYOUT(vk, this->blit.descriptor_set_layout,
 	                              "openvr_compositor_vulkan blit descriptor set layout");
 
-	VkPushConstantRange push_constant_range = {
+	const VkPushConstantRange push_constant_range = {
 	    .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
 	    .offset = 0,
 	    .size = sizeof(render_compute_blit_push_data),
 	};
-	VkPipelineLayoutCreateInfo pipeline_layout_info = {
+	const VkPipelineLayoutCreateInfo pipeline_layout_info = {
 	    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -345,8 +345,8 @@ Compositor::setupBlitPipelines(openvr_logger &logger)
 		return xret;
 	}
 
-	for (render_compute_blit_resolve_color_mode color_mode : kColorModes) {
-		uint32_t pipeline_id = getBlitPipelineId(color_mode);
+	for (const render_compute_blit_resolve_color_mode color_mode : kColorModes) {
+		const uint32_t pipeline_id = getBlitPipelineId(color_mode);
 		assert(pipeline_id < std::size(this->blit.pipelines));
 
 		const render_blit_ms_spec key = render_make_blit_ms_spec(color_mode);
@@ -388,7 +388,7 @@ Compositor::setupVulkanCompositor(openvr_logger &logger, vr::VRVulkanTextureData
 	VkInstance vkInstance = vulkan_data.m_pInstance;
 	VkPhysicalDevice vkPhysicalDevice = vulkan_data.m_pPhysicalDevice;
 	VkDevice vkDevice = vulkan_data.m_pDevice;
-	uint32_t queueFamilyIndex = vulkan_data.m_nQueueFamilyIndex;
+	const uint32_t queueFamilyIndex = vulkan_data.m_nQueueFamilyIndex;
 
 	auto vulkanGetInstanceProcAddr = vkGetInstanceProcAddr;
 
@@ -402,7 +402,7 @@ Compositor::setupVulkanCompositor(openvr_logger &logger, vr::VRVulkanTextureData
 	std::vector<VkQueueFamilyProperties> properties(queueFamilyCount);
 	loaded_GetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, &queueFamilyCount, properties.data());
 
-	uint32_t queueCount = properties[queueFamilyIndex].queueCount;
+	const uint32_t queueCount = properties[queueFamilyIndex].queueCount;
 	uint32_t queueIndex = 0;
 	for (; queueIndex < queueCount; queueIndex++) {
 		VkQueue queue;
@@ -434,7 +434,7 @@ Compositor::setupVulkanCompositor(openvr_logger &logger, vr::VRVulkanTextureData
 		return XRT_ERROR_VULKAN;
 	}
 
-	xrt_begin_session_info bsi = {
+	const xrt_begin_session_info bsi = {
 	    .view_type = XRT_VIEW_TYPE_STEREO,
 	    .ext_hand_tracking_enabled = false,
 	    .ext_hand_tracking_data_source_enabled = false,
@@ -449,7 +449,7 @@ Compositor::setupVulkanCompositor(openvr_logger &logger, vr::VRVulkanTextureData
 	    .meta_body_tracking_fidelity_enabled = false,
 	    .android_face_tracking_enabled = false,
 	};
-	xrt_result_t xret = xrt_comp_begin_session(this->xc_vk, &bsi);
+	const xrt_result_t xret = xrt_comp_begin_session(this->xc_vk, &bsi);
 
 	if (xret != XRT_SUCCESS) {
 		OPENVR_LOG_ERROR_XRET(logger, "Failed to begin Vulkan compositor session", xret);
@@ -529,7 +529,7 @@ Compositor::transferAppImageToSwapchainImage(openvr_logger &logger,
                                              vr::EColorSpace color_space,
                                              const xrt_rect &rect)
 {
-	client_vk_swapchain *sc = (client_vk_swapchain *)xsc;
+	const client_vk_swapchain *sc = (client_vk_swapchain *)xsc;
 
 	VkResult vk_result;
 	const VkFormat src_format = static_cast<VkFormat>(texture_data.m_nFormat);
@@ -581,7 +581,7 @@ Compositor::transferAppImageToSwapchainImage(openvr_logger &logger,
 	}
 	VK_NAME_COMMAND_BUFFER(vk, cmd, "BlitAppImageToSwapchainImage command buffer");
 
-	vk_cmd_image_transfer_info transfer_info = {
+	const vk_cmd_image_transfer_info transfer_info = {
 	    .src =
 	        {
 	            .params =
@@ -627,7 +627,7 @@ Compositor::transferAppImageToSwapchainImage(openvr_logger &logger,
 	} else {
 		// We need to do a custom image resolve through a compute shader
 
-		VkImageSubresourceRange first_color_level_subresource_range = {
+		const VkImageSubresourceRange first_color_level_subresource_range = {
 		    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 		    .baseMipLevel = 0,
 		    .levelCount = 1,
@@ -682,13 +682,13 @@ Compositor::transferAppImageToSwapchainImage(openvr_logger &logger,
 		    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,          // dstStageMask
 		    first_color_level_subresource_range);          // subresourceRange
 
-		VkDescriptorImageInfo src_image_info = {
+		const VkDescriptorImageInfo src_image_info = {
 		    .sampler = this->blit.sampler,
 		    .imageView = src_view,
 		    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		};
 
-		VkDescriptorImageInfo target_image_info = {
+		const VkDescriptorImageInfo target_image_info = {
 		    .sampler = VK_NULL_HANDLE,
 		    .imageView = target_view,
 		    .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
@@ -724,7 +724,7 @@ Compositor::transferAppImageToSwapchainImage(openvr_logger &logger,
 		vk->vkUpdateDescriptorSets(vk->device, ARRAY_SIZE(write_descriptor_sets), write_descriptor_sets, 0,
 		                           NULL);
 
-		uint32_t pipeline_id = getBlitPipelineId(*resolve_color_mode);
+		const uint32_t pipeline_id = getBlitPipelineId(*resolve_color_mode);
 		assert(pipeline_id < std::size(this->blit.pipelines));
 
 		VkPipeline pipeline = this->blit.pipelines[pipeline_id];
@@ -735,7 +735,7 @@ Compositor::transferAppImageToSwapchainImage(openvr_logger &logger,
 		vk->vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, this->blit.pipeline_layout, 0, 1,
 		                            &this->blit.descriptor_set, 0, NULL);
 
-		struct xrt_normalized_rect from_rect = {
+		const struct xrt_normalized_rect from_rect = {
 		    .x = rect.offset.w / (float)texture_data.m_nWidth,
 		    .y = rect.offset.h / (float)texture_data.m_nHeight,
 		    .w = rect.extent.w / (float)texture_data.m_nWidth,
@@ -754,7 +754,7 @@ Compositor::transferAppImageToSwapchainImage(openvr_logger &logger,
 		vk->vkCmdPushConstants(cmd, this->blit.pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
 		                       sizeof(constants), &constants);
 
-		VkExtent2D target_extent = {
+		const VkExtent2D target_extent = {
 		    .width = (uint32_t)rect.extent.w,
 		    .height = (uint32_t)rect.extent.h,
 		};
@@ -822,7 +822,7 @@ Compositor::submitVulkan(openvr_logger &logger,
 	                 texture_data.m_nHeight, bounds.uMin, bounds.vMin, bounds.uMax, bounds.vMax);
 
 	if (this->active_compositor == nullptr) {
-		xrt_result_t xret = this->setupVulkanCompositor(logger, texture_data);
+		const xrt_result_t xret = this->setupVulkanCompositor(logger, texture_data);
 
 		if (xret != XRT_SUCCESS) {
 			OPENVR_LOG_ERROR(logger, "Failed to setup Vulkan compositor for submission");
@@ -841,7 +841,7 @@ Compositor::submitVulkan(openvr_logger &logger,
 	const VkFormat swapchain_sample_format =
 	    resolveSwapchainSampleFormat(static_cast<VkFormat>(texture_data.m_nFormat), resolved_color_space);
 
-	xrt_rect source_rect = {
+	const xrt_rect source_rect = {
 	    .offset =
 	        {
 	            .w = (int)(bounds.uMin * texture_data.m_nWidth),
@@ -927,7 +927,7 @@ Compositor::submitVulkan(openvr_logger &logger,
 		return xretToCompositorError(xret);
 	}
 
-	xrt_rect full_swapchain_rect = {
+	const xrt_rect full_swapchain_rect = {
 	    .offset = {0, 0},
 	    .extent = source_rect.extent,
 	};
@@ -1013,7 +1013,7 @@ Compositor::getVulkanOutputDevice(openvr_logger &logger, uint64_t *out_device, V
 	char suggested_uuid_str[UUID_STR_SIZE] = {0};
 	snprint_uuid(suggested_uuid_str, ARRAY_SIZE(suggested_uuid_str), &this->xsysc->info.client_vk_deviceUUID);
 
-	u_logging_level log_level = debug_get_log_option_compositor_log();
+	const u_logging_level log_level = debug_get_log_option_compositor_log();
 	int gpu_index = -1;
 	for (uint32_t i = 0; i < count; i++) {
 		VkPhysicalDeviceIDProperties pdidp = {

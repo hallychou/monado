@@ -89,7 +89,7 @@ m_lowpass_integer_destroy(struct m_lowpass_integer **ptr_to_mli)
 		if (ptr_to_mli == nullptr) {
 			return;
 		}
-		struct m_lowpass_integer *mli = *ptr_to_mli;
+		const struct m_lowpass_integer *mli = *ptr_to_mli;
 		if (mli == nullptr) {
 			return;
 		}

@@ -64,7 +64,7 @@ openvrLog(openvr_logger &logger, u_logging_level log_level, const char *fmt, ...
 #define OPENVR_LOG_ERROR_XRET(logger, fmt, xret, ...)                                                                  \
 	do {                                                                                                           \
 		u_pp_sink_stack_only sink;                                                                             \
-		u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);                                                 \
+		const u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);                                           \
 		u_pp_xrt_result(dg, xret);                                                                             \
 		OPENVR_LOG_ERROR(logger, fmt " (xrt_result: %s)" __VA_OPT__(, ) __VA_ARGS__, sink.buffer);             \
 	} while (false)

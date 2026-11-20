@@ -88,10 +88,10 @@ imu_fusion_incorporate_accelerometer(struct imu_fusion *fusion,
 		assert(accel);
 		assert(accel_variance);
 		assert(timestamp_ns != 0);
-		Eigen::Vector3d accelVec = map_vec3(*accel).cast<double>();
+		const Eigen::Vector3d accelVec = map_vec3(*accel).cast<double>();
 		fusion->simple_fusion.handleAccel(accelVec, timestamp_ns);
 		if (out_world_accel != NULL) {
-			Eigen::Vector3d worldAccel = fusion->simple_fusion.getCorrectedWorldAccel(accelVec);
+			const Eigen::Vector3d worldAccel = fusion->simple_fusion.getCorrectedWorldAccel(accelVec);
 			map_vec3(*out_world_accel) = worldAccel.cast<float>();
 		}
 		return 0;
@@ -123,7 +123,7 @@ imu_fusion_get_prediction(struct imu_fusion const *fusion,
 			map_quat(*out_quat) = fusion->simple_fusion.getQuat().cast<float>();
 			return 0;
 		}
-		Eigen::Quaterniond predicted_quat = fusion->simple_fusion.getPredictedQuat(timestamp_ns);
+		const Eigen::Quaterniond predicted_quat = fusion->simple_fusion.getPredictedQuat(timestamp_ns);
 		map_quat(*out_quat) = predicted_quat.cast<float>();
 		return 0;
 
@@ -150,7 +150,7 @@ imu_fusion_get_prediction_rotation_vec(struct imu_fusion const *fusion,
 			// No need to predict here.
 			map_vec3(*out_rotation_vec) = fusion->simple_fusion.getRotationVec().cast<float>();
 		} else {
-			Eigen::Quaterniond predicted_quat = fusion->simple_fusion.getPredictedQuat(timestamp_ns);
+			const Eigen::Quaterniond predicted_quat = fusion->simple_fusion.getPredictedQuat(timestamp_ns);
 			map_vec3(*out_rotation_vec) = flexkalman::util::quat_ln(predicted_quat).cast<float>();
 		}
 		return 0;
@@ -177,13 +177,13 @@ imu_fusion_incorporate_gyros_and_accelerometer(struct imu_fusion *fusion,
 		assert(accel_variance);
 		assert(timestamp_ns != 0);
 
-		Eigen::Vector3d accelVec = map_vec3(*accel).cast<double>();
-		Eigen::Vector3d angVelVec = map_vec3(*ang_vel).cast<double>();
+		const Eigen::Vector3d accelVec = map_vec3(*accel).cast<double>();
+		const Eigen::Vector3d angVelVec = map_vec3(*ang_vel).cast<double>();
 		fusion->simple_fusion.handleAccel(accelVec, timestamp_ns);
 		fusion->simple_fusion.handleGyro(angVelVec, timestamp_ns);
 		fusion->simple_fusion.postCorrect();
 		if (out_world_accel != NULL) {
-			Eigen::Vector3d worldAccel = fusion->simple_fusion.getCorrectedWorldAccel(accelVec);
+			const Eigen::Vector3d worldAccel = fusion->simple_fusion.getCorrectedWorldAccel(accelVec);
 			map_vec3(*out_world_accel) = worldAccel.cast<float>();
 		}
 		return 0;

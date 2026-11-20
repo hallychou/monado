@@ -2200,7 +2200,7 @@ xrt_comp_native_create_swapchain(struct xrt_compositor_native *xcn,
 {
 	struct xrt_swapchain *xsc = NULL; // Has to be NULL.
 
-	xrt_result_t ret = xrt_comp_create_swapchain(&xcn->base, info, &xsc);
+	const xrt_result_t ret = xrt_comp_create_swapchain(&xcn->base, info, &xsc);
 	if (ret == XRT_SUCCESS) {
 		// Need to unref any swapchain already there first.
 		xrt_swapchain_native_reference(out_xscn, NULL);

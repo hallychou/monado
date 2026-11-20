@@ -294,7 +294,7 @@ struct vk_buffer
  */
 #define VK_CHK_ONLY_PRINT(RET, FUNC_STR)                                                                               \
 	do {                                                                                                           \
-		VkResult _ret = RET;                                                                                   \
+		const VkResult _ret = RET;                                                                             \
 		if (_ret != VK_SUCCESS) {                                                                              \
 			vk_print_result(vk, __FILE__, __LINE__, __func__, _ret, FUNC_STR);                             \
 		}                                                                                                      \
@@ -318,7 +318,7 @@ struct vk_buffer
  */
 #define VK_CHK_AND_RET(RET, FUNC_STR)                                                                                  \
 	do {                                                                                                           \
-		VkResult _ret = RET;                                                                                   \
+		const VkResult _ret = RET;                                                                             \
 		if (_ret != VK_SUCCESS) {                                                                              \
 			vk_print_result(vk, __FILE__, __LINE__, __func__, _ret, FUNC_STR);                             \
 			return _ret;                                                                                   \
@@ -344,7 +344,7 @@ struct vk_buffer
  */
 #define VK_CHK_WITH_RET(RET, FUNC_STR, TO_RET)                                                                         \
 	do {                                                                                                           \
-		VkResult _ret = RET;                                                                                   \
+		const VkResult _ret = RET;                                                                             \
 		if (_ret != VK_SUCCESS) {                                                                              \
 			vk_print_result(vk, __FILE__, __LINE__, __func__, _ret, FUNC_STR);                             \
 			return TO_RET;                                                                                 \
@@ -371,7 +371,7 @@ struct vk_buffer
  */
 #define VK_CHK_WITH_GOTO(RET, FUNC_STR, GOTO)                                                                          \
 	do {                                                                                                           \
-		VkResult _ret = RET;                                                                                   \
+		const VkResult _ret = RET;                                                                             \
 		if (_ret != VK_SUCCESS) {                                                                              \
 			vk_print_result(vk, __FILE__, __LINE__, __func__, _ret, FUNC_STR);                             \
 			goto GOTO;                                                                                     \

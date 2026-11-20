@@ -24,9 +24,9 @@ static xrt_colour_rgba_u8
 device_id_to_color(t_constellation_device_id_t device_id)
 {
 	// Simple deterministic hash for device ID, ensuring device ID is non-zero
-	uint8_t r = (((device_id + 1) * 37) % 127) + 128;
-	uint8_t g = (((device_id + 1) * 57) % 127) + 128;
-	uint8_t b = (((device_id + 1) * 97) % 127) + 128;
+	const uint8_t r = (((device_id + 1) * 37) % 127) + 128;
+	const uint8_t g = (((device_id + 1) * 57) % 127) + 128;
+	const uint8_t b = (((device_id + 1) * 97) % 127) + 128;
 
 	return {r, g, b, 255};
 }
@@ -68,7 +68,7 @@ scribble_led_model(xrt_frame *frame,
 	}
 
 	for (int i = 0; i < visible_info.num_visible_leds; i++) {
-		pose_metrics_visible_led_info *led_info = visible_info.visible_leds + i;
+		const pose_metrics_visible_led_info *led_info = visible_info.visible_leds + i;
 		const bool matched = led_info->matched_blob != NULL;
 
 		const xrt_colour_rgba_u8 matched_colour = colour;
@@ -85,7 +85,7 @@ scribble_led_model(xrt_frame *frame,
 		u_frame_scribble_cross(frame, led_info->pos_px_undistorted.x, led_info->pos_px_undistorted.y, 5,
 		                       &led_colour);
 
-		std::string led_name = std::to_string(led_info->led->id);
+		const std::string led_name = std::to_string(led_info->led->id);
 		// Scribble the LED name
 		u_frame_scribble_text(frame, led_info->pos_px_undistorted.x + 5, led_info->pos_px_undistorted.y + 5,
 		                      led_name.c_str(), 16, &led_colour);
@@ -157,7 +157,7 @@ Camera::debugScribbleSample(CameraSample &sample, bool fast)
 {
 	ConstellationTracker &tracker = *this->tracker;
 
-	std::shared_ptr<CameraMosaic> mosaic = this->mosaic.lock();
+	const std::shared_ptr<CameraMosaic> mosaic = this->mosaic.lock();
 	U_ASSERT_WEAK_PTR_RET(mosaic,
 	                      "Camera mosaic was destroyed while preparing debug scribbles, this should never "
 	                      "happen since the mosaic owns the camera");
@@ -174,7 +174,7 @@ Camera::debugScribbleSample(CameraSample &sample, bool fast)
 	memset(frame->data, 0, frame->size);
 
 	{
-		std::shared_lock lock(tracker.device_lock);
+		const std::shared_lock lock(tracker.device_lock);
 
 		// Iterate over the devices
 		for (auto &device : tracker.devices) {

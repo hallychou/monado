@@ -29,7 +29,7 @@ using std::deque;
 	bool u_deque_##TYPE##_pop_front(u_deque_##TYPE ud, TYPE *e)                                                    \
 	{                                                                                                              \
 		deque<TYPE> *d = static_cast<deque<TYPE> *>(ud.ptr);                                                   \
-		bool pop = !d->empty();                                                                                \
+		const bool pop = !d->empty();                                                                          \
 		if (pop) {                                                                                             \
 			*e = d->front();                                                                               \
 			d->erase(d->begin());                                                                          \
@@ -45,13 +45,13 @@ using std::deque;
                                                                                                                        \
 	size_t u_deque_##TYPE##_size(u_deque_##TYPE ud)                                                                \
 	{                                                                                                              \
-		deque<TYPE> *d = static_cast<deque<TYPE> *>(ud.ptr);                                                   \
+		const deque<TYPE> *d = static_cast<deque<TYPE> *>(ud.ptr);                                             \
 		return d->size();                                                                                      \
 	}                                                                                                              \
                                                                                                                        \
 	void u_deque_##TYPE##_destroy(u_deque_##TYPE *ud)                                                              \
 	{                                                                                                              \
-		deque<TYPE> *d = static_cast<deque<TYPE> *>(ud->ptr);                                                  \
+		const deque<TYPE> *d = static_cast<deque<TYPE> *>(ud->ptr);                                            \
 		delete d;                                                                                              \
 		ud->ptr = nullptr;                                                                                     \
 	}

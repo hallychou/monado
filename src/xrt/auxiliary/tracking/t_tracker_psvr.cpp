@@ -146,7 +146,7 @@ struct View
 	void
 	populate_from_calib(t_camera_calibration &calib, const RemapPair &rectification)
 	{
-		CameraCalibrationWrapper wrap(calib);
+		const CameraCalibrationWrapper wrap(calib);
 		intrinsics = wrap.intrinsics_mat;
 		distortion = wrap.distortion_mat.clone();
 		distortion_model = wrap.distortion_model;
@@ -443,20 +443,20 @@ verts_to_measurement(std::vector<blob_point_t> *meas_data, std::vector<match_dat
 		return;
 	}
 
-	blob_point_t ref_a = meas_data->at(0);
-	blob_point_t ref_b = meas_data->at(1);
-	cv::Point3f ref_vec = ref_b.p - ref_a.p;
-	float ref_len = dist_3d_cv(ref_a.p, ref_b.p);
+	const blob_point_t ref_a = meas_data->at(0);
+	const blob_point_t ref_b = meas_data->at(1);
+	const cv::Point3f ref_vec = ref_b.p - ref_a.p;
+	const float ref_len = dist_3d_cv(ref_a.p, ref_b.p);
 
 	for (uint32_t i = 0; i < meas_data->size(); i++) {
-		blob_point_t vp = meas_data->at(i);
-		cv::Point3f point_vec = vp.p - ref_a.p;
+		const blob_point_t vp = meas_data->at(i);
+		const cv::Point3f point_vec = vp.p - ref_a.p;
 		match_data_t md;
 		md.vertex_index = -1;
 		md.position = Eigen::Vector4f(vp.p.x, vp.p.y, vp.p.z, 1.0f);
-		Eigen::Vector3f ref_vec3(ref_vec.x, ref_vec.y, ref_vec.z);
-		Eigen::Vector3f point_vec3(point_vec.x, point_vec.y, point_vec.z);
-		Eigen::Vector3f vp_pos3(vp.p.x, vp.p.y, vp.p.z);
+		const Eigen::Vector3f ref_vec3(ref_vec.x, ref_vec.y, ref_vec.z);
+		const Eigen::Vector3f point_vec3(point_vec.x, point_vec.y, point_vec.z);
+		const Eigen::Vector3f vp_pos3(vp.p.x, vp.p.y, vp.p.z);
 
 		if (i != 0) {
 			Eigen::Vector3f plane_norm = ref_vec3.cross(point_vec3).normalized();
@@ -491,11 +491,11 @@ last_diff(TrackerPSVR &t, std::vector<match_data_t> *meas_pose, std::vector<matc
 
 	float diff = 0.0f;
 	for (uint32_t i = 0; i < meas_pose->size(); i++) {
-		uint32_t meas_index = meas_pose->at(i).vertex_index;
+		const uint32_t meas_index = meas_pose->at(i).vertex_index;
 		for (uint32_t j = 0; j < last_pose->size(); j++) {
-			uint32_t last_index = last_pose->at(j).vertex_index;
+			const uint32_t last_index = last_pose->at(j).vertex_index;
 			if (last_index == meas_index) {
-				float d = fabs(
+				const float d = fabs(
 				    dist_3d(meas_pose->at(meas_index).position, last_pose->at(last_index).position));
 				diff += d;
 			}
@@ -519,7 +519,7 @@ remove_outliers(std::vector<blob_point_t> *orig_points, std::vector<blob_point_t
 	// 'behind' the camera - often reflections or lights in the room etc.
 
 	for (uint32_t i = 0; i < orig_points->size(); i++) {
-		cv::Point3f p = orig_points->at(i).p;
+		const cv::Point3f p = orig_points->at(i).p;
 		if (p.z < 0) {
 			temp_points.push_back(orig_points->at(i));
 		}
@@ -543,18 +543,18 @@ remove_outliers(std::vector<blob_point_t> *orig_points, std::vector<blob_point_t
 	}
 
 	std::nth_element(x_values.begin(), x_values.begin() + x_values.size() / 2, x_values.end());
-	float median_x = x_values[x_values.size() / 2];
+	const float median_x = x_values[x_values.size() / 2];
 	std::nth_element(y_values.begin(), y_values.begin() + y_values.size() / 2, y_values.end());
-	float median_y = y_values[y_values.size() / 2];
+	const float median_y = y_values[y_values.size() / 2];
 	std::nth_element(z_values.begin(), z_values.begin() + z_values.size() / 2, z_values.end());
-	float median_z = z_values[z_values.size() / 2];
+	const float median_z = z_values[z_values.size() / 2];
 
 	for (uint32_t i = 0; i < temp_points.size(); i++) {
-		float error_x = temp_points[i].p.x - median_x;
-		float error_y = temp_points[i].p.y - median_y;
-		float error_z = temp_points[i].p.z - median_z;
+		const float error_x = temp_points[i].p.x - median_x;
+		const float error_y = temp_points[i].p.y - median_y;
+		const float error_z = temp_points[i].p.z - median_z;
 
-		float rms_error = sqrt((error_x * error_x) + (error_y * error_y) + (error_z * error_z));
+		const float rms_error = sqrt((error_x * error_x) + (error_y * error_y) + (error_z * error_z));
 
 		// U_LOG_D("%f %f %f  %f %f %f", temp_points[i].p.x,
 		//       temp_points[i].p.y, temp_points[i].p.z, error_x,
@@ -584,7 +584,7 @@ merge_close_points(std::vector<blob_point_t> *orig_points, std::vector<blob_poin
 	for (uint32_t i = 0; i < orig_points->size(); i++) {
 		for (uint32_t j = 0; j < orig_points->size(); j++) {
 			if (i != j) {
-				float d = dist_3d_cv(orig_points->at(i).p, orig_points->at(j).p);
+				const float d = dist_3d_cv(orig_points->at(i).p, orig_points->at(j).p);
 				if (d < merge_thresh) {
 					struct close_pair p;
 					p.index_a = i;
@@ -682,8 +682,8 @@ solve_for_measurement(TrackerPSVR *t, std::vector<match_data_t> *measurement, st
 	int most_distant_index = 0;
 
 	for (uint32_t i = 0; i < measurement->size(); i++) {
-		int model_tag_index = measurement->at(i).vertex_index;
-		Eigen::Vector4f model_vert = t->model_vertices[model_tag_index].position;
+		const int model_tag_index = measurement->at(i).vertex_index;
+		const Eigen::Vector4f model_vert = t->model_vertices[model_tag_index].position;
 		if (most_distant_index > 1 && dist_3d(model_vert, model_ref_a) > highest_length) {
 			best_model_index = most_distant_index;
 		}
@@ -715,8 +715,8 @@ solve_for_measurement(TrackerPSVR *t, std::vector<match_data_t> *measurement, st
 	most_distant_index = 0;
 
 	for (uint32_t i = 0; i < measurement->size(); i++) {
-		int model_tag_index = measurement->at(i).vertex_index;
-		Eigen::Vector4f model_vert = t->model_vertices[model_tag_index].position;
+		const int model_tag_index = measurement->at(i).vertex_index;
+		const Eigen::Vector4f model_vert = t->model_vertices[model_tag_index].position;
 		if (most_distant_index < (int)measurement->size() - 2 &&
 		    dist_3d(model_vert, model_ref_a) > highest_length) {
 			best_model_index = most_distant_index;
@@ -737,13 +737,13 @@ solve_for_measurement(TrackerPSVR *t, std::vector<match_data_t> *measurement, st
 	// rotation determined from the first 2 + most distant , and last 2 +
 	// most distant verts
 
-	Eigen::Matrix3f r = model_center_transform_f.block(0, 0, 3, 3);
-	Eigen::Quaternionf f_rot_part = Eigen::Quaternionf(r);
-	Eigen::Vector4f f_trans_part = model_center_transform_f.col(3);
+	const Eigen::Matrix3f f = model_center_transform_f.block(0, 0, 3, 3);
+	const Eigen::Quaternionf f_rot_part = Eigen::Quaternionf(f);
+	const Eigen::Vector4f f_trans_part = model_center_transform_f.col(3);
 
-	r = model_center_transform_r.block(0, 0, 3, 3);
-	Eigen::Quaternionf r_rot_part = Eigen::Quaternionf(r);
-	Eigen::Vector4f r_trans_part = model_center_transform_r.col(3);
+	const Eigen::Matrix3f r = model_center_transform_r.block(0, 0, 3, 3);
+	const Eigen::Quaternionf r_rot_part = Eigen::Quaternionf(r);
+	const Eigen::Vector4f r_trans_part = model_center_transform_r.col(3);
 
 	Eigen::Matrix4f pose = Eigen::Matrix4f().Identity();
 	pose.block(0, 0, 3, 3) = f_rot_part.slerp(0.5, r_rot_part).toRotationMatrix();
@@ -812,7 +812,7 @@ solve_with_imu(TrackerPSVR &t,
 		}
 	}
 
-	double cost = HungAlgo.Solve(costMatrix, assignment);
+	const double cost = HungAlgo.Solve(costMatrix, assignment);
 	(void)cost;
 
 	for (uint32_t i = 0; i < measurements->size(); i++) {
@@ -821,11 +821,6 @@ solve_with_imu(TrackerPSVR &t,
 
 	std::vector<proximity_data_t> proximity_data;
 	for (uint32_t i = 0; i < measurements->size(); i++) {
-		float lowest_distance = 65535.0;
-		int closest_index = 0;
-		(void)lowest_distance;
-		(void)closest_index;
-
 		proximity_data_t p;
 		const match_data_t &measurement = measurements->at(i);
 
@@ -845,12 +840,12 @@ solve_with_imu(TrackerPSVR &t,
 		std::vector<match_model_t> temp_measurement_list;
 		for (uint32_t i = 0; i < proximity_data.size(); i++) {
 			const proximity_data_t &p = proximity_data[i];
-			Eigen::Vector4f model_vertex = t.model_vertices[p.vertex_index].position;
-			Eigen::Vector4f measurement_vertex = p.position;
-			Eigen::Vector4f measurement_offset = t.corrected_imu_rotation * model_vertex;
-			Eigen::Affine3f translation(
+			const Eigen::Vector4f model_vertex = t.model_vertices[p.vertex_index].position;
+			const Eigen::Vector4f measurement_vertex = p.position;
+			const Eigen::Vector4f measurement_offset = t.corrected_imu_rotation * model_vertex;
+			const Eigen::Affine3f translation(
 			    Eigen::Translation3f((measurement_vertex - measurement_offset).head<3>()));
-			Eigen::Matrix4f model_to_measurement = translation.matrix() * t.corrected_imu_rotation;
+			const Eigen::Matrix4f model_to_measurement = translation.matrix() * t.corrected_imu_rotation;
 			match_model_t temp_measurement;
 			for (uint32_t j = 0; j < PSVR_NUM_LEDS; j++) {
 				match_data_t md;
@@ -925,7 +920,7 @@ disambiguate(TrackerPSVR &t,
 			measured_points->at(i).vertex_index = m.measurements.at(i).vertex_index;
 		}
 		Eigen::Matrix4f res = solve_for_measurement(&t, measured_points, solved);
-		float diff = last_diff(t, solved, &t.last_vertices);
+		const float diff = last_diff(t, solved, &t.last_vertices);
 		if (diff < PSVR_HOLD_THRESH) {
 			// U_LOG_D("diff from last: %f", diff);
 
@@ -933,13 +928,9 @@ disambiguate(TrackerPSVR &t,
 		}
 	}
 
-
-
 	for (uint32_t i = 0; i < t.matches.size(); i++) {
 		match_model_t m = t.matches[i];
 		float error_sum = 0.0f;
-		float sign_diff = 0.0f;
-		(void)sign_diff;
 
 		// we have 2 measurements per vertex (distance and
 		// angle) and we are comparing only the 'non-basis
@@ -951,8 +942,6 @@ disambiguate(TrackerPSVR &t,
 		for (uint32_t j = 0; j < measured_points->size(); j++) {
 			measured_points->at(j).vertex_index = m.measurements.at(j).vertex_index;
 		}
-
-		bool ignore = false;
 
 		// use the information we gathered on blob shapes to
 		// reject matches that would not fit
@@ -974,7 +963,7 @@ disambiguate(TrackerPSVR &t,
 			// if the distance is between a measured point
 			// and its last-known position is significantly
 			// different, discard this
-			float dist = fabs(measured_points->at(j).distance - m.measurements.at(j).distance);
+			const float dist = fabs(measured_points->at(j).distance - m.measurements.at(j).distance);
 			if (dist > PSVR_DISAMBIG_REJECT_DIST) {
 				error_sum += 50.0f;
 			} else {
@@ -983,11 +972,10 @@ disambiguate(TrackerPSVR &t,
 
 			// if the angle is significantly different,
 			// discard this
-			float angdiff = fabs(measured_points->at(j).angle - m.measurements.at(j).angle);
+			const float angdiff = fabs(measured_points->at(j).angle - m.measurements.at(j).angle);
 			if (angdiff > PSVR_DISAMBIG_REJECT_ANG) {
 				error_sum += 50.0f;
 			} else {
-
 				error_sum += fabs(measured_points->at(j).angle - m.measurements.at(j).angle);
 			}
 		}
@@ -996,8 +984,8 @@ disambiguate(TrackerPSVR &t,
 		if (error_sum < 50) {
 			std::vector<match_data_t> meas_solved;
 			solve_for_measurement(&t, measured_points, &meas_solved);
-			float prev_diff = last_diff(t, &meas_solved, &t.last_vertices);
-			float imu_diff = last_diff(t, &meas_solved, solved);
+			const float prev_diff = last_diff(t, &meas_solved, &t.last_vertices);
+			const float imu_diff = last_diff(t, &meas_solved, solved);
 
 			Eigen::Vector4f tl_pos;
 			Eigen::Vector4f tr_pos;
@@ -1009,7 +997,7 @@ disambiguate(TrackerPSVR &t,
 			bool has_tr = false;
 
 			for (uint32_t j = 0; j < meas_solved.size(); j++) {
-				match_data_t *md = &meas_solved.at(j);
+				const match_data_t *md = &meas_solved.at(j);
 				if (md->vertex_index == TAG_BL) {
 					bl_pos = md->position;
 					has_bl = true;
@@ -1060,6 +1048,7 @@ disambiguate(TrackerPSVR &t,
 			//    i, prev_diff, imu_diff, avg_error, error_sum,
 			//    ignore);
 		}
+		const bool ignore = false;
 		if (avg_error <= lowest_error && !ignore) {
 			lowest_error = avg_error;
 			best_model = i;
@@ -1159,7 +1148,7 @@ public:
 	bool
 	step(TrackerPSVR &t)
 	{
-		bool ret = m_permutator_step(&mp, &indices[0], PSVR_NUM_LEDS);
+		const bool ret = m_permutator_step(&mp, &indices[0], PSVR_NUM_LEDS);
 		if (!ret) {
 			return false;
 		}
@@ -1184,22 +1173,22 @@ create_match_list(TrackerPSVR &t)
 	while (mp.step(t)) {
 		match_model_t m;
 
-		model_vertex_t ref_pt_a = mp.vec[0];
-		model_vertex_t ref_pt_b = mp.vec[1];
-		Eigen::Vector3f ref_vec3 = (ref_pt_b.position - ref_pt_a.position).head<3>();
+		const model_vertex_t ref_pt_a = mp.vec[0];
+		const model_vertex_t ref_pt_b = mp.vec[1];
+		const Eigen::Vector3f ref_vec3 = (ref_pt_b.position - ref_pt_a.position).head<3>();
 
-		float normScale = dist_3d(ref_pt_a.position, ref_pt_b.position);
+		const float normScale = dist_3d(ref_pt_a.position, ref_pt_b.position);
 
 		match_data_t md;
 		for (auto &&i : mp.vec) {
-			Eigen::Vector3f point_vec3 = (i.position - ref_pt_a.position).head<3>();
+			const Eigen::Vector3f point_vec3 = (i.position - ref_pt_a.position).head<3>();
 			md.vertex_index = i.vertex_index;
 			md.distance = dist_3d(i.position, ref_pt_a.position) / normScale;
 			if (i.position.head<3>().dot(Eigen::Vector3f(0.0, 0.0, 1.0f)) < 0) {
 				md.distance *= -1;
 			}
 
-			Eigen::Vector3f plane_norm = ref_vec3.cross(point_vec3).normalized();
+			const Eigen::Vector3f plane_norm = ref_vec3.cross(point_vec3).normalized();
 			if (ref_pt_a.position != i.position) {
 
 				if (plane_norm.normalized().z() > 0) {
@@ -1281,18 +1270,18 @@ sample_line(cv::Mat &src, const cv::Point2i &start, const cv::Point2i &end, int 
 	int curr_x = start.x;
 	int curr_y = start.y;
 
-	int slope_x = start.x < end.x ? 1 : -1;
-	int slope_y = start.y < end.y ? 1 : -1;
+	const int slope_x = start.x < end.x ? 1 : -1;
+	const int slope_y = start.y < end.y ? 1 : -1;
 
-	int dx = end.x - start.x;
-	int dy = -1 * abs(end.y - start.y);
+	const int dx = end.x - start.x;
+	const int dy = -1 * abs(end.y - start.y);
 	int e_xy = dx + dy; /* error value e_xy */
 
 	while (1) {
 		// sample our pixel and see if it is in the interior
 		if (curr_x > 0 && curr_y > 0 && curr_x < src.cols && curr_y < src.rows) {
 			// cv is row, column
-			uint8_t *val = src.ptr(curr_y, curr_x);
+			const uint8_t *val = src.ptr(curr_y, curr_x);
 
 			/// @todo: we are counting pixels rather than measuring length - bresenhams may introduce some
 			/// inaccuracy here.
@@ -1303,7 +1292,7 @@ sample_line(cv::Mat &src, const cv::Point2i &start, const cv::Point2i &end, int 
 		if (curr_x == end.x && curr_y == end.y) {
 			break;
 		}
-		int err2 = 2 * e_xy;
+		const int err2 = 2 * e_xy;
 		if (err2 >= dy) {
 			e_xy += dy;
 			curr_x += slope_x;
@@ -1328,8 +1317,8 @@ blob_intersections(cv::Mat &src, cv::KeyPoint *kp, struct blob_data *bd)
 	// 'side' blob at a time, and its orientation will be opposite
 	// to the others
 
-	int radius = kp->size / 2;
-	cv::Rect2i sq_b(kp->pt.x - radius, kp->pt.y - radius, kp->size, kp->size);
+	const int radius = kp->size / 2;
+	const cv::Rect2i sq_b(kp->pt.x - radius, kp->pt.y - radius, kp->size, kp->size);
 
 	sample_line(src, cv::Point2i(sq_b.x, sq_b.y), cv::Point2i(sq_b.x + sq_b.width, sq_b.y + sq_b.height),
 	            &bd->tl_to_br);
@@ -1358,8 +1347,8 @@ tag_points(TrackerPSVR &t, std::vector<blob_data_t> *blob_datas)
 	int channel_b_total = 0;
 	int channel_a_min = INT_MAX;
 	int channel_b_min = INT_MAX;
-	int channel_a_max = INT_MIN;
-	int channel_b_max = INT_MIN;
+	const int channel_a_max = INT_MIN;
+	const int channel_b_max = INT_MIN;
 	int channel_a_pos = 0;
 	int channel_a_neg = 0;
 	int channel_b_pos = 0;
@@ -1367,7 +1356,7 @@ tag_points(TrackerPSVR &t, std::vector<blob_data_t> *blob_datas)
 
 
 	for (uint32_t i = 0; i < blob_datas->size(); i++) {
-		blob_data_t b = blob_datas->at(i);
+		const blob_data_t b = blob_datas->at(i);
 		channel_a_total += abs(b.diff_a);
 		if (abs(b.diff_a) < channel_a_min) {
 			channel_a_min = b.diff_a;
@@ -1400,7 +1389,7 @@ tag_points(TrackerPSVR &t, std::vector<blob_data_t> *blob_datas)
 	int side_count = 0;
 	if (channel_a_total > channel_b_total) {
 		// use channel a
-		float channel_dev = (channel_a_total / float(blob_datas->size())) / 2.0f;
+		const float channel_dev = (channel_a_total / float(blob_datas->size())) / 2.0f;
 		int usable_count = 0;
 
 		for (uint32_t i = 0; i < blob_datas->size(); i++) {
@@ -1451,7 +1440,7 @@ tag_points(TrackerPSVR &t, std::vector<blob_data_t> *blob_datas)
 		}
 	} else {
 		// use channel b
-		float channel_dev = (channel_b_total / float(blob_datas->size())) / 2.0f;
+		const float channel_dev = (channel_b_total / float(blob_datas->size())) / 2.0f;
 		int usable_count = 0;
 		for (uint32_t i = 0; i < blob_datas->size(); i++) {
 			if (abs(blob_datas->at(i).diff_b) > channel_dev) {
@@ -1528,10 +1517,6 @@ process(TrackerPSVR &t, struct xrt_frame *xf)
 	std::vector<match_data_t> predicted_pose;
 	filter_predict(&predicted_pose, t.track_filters, dt / 2.0f);
 
-
-	model_vertex_t measured_pose[PSVR_NUM_LEDS];
-	(void)measured_pose;
-
 	// get our raw measurements
 
 	t.view[0].keypoints.clear();
@@ -1540,9 +1525,9 @@ process(TrackerPSVR &t, struct xrt_frame *xf)
 	t.r_blobs.clear();
 	t.world_points.clear();
 
-	int cols = xf->width / 2;
-	int rows = xf->height;
-	int stride = xf->stride;
+	const int cols = xf->width / 2;
+	const int rows = xf->height;
+	const int stride = xf->stride;
 
 	cv::Mat l_grey(rows, cols, CV_8UC1, xf->data, stride);
 	cv::Mat r_grey(rows, cols, CV_8UC1, xf->data + cols, stride);
@@ -1560,16 +1545,16 @@ process(TrackerPSVR &t, struct xrt_frame *xf)
 	// disparity-pairs.
 
 	for (uint32_t i = 0; i < t.view[0].keypoints.size(); i++) {
-		cv::KeyPoint l_blob = t.view[0].keypoints[i];
+		const cv::KeyPoint l_blob = t.view[0].keypoints[i];
 		int l_index = -1;
 		int r_index = -1;
 
 		for (uint32_t j = 0; j < t.view[1].keypoints.size(); j++) {
-			float lowest_dist = 65535.0f;
-			cv::KeyPoint r_blob = t.view[1].keypoints[j];
+			const float lowest_dist = 65535.0f;
+			const cv::KeyPoint r_blob = t.view[1].keypoints[j];
 			// find closest point on same-ish scanline
-			float xdiff = r_blob.pt.x - l_blob.pt.x;
-			float ydiff = r_blob.pt.y - l_blob.pt.y;
+			const float xdiff = r_blob.pt.x - l_blob.pt.x;
+			const float ydiff = r_blob.pt.y - l_blob.pt.y;
 			if ((ydiff < 3.0f) && (ydiff > -3.0f) && (abs(xdiff) < lowest_dist)) {
 				r_index = j;
 				l_index = i;
@@ -1577,8 +1562,8 @@ process(TrackerPSVR &t, struct xrt_frame *xf)
 		}
 
 		if (l_index > -1 && r_index > -1) {
-			cv::KeyPoint lkp = t.view[0].keypoints.at(l_index);
-			cv::KeyPoint rkp = t.view[1].keypoints.at(r_index);
+			const cv::KeyPoint lkp = t.view[0].keypoints.at(l_index);
+			const cv::KeyPoint rkp = t.view[1].keypoints.at(r_index);
 			t.l_blobs.push_back(lkp);
 			t.r_blobs.push_back(rkp);
 			// U_LOG_D("2D coords: LX %f LY %f RX %f RY %f",
@@ -1592,8 +1577,8 @@ process(TrackerPSVR &t, struct xrt_frame *xf)
 
 	if (!t.l_blobs.empty()) {
 		for (uint32_t i = 0; i < t.l_blobs.size(); i++) {
-			float disp = t.r_blobs[i].pt.x - t.l_blobs[i].pt.x;
-			cv::Vec4d xydw(t.l_blobs[i].pt.x, t.l_blobs[i].pt.y, disp, 1.0f);
+			const float disp = t.r_blobs[i].pt.x - t.l_blobs[i].pt.x;
+			const cv::Vec4d xydw(t.l_blobs[i].pt.x, t.l_blobs[i].pt.y, disp, 1.0f);
 			// Transform
 			cv::Vec4d h_world = (cv::Matx44d)t.disparity_to_depth * xydw;
 
@@ -1676,8 +1661,8 @@ process(TrackerPSVR &t, struct xrt_frame *xf)
 	// derive our optical rotation correction from the
 	// pose transform
 
-	Eigen::Matrix3f r = model_center_transform.block(0, 0, 3, 3);
-	Eigen::Quaternionf rot(r);
+	const Eigen::Matrix3f r = model_center_transform.block(0, 0, 3, 3);
+	const Eigen::Quaternionf rot(r);
 
 	// we only do this if we are pretty confident we
 	// will have a 'good' optical pose i.e. front-5
@@ -1688,7 +1673,7 @@ process(TrackerPSVR &t, struct xrt_frame *xf)
 		                             t.fusion.imu_3dof.rot.z)
 		              .inverse();
 
-		float correction_magnitude = t.target_optical_rotation_correction.angularDistance(correction);
+		const float correction_magnitude = t.target_optical_rotation_correction.angularDistance(correction);
 
 		// for corrections subsequent to the
 		// first, we never want to depart
@@ -2061,16 +2046,15 @@ t_psvr_create(struct xrt_frame_context *xfctx,
 
 	init_filter(t.pose_filter, PSVR_POSE_PROCESS_NOISE, PSVR_POSE_MEASUREMENT_NOISE, 1.0f);
 
-	StereoRectificationMaps rectify(data);
+	const StereoRectificationMaps rectify(data);
 	t.view[0].populate_from_calib(data->view[0], rectify.view[0].rectify);
 	t.view[1].populate_from_calib(data->view[1], rectify.view[1].rectify);
 	t.disparity_to_depth = rectify.disparity_to_depth_mat;
-	StereoCameraCalibrationWrapper wrapped(data);
+
+	const StereoCameraCalibrationWrapper wrapped(data);
 	t.r_cam_rotation = wrapped.camera_rotation_mat;
 	t.r_cam_translation = wrapped.camera_translation_mat;
 	t.calibrated = true;
-
-
 
 	// clang-format off
 	cv::SimpleBlobDetector::Params blob_params;
@@ -2099,8 +2083,8 @@ t_psvr_create(struct xrt_frame_context *xfctx,
 	t.max_correction = PSVR_FAST_CORRECTION;
 	t.bad_correction_count = 0;
 
-	Eigen::Quaternionf align(Eigen::AngleAxis<float>(-M_PI / 2, Eigen::Vector3f(0.0f, 0.0f, 1.0f)));
-	Eigen::Quaternionf align2(Eigen::AngleAxis<float>(M_PI, Eigen::Vector3f(0.0f, 1.0f, 0.0f)));
+	const Eigen::Quaternionf align(Eigen::AngleAxis<float>(-M_PI / 2, Eigen::Vector3f(0.0f, 0.0f, 1.0f)));
+	const Eigen::Quaternionf align2(Eigen::AngleAxis<float>(M_PI, Eigen::Vector3f(0.0f, 1.0f, 0.0f)));
 
 	t.axis_align_rot = align2; // * align;
 

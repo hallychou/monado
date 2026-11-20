@@ -70,12 +70,12 @@ struct MinimalVulkanContext
 	bool
 	init()
 	{
-		static const char *required_instance_extensions[] = {nullptr};
-		static const char *optional_instance_extensions[] = {
+		static const char *const required_instance_extensions[] = {nullptr};
+		static const char *const optional_instance_extensions[] = {
 		    VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
 		};
-		static const char *required_device_extensions[] = {nullptr};
-		static const char *optional_device_extensions[] = {nullptr};
+		static const char *const required_device_extensions[] = {nullptr};
+		static const char *const optional_device_extensions[] = {nullptr};
 
 		auto required_instance_ext_list = u_extension_list_create_from_array(
 		    required_instance_extensions, ARRAY_SIZE(required_instance_extensions));
@@ -86,7 +86,7 @@ struct MinimalVulkanContext
 		auto optional_device_ext_list = u_extension_list_create_from_array(
 		    optional_device_extensions, ARRAY_SIZE(optional_device_extensions));
 
-		struct comp_vulkan_arguments vk_args = {
+		const struct comp_vulkan_arguments vk_args = {
 		    .required_instance_version = VK_MAKE_VERSION(1, 0, 0),
 		    .get_instance_proc_address = vkGetInstanceProcAddr,
 		    .required_instance_extensions = required_instance_ext_list,
@@ -130,7 +130,7 @@ struct MinimalVulkanContext
 VkShaderModule
 create_distortion_shader_module(vk_bundle *vk)
 {
-	VkShaderModuleCreateInfo info = {
+	const VkShaderModuleCreateInfo info = {
 	    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -147,7 +147,7 @@ create_distortion_shader_module(vk_bundle *vk)
 VkDescriptorSetLayout
 create_distortion_descriptor_set_layout(vk_bundle *vk, uint32_t view_count)
 {
-	VkDescriptorSetLayoutBinding bindings[4] = {
+	const VkDescriptorSetLayoutBinding bindings[4] = {
 	    {
 	        .binding = 0,
 	        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -178,7 +178,7 @@ create_distortion_descriptor_set_layout(vk_bundle *vk, uint32_t view_count)
 	    },
 	};
 
-	VkDescriptorSetLayoutCreateInfo create_info = {
+	const VkDescriptorSetLayoutCreateInfo create_info = {
 	    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -195,7 +195,7 @@ create_distortion_descriptor_set_layout(vk_bundle *vk, uint32_t view_count)
 VkPipelineLayout
 create_distortion_pipeline_layout(vk_bundle *vk, VkDescriptorSetLayout descriptor_set_layout)
 {
-	VkPipelineLayoutCreateInfo create_info = {
+	const VkPipelineLayoutCreateInfo create_info = {
 	    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -214,12 +214,12 @@ create_distortion_pipeline_layout(vk_bundle *vk, VkDescriptorSetLayout descripto
 VkPipelineLayout
 create_blit_pipeline_layout(vk_bundle *vk, VkDescriptorSetLayout descriptor_set_layout)
 {
-	VkPushConstantRange push_constant_range = {
+	const VkPushConstantRange push_constant_range = {
 	    .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
 	    .offset = 0,
 	    .size = sizeof(render_compute_blit_push_data),
 	};
-	VkPipelineLayoutCreateInfo create_info = {
+	const VkPipelineLayoutCreateInfo create_info = {
 	    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -280,7 +280,7 @@ struct DistortionPipelineCacheFixture
 VkShaderModule
 create_layer_shader_module(vk_bundle *vk)
 {
-	VkShaderModuleCreateInfo info = {
+	const VkShaderModuleCreateInfo info = {
 	    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -321,7 +321,7 @@ create_layer_descriptor_set_layout(vk_bundle *vk, uint32_t sampler_array_size)
 	    },
 	};
 
-	VkDescriptorSetLayoutCreateInfo create_info = {
+	const VkDescriptorSetLayoutCreateInfo create_info = {
 	    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -380,7 +380,7 @@ struct LayerPipelineCacheFixture
 VkShaderModule
 create_blit_shader_module(vk_bundle *vk)
 {
-	VkShaderModuleCreateInfo info = {
+	const VkShaderModuleCreateInfo info = {
 	    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -397,7 +397,7 @@ create_blit_shader_module(vk_bundle *vk)
 VkDescriptorSetLayout
 create_blit_descriptor_set_layout(vk_bundle *vk)
 {
-	VkDescriptorSetLayoutBinding bindings[2] = {
+	const VkDescriptorSetLayoutBinding bindings[2] = {
 	    {
 	        .binding = 0,
 	        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -414,7 +414,7 @@ create_blit_descriptor_set_layout(vk_bundle *vk)
 	    },
 	};
 
-	VkDescriptorSetLayoutCreateInfo create_info = {
+	const VkDescriptorSetLayoutCreateInfo create_info = {
 	    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,
@@ -473,7 +473,7 @@ struct BlitPipelineCacheFixture
 VkShaderModule
 create_blit_ms_shader_module(vk_bundle *vk)
 {
-	VkShaderModuleCreateInfo info = {
+	const VkShaderModuleCreateInfo info = {
 	    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 	    .pNext = nullptr,
 	    .flags = 0,

@@ -89,7 +89,7 @@ TEST_CASE("m_relation_history create/destroy")
 
 TEST_CASE("m_relation_history empty")
 {
-	History h;
+	const History h;
 	xrt_space_relation out = XRT_SPACE_RELATION_ZERO;
 
 	CHECK(m_relation_history_get(h.rh, U_TIME_1S_IN_NS, &out) == M_RELATION_HISTORY_RESULT_INVALID);
@@ -101,8 +101,8 @@ TEST_CASE("m_relation_history empty")
 
 TEST_CASE("m_relation_history push")
 {
-	History h;
-	xrt_space_relation rel = make_relation(1.0f);
+	const History h;
+	const xrt_space_relation rel = make_relation(1.0f);
 
 	CHECK(m_relation_history_push(h.rh, &rel, 2 * U_TIME_1S_IN_NS));
 	CHECK(m_relation_history_get_size(h.rh) == 1);
@@ -119,10 +119,10 @@ TEST_CASE("m_relation_history push")
 
 TEST_CASE("m_relation_history push_or_update")
 {
-	History h;
-	xrt_space_relation a = make_relation(1.0f);
-	xrt_space_relation b = make_relation(2.0f);
-	xrt_space_relation c = make_relation(3.0f);
+	const History h;
+	const xrt_space_relation a = make_relation(1.0f);
+	const xrt_space_relation b = make_relation(2.0f);
+	const xrt_space_relation c = make_relation(3.0f);
 
 	REQUIRE(m_relation_history_push_or_update(h.rh, &a, 1 * U_TIME_1S_IN_NS));
 	REQUIRE(m_relation_history_push_or_update(h.rh, &b, 2 * U_TIME_1S_IN_NS));
@@ -162,9 +162,9 @@ TEST_CASE("m_relation_history push_or_update")
 
 TEST_CASE("m_relation_history get_latest")
 {
-	History h;
-	xrt_space_relation a = make_relation(1.0f);
-	xrt_space_relation b = make_relation(2.0f);
+	const History h;
+	const xrt_space_relation a = make_relation(1.0f);
+	const xrt_space_relation b = make_relation(2.0f);
 
 	REQUIRE(m_relation_history_push(h.rh, &a, 1 * U_TIME_1S_IN_NS));
 	REQUIRE(m_relation_history_push(h.rh, &b, 2 * U_TIME_1S_IN_NS));
@@ -181,9 +181,9 @@ TEST_CASE("m_relation_history get_latest")
 
 TEST_CASE("m_relation_history get exact")
 {
-	History h;
-	xrt_space_relation a = make_relation(1.0f);
-	xrt_space_relation b = make_relation(2.0f);
+	const History h;
+	const xrt_space_relation a = make_relation(1.0f);
+	const xrt_space_relation b = make_relation(2.0f);
 
 	REQUIRE(m_relation_history_push(h.rh, &a, 1 * U_TIME_1S_IN_NS));
 	REQUIRE(m_relation_history_push(h.rh, &b, 2 * U_TIME_1S_IN_NS));
@@ -200,8 +200,8 @@ TEST_CASE("m_relation_history get exact")
 
 TEST_CASE("m_relation_history get timestamp zero is invalid")
 {
-	History h;
-	xrt_space_relation a = make_relation(1.0f);
+	const History h;
+	const xrt_space_relation a = make_relation(1.0f);
 	REQUIRE(m_relation_history_push(h.rh, &a, 1 * U_TIME_1S_IN_NS));
 
 	xrt_space_relation out = XRT_SPACE_RELATION_ZERO;
@@ -210,9 +210,9 @@ TEST_CASE("m_relation_history get timestamp zero is invalid")
 
 TEST_CASE("m_relation_history get interpolated")
 {
-	History h;
-	xrt_space_relation a = make_relation(0.0f);
-	xrt_space_relation b = make_relation(10.0f);
+	const History h;
+	const xrt_space_relation a = make_relation(0.0f);
+	const xrt_space_relation b = make_relation(10.0f);
 
 	REQUIRE(m_relation_history_push(h.rh, &a, 1 * U_TIME_1S_IN_NS));
 	REQUIRE(m_relation_history_push(h.rh, &b, 2 * U_TIME_1S_IN_NS));
@@ -231,9 +231,9 @@ TEST_CASE("m_relation_history get interpolated")
 
 TEST_CASE("m_relation_history get interpolated only keeps shared flags")
 {
-	History h;
-	xrt_space_relation a = make_relation_with_velocity(0.0f, 1.0f);
-	xrt_space_relation b = make_relation(10.0f); // No velocity.
+	const History h;
+	const xrt_space_relation a = make_relation_with_velocity(0.0f, 1.0f);
+	const xrt_space_relation b = make_relation(10.0f); // No velocity.
 
 	REQUIRE(m_relation_history_push(h.rh, &a, 1 * U_TIME_1S_IN_NS));
 	REQUIRE(m_relation_history_push(h.rh, &b, 2 * U_TIME_1S_IN_NS));
@@ -246,9 +246,9 @@ TEST_CASE("m_relation_history get interpolated only keeps shared flags")
 
 TEST_CASE("m_relation_history get predicted")
 {
-	History h;
-	xrt_space_relation a = make_relation_with_velocity(0.0f, 2.0f);
-	xrt_space_relation b = make_relation_with_velocity(2.0f, 2.0f);
+	const History h;
+	const xrt_space_relation a = make_relation_with_velocity(0.0f, 2.0f);
+	const xrt_space_relation b = make_relation_with_velocity(2.0f, 2.0f);
 
 	REQUIRE(m_relation_history_push(h.rh, &a, 1 * U_TIME_1S_IN_NS));
 	REQUIRE(m_relation_history_push(h.rh, &b, 2 * U_TIME_1S_IN_NS));
@@ -263,11 +263,11 @@ TEST_CASE("m_relation_history get predicted")
 
 TEST_CASE("m_relation_history get reverse predicted")
 {
-	History h;
+	const History h;
 	// Distinct positions and the same velocity, so that predicting backwards from the oldest entry gives a
 	// different answer than predicting backwards from the newest.
-	xrt_space_relation a = make_relation_with_velocity(0.0f, 2.0f);
-	xrt_space_relation b = make_relation_with_velocity(100.0f, 2.0f);
+	const xrt_space_relation a = make_relation_with_velocity(0.0f, 2.0f);
+	const xrt_space_relation b = make_relation_with_velocity(100.0f, 2.0f);
 
 	REQUIRE(m_relation_history_push(h.rh, &a, 1 * U_TIME_1S_IN_NS));
 	REQUIRE(m_relation_history_push(h.rh, &b, 2 * U_TIME_1S_IN_NS));
@@ -281,8 +281,8 @@ TEST_CASE("m_relation_history get reverse predicted")
 
 TEST_CASE("m_relation_history clear")
 {
-	History h;
-	xrt_space_relation a = make_relation(1.0f);
+	const History h;
+	const xrt_space_relation a = make_relation(1.0f);
 
 	REQUIRE(m_relation_history_push(h.rh, &a, 5 * U_TIME_1S_IN_NS));
 	REQUIRE(m_relation_history_get_size(h.rh) == 1);
@@ -302,10 +302,10 @@ TEST_CASE("m_relation_history clear")
 
 TEST_CASE("m_relation_history push_with_motion_estimation")
 {
-	History h;
+	const History h;
 
 	// First entry has no previous one to estimate from, stored as is.
-	xrt_space_relation a = make_relation(0.0f);
+	const xrt_space_relation a = make_relation(0.0f);
 	REQUIRE(m_relation_history_push_with_motion_estimation(h.rh, &a, 1 * U_TIME_1S_IN_NS));
 
 	int64_t ts = 0;
@@ -314,7 +314,7 @@ TEST_CASE("m_relation_history push_with_motion_estimation")
 	CHECK(out.relation_flags == kPoseFlags);
 
 	// Moved one meter in one second, so we expect 1 m/s.
-	xrt_space_relation b = make_relation(1.0f);
+	const xrt_space_relation b = make_relation(1.0f);
 	REQUIRE(m_relation_history_push_with_motion_estimation(h.rh, &b, 2 * U_TIME_1S_IN_NS));
 
 	REQUIRE(m_relation_history_get_latest(h.rh, &ts, &out));
@@ -329,7 +329,7 @@ TEST_CASE("m_relation_history push_with_motion_estimation")
 	CHECK(out.angular_velocity.z == Approx(0.0f).margin(1e-5));
 
 	// Existing velocity is kept as is.
-	xrt_space_relation c = make_relation_with_velocity(5.0f, 42.0f);
+	const xrt_space_relation c = make_relation_with_velocity(5.0f, 42.0f);
 	REQUIRE(m_relation_history_push_with_motion_estimation(h.rh, &c, 3 * U_TIME_1S_IN_NS));
 
 	REQUIRE(m_relation_history_get_latest(h.rh, &ts, &out));
@@ -343,8 +343,8 @@ TEST_CASE("m_relation_history push_with_motion_estimation")
 
 TEST_CASE("m_relation_history is a bounded ring buffer")
 {
-	History h;
-	xrt_space_relation rel = make_relation(0.0f);
+	const History h;
+	const xrt_space_relation rel = make_relation(0.0f);
 
 	constexpr int64_t kCount = 10000;
 	for (int64_t i = 1; i <= kCount; i++) {
@@ -365,14 +365,14 @@ TEST_CASE("m_relation_history is a bounded ring buffer")
 
 TEST_CASE("m_relation_history get_exact")
 {
-	History h;
+	const History h;
 	xrt_space_relation out = XRT_SPACE_RELATION_ZERO;
 
 	// Empty history has nothing.
 	CHECK_FALSE(m_relation_history_get_exact(h.rh, U_TIME_1S_IN_NS, &out));
 
 	for (int64_t i = 1; i <= 3; i++) {
-		xrt_space_relation rel = make_relation((float)i);
+		const xrt_space_relation rel = make_relation((float)i);
 		REQUIRE(m_relation_history_push(h.rh, &rel, i * U_TIME_1S_IN_NS));
 	}
 
@@ -402,7 +402,7 @@ TEST_CASE("m_relation_history get_exact")
 
 	SECTION("sees updates to an existing entry")
 	{
-		xrt_space_relation updated = make_relation(20.0f);
+		const xrt_space_relation updated = make_relation(20.0f);
 		REQUIRE(m_relation_history_push_or_update(h.rh, &updated, 2 * U_TIME_1S_IN_NS));
 
 		REQUIRE(m_relation_history_get_exact(h.rh, 2 * U_TIME_1S_IN_NS, &out));
@@ -418,12 +418,12 @@ TEST_CASE("m_relation_history get_exact")
 
 TEST_CASE("m_relation_history get_exact after the ring buffer wraps")
 {
-	History h;
+	const History h;
 	xrt_space_relation out = XRT_SPACE_RELATION_ZERO;
 
 	constexpr int64_t kCount = 10000;
 	for (int64_t i = 1; i <= kCount; i++) {
-		xrt_space_relation rel = make_relation((float)i);
+		const xrt_space_relation rel = make_relation((float)i);
 		REQUIRE(m_relation_history_push(h.rh, &rel, i * 1000));
 	}
 
@@ -436,7 +436,7 @@ TEST_CASE("m_relation_history get_exact after the ring buffer wraps")
 
 TEST_CASE("m_relation_history get_nearest")
 {
-	History h;
+	const History h;
 	xrt_space_relation out = XRT_SPACE_RELATION_ZERO;
 	int64_t out_ts = 0;
 
@@ -446,7 +446,7 @@ TEST_CASE("m_relation_history get_nearest")
 	CHECK_FALSE(m_relation_history_get_nearest(h.rh, U_TIME_1S_IN_NS, kSlop, &out_ts, &out));
 
 	for (int64_t i = 1; i <= 3; i++) {
-		xrt_space_relation rel = make_relation((float)i);
+		const xrt_space_relation rel = make_relation((float)i);
 		REQUIRE(m_relation_history_push(h.rh, &rel, i * U_TIME_1S_IN_NS));
 	}
 

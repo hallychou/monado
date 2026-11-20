@@ -22,13 +22,13 @@ sdl_create_window(struct sdl_program *sp)
 		assert(false);
 	}
 
-	char title[1024];
+	char title[1024] = {0};
 	snprintf(title, sizeof(title), "Monado! ☃");
 
-	int x = SDL_WINDOWPOS_UNDEFINED;
-	int y = SDL_WINDOWPOS_UNDEFINED;
-	int w = 1920;
-	int h = 1080;
+	const int x = SDL_WINDOWPOS_UNDEFINED;
+	const int y = SDL_WINDOWPOS_UNDEFINED;
+	const int w = 1920;
+	const int h = 1080;
 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -65,7 +65,7 @@ sdl_create_window(struct sdl_program *sp)
 	SDL_GL_SetSwapInterval(1); // Enable vsync
 
 	// Setup OpenGL bindings.
-	bool err = gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress) == 0;
+	const bool err = gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress) == 0;
 	if (err) {
 		assert(false);
 	}
@@ -121,7 +121,7 @@ sdl_program_plus_render(struct sdl_program_plus *spp_ptr)
 
 		auto &l = spp.c.base.layer_accum.layers[0];
 		auto &ssc = *(sdl_swapchain *)l.sc_array[0];
-		GLuint tex = ssc.textures[l.data.proj.v[0].sub.image_index];
+		const GLuint tex = ssc.textures[l.data.proj.v[0].sub.image_index];
 
 		glClearColor(0.2f, 0.0f, 0.0f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT);

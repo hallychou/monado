@@ -86,7 +86,7 @@ android_custom_surface_async_start(
 			return nullptr;
 		}
 
-		std::string clazz_name = ret->monadoViewClass.getName();
+		const std::string clazz_name = ret->monadoViewClass.getName();
 		if (clazz_name != MonadoView::getFullyQualifiedTypeName()) {
 			U_LOG_E("Unexpected class name: %s", clazz_name.c_str());
 			return nullptr;
@@ -104,8 +104,8 @@ android_custom_surface_async_start(
 			type = WindowManager_LayoutParams::TYPE_APPLICATION();
 		} else {
 			// Out of process mode, determine which display should be used.
-			DisplayManager dm = DisplayManager(ctx.getSystemService(Context::DISPLAY_SERVICE()));
-			Display display = dm.getDisplay(display_id);
+			const DisplayManager dm = DisplayManager(ctx.getSystemService(Context::DISPLAY_SERVICE()));
+			const Display display = dm.getDisplay(display_id);
 			displayContext = ctx.createDisplayContext(display);
 			type = WindowManager_LayoutParams::TYPE_APPLICATION_OVERLAY();
 		}
@@ -211,7 +211,7 @@ android_custom_surface_get_display_metrics(struct _JavaVM *vm,
 		// Teach the wrapper our class before we start to use it.
 		MonadoView::staticInitClass((jclass)clazz.object().getHandle());
 
-		jni::Object displayMetrics = MonadoView::getDisplayMetrics(Context((jobject)context));
+		const jni::Object displayMetrics = MonadoView::getDisplayMetrics(Context((jobject)context));
 		//! @todo implement non-deprecated codepath for api 30+
 		float displayRefreshRate = MonadoView::getDisplayRefreshRate(Context((jobject)context));
 		if (displayRefreshRate == 0.0) {

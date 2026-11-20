@@ -122,7 +122,7 @@ namespace {
 		//! @todo use better measurements instead of the preceding "simple
 		//! fusion"
 		if (filter_time_ns != 0 && filter_time_ns != timestamp_ns) {
-			float dt = time_ns_to_s(timestamp_ns - filter_time_ns);
+			const float dt = time_ns_to_s(timestamp_ns - filter_time_ns);
 			assert(dt > 0);
 			flexkalman::predict(filter_state, process_model, dt);
 		}
@@ -157,7 +157,7 @@ namespace {
 	                                   const struct xrt_vec3 *lever_arm_optional,
 	                                   float residual_limit)
 	{
-		Eigen::Vector3f pos = map_vec3(*position);
+		const Eigen::Vector3f pos = map_vec3(*position);
 		Eigen::Vector3d variance{1.e-4, 1.e-4, 4.e-4};
 		if (variance_optional) {
 			variance = map_vec3(*variance_optional).cast<double>();
@@ -168,7 +168,7 @@ namespace {
 		}
 		auto measurement = xrt::auxiliary::tracking::AbsolutePositionLeverArmMeasurement{pos.cast<double>(),
 		                                                                                 lever_arm, variance};
-		double resid = measurement.getResidual(filter_state).norm();
+		const double resid = measurement.getResidual(filter_state).norm();
 
 		if (resid > residual_limit) {
 			// Residual arbitrarily "too large"
@@ -203,7 +203,7 @@ namespace {
 		if (!tracked || filter_time_ns == 0) {
 			return;
 		}
-		float dt = time_ns_to_s(when_ns - filter_time_ns);
+		const float dt = time_ns_to_s(when_ns - filter_time_ns);
 		auto predicted_state = flexkalman::getPrediction(filter_state, process_model, dt);
 
 		map_vec3(out_relation->pose.position) = predicted_state.position().cast<float>();

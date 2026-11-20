@@ -204,7 +204,7 @@ public:
 		int ran = 0;
 		for (auto &entry : callbacks) {
 			if (entry.shouldInvoke(static_cast<mask_t>(event))) {
-				bool willRemove = invoker(event, entry.callback, entry.userdata);
+				const bool willRemove = invoker(event, entry.callback, entry.userdata);
 				if (willRemove) {
 					entry.should_remove = true;
 					needPurge = true;

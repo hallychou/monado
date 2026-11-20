@@ -26,7 +26,7 @@ DEBUG_GET_ONCE_LOG_OPTION(calib_log, "CALIB_LOG", U_LOGGING_INFO)
 #define CALIB_ERROR(...) U_LOG_IFL_E(debug_get_log_option_calib_log(), __VA_ARGS__)
 #define CALIB_ASSERT(predicate, ...)                                                                                   \
 	do {                                                                                                           \
-		bool p = predicate;                                                                                    \
+		const bool p = predicate;                                                                              \
 		if (!p) {                                                                                              \
 			U_LOG(U_LOGGING_ERROR, __VA_ARGS__);                                                           \
 			assert(p && "CALIB_ASSERT failed: " #predicate);                                               \
@@ -74,14 +74,14 @@ calibration_get_undistort_map(t_camera_calibration &calib,
                               cv::Mat new_camera_matrix_optional)
 {
 	RemapPair ret;
-	CameraCalibrationWrapper wrap(calib);
+	const CameraCalibrationWrapper wrap(calib);
 	if (new_camera_matrix_optional.empty()) {
 		new_camera_matrix_optional = wrap.intrinsics_mat;
 	}
 
 	//! @todo Scale Our intrinsics if the frame size we request
 	//              calibration for does not match what was saved
-	cv::Size image_size(calib.image_size_pixels.w, calib.image_size_pixels.h);
+	const cv::Size image_size(calib.image_size_pixels.w, calib.image_size_pixels.h);
 
 	if (t_camera_distortion_model_is_opencv_fisheye(wrap.distortion_model)) {
 		cv::fisheye::initUndistortRectifyMap(wrap.intrinsics_mat,        // cameraMatrix
@@ -116,10 +116,10 @@ StereoRectificationMaps::StereoRectificationMaps(t_stereo_camera_calibration *da
 
 	CALIB_ASSERT_(data->view[0].distortion_model == data->view[1].distortion_model);
 
-	cv::Size image_size(data->view[0].image_size_pixels.w, data->view[0].image_size_pixels.h);
-	StereoCameraCalibrationWrapper wrapped(data);
+	const cv::Size image_size(data->view[0].image_size_pixels.w, data->view[0].image_size_pixels.h);
+	const StereoCameraCalibrationWrapper wrapped(data);
 
-	t_camera_distortion_model distortion_model = data->view[0].distortion_model;
+	const t_camera_distortion_model distortion_model = data->view[0].distortion_model;
 
 	/*
 	 * Generate our rectification maps
@@ -153,9 +153,9 @@ StereoRectificationMaps::StereoRectificationMaps(t_stereo_camera_calibration *da
 		    fov_scale);                             // fov_scale
 #else
 		// Regular stereoRectify function instead, without distortion.
-		int flags = cv::CALIB_ZERO_DISPARITY;
+		const int flags = cv::CALIB_ZERO_DISPARITY;
 		// The function performs the default scaling.
-		float alpha = -1.0f;
+		const float alpha = -1.0f;
 
 		cv::stereoRectify(wrapped.view[0].intrinsics_mat, // cameraMatrix1
 		                  cv::noArray(),                  // distCoeffs1
@@ -177,9 +177,9 @@ StereoRectificationMaps::StereoRectificationMaps(t_stereo_camera_calibration *da
 #endif
 	} else if (t_camera_distortion_model_is_opencv_non_fisheye(distortion_model)) {
 		// Have the same principal point on both.
-		int flags = cv::CALIB_ZERO_DISPARITY;
+		const int flags = cv::CALIB_ZERO_DISPARITY;
 		// Get all of the pixels from the camera.
-		float alpha = 1.0f;
+		const float alpha = 1.0f;
 
 		cv::stereoRectify(wrapped.view[0].intrinsics_mat, // cameraMatrix1
 		                  /* cv::noArray(), */            // distCoeffs1
@@ -289,10 +289,10 @@ t_stereo_camera_calibration_load_v1(FILE *calib_file, struct t_stereo_camera_cal
 	 * Extract some data.
 	 */
 
-	bool is_fisheye = mat_use_fisheye(0, 0) != 0.0f;
-	uint32_t size_w = uint32_t(mat_image_size(0, 0));
-	uint32_t size_h = uint32_t(mat_image_size(0, 1));
-	t_camera_distortion_model model = is_fisheye ? T_DISTORTION_FISHEYE_KB4 : T_DISTORTION_OPENCV_RADTAN_5;
+	const bool is_fisheye = mat_use_fisheye(0, 0) != 0.0f;
+	const uint32_t size_w = uint32_t(mat_image_size(0, 0));
+	const uint32_t size_h = uint32_t(mat_image_size(0, 1));
+	const t_camera_distortion_model model = is_fisheye ? T_DISTORTION_FISHEYE_KB4 : T_DISTORTION_OPENCV_RADTAN_5;
 
 
 	/*
@@ -338,7 +338,7 @@ t_stereo_camera_calibration_load_path_v1(const char *calib_path, struct t_stereo
 		return false;
 	}
 
-	bool success = t_stereo_camera_calibration_load_v1(calib_file, out_data);
+	const bool success = t_stereo_camera_calibration_load_v1(calib_file, out_data);
 	fclose(calib_file);
 
 	return success;
@@ -354,7 +354,7 @@ static bool
 load_mat_field(const JSONNode &jn, int rows, int cols, cv::Mat_<double> &out_mat)
 {
 	vector<JSONNode> data = jn.asArray();
-	bool valid = jn.isArray() && data.size() == static_cast<size_t>(rows * cols);
+	const bool valid = jn.isArray() && data.size() == static_cast<size_t>(rows * cols);
 
 	if (valid) {
 		out_mat.create(rows, cols);
@@ -393,9 +393,9 @@ load_mat_field(const JSONNode &jn, double (&out_arr)[dim])
 static bool
 t_camera_calibration_load_v2(cJSON *cjson_cam, t_camera_calibration *cc)
 {
-	JSONNode jc{cjson_cam};
+	const JSONNode jc{cjson_cam};
 
-	string model = jc["model"].asString();
+	const string model = jc["model"].asString();
 	memset(&cc->intrinsics, 0, sizeof(cc->intrinsics));
 	cc->intrinsics[0][0] = jc["intrinsics"]["fx"].asDouble();
 	cc->intrinsics[1][1] = jc["intrinsics"]["fy"].asDouble();
@@ -403,7 +403,7 @@ t_camera_calibration_load_v2(cJSON *cjson_cam, t_camera_calibration *cc)
 	cc->intrinsics[1][2] = jc["intrinsics"]["cy"].asDouble();
 	cc->intrinsics[2][2] = 1;
 
-	size_t n = jc["distortion"].asObject().size();
+	const size_t n = jc["distortion"].asObject().size();
 	if (model == PINHOLE_RADTAN5) {
 		cc->distortion_model = T_DISTORTION_OPENCV_RADTAN_5;
 		CALIB_ASSERTR(n == 5, "%zu != 5 distortion params", n);
@@ -434,11 +434,11 @@ t_camera_calibration_load_v2(cJSON *cjson_cam, t_camera_calibration *cc)
 extern "C" bool
 t_stereo_camera_calibration_from_json_v2(cJSON *cjson, struct t_stereo_camera_calibration **out_stereo)
 {
-	JSONNode json{cjson};
+	const JSONNode json{cjson};
 
 	// Load file metadata
 	const int supported_version = 2;
-	int version = json["metadata"]["version"].asInt(supported_version);
+	const int version = json["metadata"]["version"].asInt(supported_version);
 	if (json["metadata"]["version"].isInvalid()) {
 		CALIB_WARN("'metadata.version' not found, will assume version=%d", supported_version);
 	}
@@ -453,11 +453,11 @@ t_stereo_camera_calibration_from_json_v2(cJSON *cjson, struct t_stereo_camera_ca
 	CALIB_ASSERTR(cameras.size() == 2, "Two cameras must be specified, %zu given", cameras.size());
 	for (size_t i = 0; i < cameras.size(); i++) {
 		JSONNode jc = cameras[i];
-		bool loaded = t_camera_calibration_load_v2(jc.getCJSON(), &tmp_calibs[i]);
+		const bool loaded = t_camera_calibration_load_v2(jc.getCJSON(), &tmp_calibs[i]);
 		CALIB_ASSERTR(loaded, "Unable to load camera calibration: %s", jc.toString(false).c_str());
 	}
 
-	t_camera_distortion_model model = tmp_calibs[0].distortion_model;
+	const t_camera_distortion_model model = tmp_calibs[0].distortion_model;
 
 	//!@todo  At some point it'll make sense to support different distortion models per-camera, but right now we
 	//! don't have any cameras like that and the way t_stereo_camera_calib_alloc and
@@ -470,8 +470,7 @@ t_stereo_camera_calibration_from_json_v2(cJSON *cjson, struct t_stereo_camera_ca
 	stereo.view[0].base = tmp_calibs[0];
 	stereo.view[1].base = tmp_calibs[1];
 
-
-	JSONNode rel = json["opencv_stereo_calibrate"];
+	const JSONNode rel = json["opencv_stereo_calibrate"];
 	okmats &= load_mat_field(rel["rotation"], 3, 3, stereo.camera_rotation_mat);
 	okmats &= load_mat_field(rel["translation"], 3, 1, stereo.camera_translation_mat);
 	okmats &= load_mat_field(rel["essential"], 3, 3, stereo.camera_essential_mat);
@@ -584,7 +583,7 @@ t_stereo_camera_calibration_save_path_v1(const char *calib_path, struct t_stereo
 		return false;
 	}
 
-	bool success = t_stereo_camera_calibration_save_v1(calib_file, data);
+	const bool success = t_stereo_camera_calibration_save_v1(calib_file, data);
 	fclose(calib_file);
 
 	return success;
@@ -615,7 +614,7 @@ t_stereo_camera_calibration_to_json_v2(cJSON **out_cjson, struct t_stereo_camera
 		CALIB_ASSERTR(false, "Can only deal with fisheye or radtan5 distortion models!");
 	}
 
-	StereoCameraCalibrationWrapper wrapped(data);
+	const StereoCameraCalibrationWrapper wrapped(data);
 	JSONBuilder jb{};
 
 	jb << "{";
@@ -632,7 +631,7 @@ t_stereo_camera_calibration_to_json_v2(cJSON **out_cjson, struct t_stereo_camera
 	// Cameras
 	for (size_t i = 0; i < 2; i++) {
 		const auto &view = wrapped.view[i];
-		bool fisheye = view.distortion_model == T_DISTORTION_FISHEYE_KB4;
+		const bool fisheye = view.distortion_model == T_DISTORTION_FISHEYE_KB4;
 		jb << "{";
 		jb << "model" << (fisheye ? FISHEYE_EQUIDISTANT4 : PINHOLE_RADTAN5);
 
@@ -647,7 +646,7 @@ t_stereo_camera_calibration_to_json_v2(cJSON **out_cjson, struct t_stereo_camera
 		jb << "distortion";
 		jb << "{";
 		if (fisheye) {
-			int n = view.distortion_mat.size().area(); // Number of distortion parameters
+			const int n = view.distortion_mat.size().area(); // Number of distortion parameters
 			CALIB_ASSERT_(n == 4);
 
 			constexpr array names{"k1", "k2", "k3", "k4"};
@@ -655,7 +654,7 @@ t_stereo_camera_calibration_to_json_v2(cJSON **out_cjson, struct t_stereo_camera
 				jb << names[i] << view.distortion_mat(i);
 			}
 		} else {
-			int n = view.distortion_mat.size().area(); // Number of distortion parameters
+			const int n = view.distortion_mat.size().area(); // Number of distortion parameters
 			CALIB_ASSERT_(n == 5);
 
 			constexpr array names{"k1", "k2", "p1", "p2", "k3"};
@@ -687,7 +686,7 @@ t_stereo_camera_calibration_to_json_v2(cJSON **out_cjson, struct t_stereo_camera
 
 	jb << "}";
 
-	cJSON *cjson = jb.getBuiltNode()->getCJSON();
+	const cJSON *cjson = jb.getBuiltNode()->getCJSON();
 	*out_cjson = cJSON_Duplicate(cjson, true);
 	return true;
 }
@@ -696,12 +695,12 @@ static bool
 t_stereo_camera_calibration_save_path_v2(const char *calib_path, struct t_stereo_camera_calibration *data)
 {
 	cJSON *cjson = NULL;
-	bool success = t_stereo_camera_calibration_to_json_v2(&cjson, data);
+	const bool success = t_stereo_camera_calibration_to_json_v2(&cjson, data);
 	if (!success) {
 		return false;
 	}
 
-	JSONNode json{cjson, true, nullptr}; // is_owner=true so it will free cjson object when leaving scope
+	const JSONNode json{cjson, true, nullptr}; // is_owner=true so it will free cjson object when leaving scope
 	CALIB_INFO("Saving calibration file: %s", json.toString(false).c_str());
 	return json.saveToFile(calib_path);
 }
@@ -790,8 +789,8 @@ static bool
 has_json_extension(const char *filename)
 {
 	const char extension[] = ".json";
-	size_t name_len = strlen(filename);
-	size_t ext_len = strlen(extension);
+	const size_t name_len = strlen(filename);
+	const size_t ext_len = strlen(extension);
 
 	if (name_len > ext_len) {
 		return strcmp(&filename[name_len - ext_len], extension) == 0;

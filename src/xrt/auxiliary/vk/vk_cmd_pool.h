@@ -175,7 +175,7 @@ XRT_CHECK_RESULT static inline VkResult
 vk_cmd_pool_create_cmd_buffer(struct vk_bundle *vk, struct vk_cmd_pool *pool, VkCommandBuffer *out_cmd_buffer)
 {
 	vk_cmd_pool_lock(pool);
-	VkResult ret = vk_cmd_pool_create_cmd_buffer_locked(vk, pool, out_cmd_buffer);
+	const VkResult ret = vk_cmd_pool_create_cmd_buffer_locked(vk, pool, out_cmd_buffer);
 	vk_cmd_pool_unlock(pool);
 	return ret;
 }
@@ -193,7 +193,7 @@ vk_cmd_pool_create_and_begin_cmd_buffer(struct vk_bundle *vk,
                                         VkCommandBuffer *out_cmd_buffer)
 {
 	vk_cmd_pool_lock(pool);
-	VkResult ret = vk_cmd_pool_create_and_begin_cmd_buffer_locked(vk, pool, flags, out_cmd_buffer);
+	const VkResult ret = vk_cmd_pool_create_and_begin_cmd_buffer_locked(vk, pool, flags, out_cmd_buffer);
 	vk_cmd_pool_unlock(pool);
 	return ret;
 }
@@ -209,7 +209,7 @@ vk_cmd_pool_submit(
     struct vk_bundle *vk, struct vk_cmd_pool *pool, uint32_t count, const VkSubmitInfo *infos, VkFence fence)
 {
 	vk_cmd_pool_lock(pool);
-	VkResult ret = vk_cmd_submit_locked(vk, pool->queue, count, infos, fence);
+	const VkResult ret = vk_cmd_submit_locked(vk, pool->queue, count, infos, fence);
 	vk_cmd_pool_unlock(pool);
 	return ret;
 }
@@ -224,7 +224,7 @@ XRT_CHECK_RESULT static inline VkResult
 vk_cmd_pool_submit_cmd_buffer(struct vk_bundle *vk, struct vk_cmd_pool *pool, VkCommandBuffer cmd_buffer)
 {
 	vk_cmd_pool_lock(pool);
-	VkResult ret = vk_cmd_pool_submit_cmd_buffer_locked(vk, pool, cmd_buffer);
+	const VkResult ret = vk_cmd_pool_submit_cmd_buffer_locked(vk, pool, cmd_buffer);
 	vk_cmd_pool_unlock(pool);
 	return ret;
 }
@@ -242,7 +242,7 @@ vk_cmd_pool_end_submit_wait_and_free_cmd_buffer(struct vk_bundle *vk,
                                                 VkCommandBuffer cmd_buffer)
 {
 	vk_cmd_pool_lock(pool);
-	VkResult ret = vk_cmd_pool_end_submit_wait_and_free_cmd_buffer_locked(vk, pool, cmd_buffer);
+	const VkResult ret = vk_cmd_pool_end_submit_wait_and_free_cmd_buffer_locked(vk, pool, cmd_buffer);
 	vk_cmd_pool_unlock(pool);
 	return ret;
 }

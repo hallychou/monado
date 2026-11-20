@@ -69,7 +69,7 @@ hand_confidence_value(float reprojection_error, const one_frame_input &input)
 		}
 	}
 	out_confidence /= 42.0f; // number of hand joints
-	float reproj_err_mul = 1.0f / ((reprojection_error * 10) + 1.0f);
+	const float reproj_err_mul = 1.0f / ((reprojection_error * 10) + 1.0f);
 	return out_confidence * reproj_err_mul;
 }
 

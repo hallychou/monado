@@ -107,17 +107,17 @@ TEST_CASE("client_compositor", "[.][needgpu]")
 	struct mock_compositor *mc = mock_compositor(&(xcn->base));
 
 	// every backend needs at least the common extensions
-	unique_string_list required_instance_ext_list{
+	const unique_string_list required_instance_ext_list{
 	    u_extension_list_create_from_array(instance_extensions_common, ARRAY_SIZE(instance_extensions_common))};
 
-	unique_string_list optional_instance_ext_list{u_extension_list_create()};
+	const unique_string_list optional_instance_ext_list{u_extension_list_create()};
 
-	unique_string_list required_device_extension_list{
+	const unique_string_list required_device_extension_list{
 	    u_extension_list_create_from_array(required_device_extensions, ARRAY_SIZE(required_device_extensions))};
 
-	unique_string_list optional_device_extension_list{u_extension_list_create()};
+	const unique_string_list optional_device_extension_list{u_extension_list_create()};
 
-	comp_vulkan_arguments args{
+	const comp_vulkan_arguments args{
 	    VK_MAKE_VERSION(1, 0, 0),
 	    vkGetInstanceProcAddr,
 	    required_instance_ext_list.get(),

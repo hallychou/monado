@@ -81,7 +81,7 @@ static inline uint16_t
 hdk_get_le_uint16(uint8_t *&bufPtr)
 {
 	assert(bufPtr != nullptr);
-	uint16_t ret = static_cast<uint16_t>(*bufPtr) | (static_cast<uint16_t>(*(bufPtr + 1)) << BITS_PER_BYTE);
+	const uint16_t ret = static_cast<uint16_t>(*bufPtr) | (static_cast<uint16_t>(*(bufPtr + 1)) << BITS_PER_BYTE);
 	bufPtr += 2;
 	return ret;
 }
@@ -167,11 +167,11 @@ hdk_device_update(struct hdk_device *hd)
 
 // Used to produce 90 degree rotations
 #define HDK_SIN_PI_OVER_4 0.7071068f
-	struct xrt_quat rot_90_about_x
+	constexpr struct xrt_quat rot_90_about_x
 	{
 		HDK_SIN_PI_OVER_4, 0, 0, HDK_SIN_PI_OVER_4
 	};
-	struct xrt_quat negative_90_about_y
+	constexpr struct xrt_quat negative_90_about_y
 	{
 		0, -HDK_SIN_PI_OVER_4, 0, HDK_SIN_PI_OVER_4
 	};
@@ -197,7 +197,7 @@ hdk_device_update(struct hdk_device *hd)
 	ang_vel_quat.w = 0;
 
 	// need the inverse rotation here
-	struct xrt_quat negative_90_about_x
+	constexpr struct xrt_quat negative_90_about_x
 	{
 		- HDK_SIN_PI_OVER_4, 0, 0, HDK_SIN_PI_OVER_4
 	};
@@ -283,7 +283,7 @@ hdk_device_run_thread(void *ptr)
 struct hdk_device *
 hdk_device_create(struct h_hid_device *dev, enum HDK_VARIANT variant)
 {
-	enum u_device_alloc_flags flags =
+	constexpr enum u_device_alloc_flags flags =
 	    (enum u_device_alloc_flags)(U_DEVICE_ALLOC_HMD | U_DEVICE_ALLOC_TRACKING_NONE);
 	struct hdk_device *hd = U_DEVICE_ALLOCATE(struct hdk_device, flags, 1, 0);
 
@@ -312,7 +312,7 @@ hdk_device_create(struct h_hid_device *dev, enum HDK_VARIANT variant)
 	double hFOV;
 	double vFOV;
 	double hCOP = 0.5;
-	double vCOP = 0.5;
+	constexpr double vCOP = 0.5;
 
 	switch (variant) {
 	default:

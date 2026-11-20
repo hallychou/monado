@@ -134,7 +134,7 @@ IoCache::getInfo(xrt_io_cache_info *out_info)
 	 * generation.
 	 */
 	xrt_system_roles roles = XRT_SYSTEM_ROLES_INIT;
-	xrt_result_t xret = xrt_system_devices_get_roles(mSystemDevices, &roles);
+	const xrt_result_t xret = xrt_system_devices_get_roles(mSystemDevices, &roles);
 	if (xret != XRT_SUCCESS) {
 		BIC_WARN("Failed to get device roles: %i", xret);
 		return xret;
@@ -186,7 +186,7 @@ IoCache::read(uint64_t generation_id,
 	*out_stale = false;
 
 	xrt_system_roles roles = XRT_SYSTEM_ROLES_INIT;
-	xrt_result_t roles_ret = xrt_system_devices_get_roles(mSystemDevices, &roles);
+	const xrt_result_t roles_ret = xrt_system_devices_get_roles(mSystemDevices, &roles);
 	if (roles_ret != XRT_SUCCESS) {
 		BIC_WARN("Failed to get device roles: %i", roles_ret);
 		return roles_ret;
@@ -201,7 +201,7 @@ IoCache::read(uint64_t generation_id,
 	uint32_t total_outputs = 0;
 
 	for (uint32_t i = 0; i < mSystemDevices->static_xdev_count; i++) {
-		xrt_device *xdev = mSystemDevices->static_xdevs[i];
+		const xrt_device *xdev = mSystemDevices->static_xdevs[i];
 		if (xdev == nullptr) {
 			continue;
 		}
@@ -223,7 +223,7 @@ IoCache::read(uint64_t generation_id,
 			continue;
 		}
 
-		xrt_result_t xret = xrt_device_update_inputs(xdev);
+		const xrt_result_t xret = xrt_device_update_inputs(xdev);
 		if (xret != XRT_SUCCESS) {
 			BIC_WARN("Failed to update inputs for device '%s': %i", xdev->str, xret);
 		}

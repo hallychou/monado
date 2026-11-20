@@ -14,7 +14,6 @@
 extern "C" size_t
 math_hash_string(const char *str_c, size_t length)
 {
-	std::string str = std::string(str_c, length);
-	std::hash<std::string> str_hash;
-	return str_hash(str);
+	const std::string str = std::string(str_c, length);
+	return std::hash<std::string>{}(str);
 }

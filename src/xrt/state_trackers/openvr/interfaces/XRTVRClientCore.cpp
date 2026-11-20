@@ -127,7 +127,7 @@ XRTVRClientCore_003::Init(vr::EVRApplicationType eApplicationType, const char *p
 		return xretToInitError(xret);
 	}
 
-	xrt_session_info xsi = {
+	const xrt_session_info xsi = {
 	    .is_overlay = false,
 	    .flags = 0,
 	    .z_order = 0,
@@ -234,7 +234,7 @@ XRTVRClientCore_003::GetGenericInterface(const char *pchNameAndVersion, vr::EVRI
 
 	static const std::string fntable_prefix = "FnTable:";
 
-	bool fntable = interface_name.starts_with(fntable_prefix);
+	const bool fntable = interface_name.starts_with(fntable_prefix);
 
 	// Trim the C prefix
 	if (fntable) {

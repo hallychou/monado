@@ -447,7 +447,7 @@ TEST_CASE("DeviceBase_HmdDevice")
 
 	SECTION("get_view_poses can be called")
 	{
-		xrt_vec3 default_eye_relation = {0.0f, 0.0f, 0.0f};
+		constexpr xrt_vec3 default_eye_relation = {0.0f, 0.0f, 0.0f};
 		xrt_space_relation head_relation;
 		xrt_fov fovs[2];
 		xrt_pose poses[2];
@@ -1020,7 +1020,7 @@ TEST_CASE("DeviceBase_AllFeaturesDevice")
 
 		// Test set_output
 		REQUIRE(dev.set_output_count == 0);
-		xrt_output_value output_value;
+		const xrt_output_value output_value = {};
 		xdev->set_output(xdev, XRT_OUTPUT_NAME_SIMPLE_VIBRATION, &output_value);
 		REQUIRE(dev.set_output_count == 1);
 
@@ -1032,7 +1032,7 @@ TEST_CASE("DeviceBase_AllFeaturesDevice")
 
 		// Test begin_plane_detection_ext
 		REQUIRE(dev.begin_plane_detection_count == 0);
-		xrt_plane_detector_begin_info_ext begin_info = {};
+		const xrt_plane_detector_begin_info_ext begin_info = {};
 		uint64_t plane_detection_id;
 		xdev->begin_plane_detection_ext(xdev, &begin_info, 0, &plane_detection_id);
 		REQUIRE(dev.begin_plane_detection_count == 1);
@@ -1058,7 +1058,7 @@ TEST_CASE("DeviceBase_AllFeaturesDevice")
 
 		// Test get_view_poses
 		REQUIRE(dev.get_view_poses_count == 0);
-		xrt_vec3 eye_relation = {0.0f, 0.0f, 0.0f};
+		constexpr xrt_vec3 eye_relation = {0.0f, 0.0f, 0.0f};
 		xrt_space_relation head_relation;
 		xrt_fov fovs[2];
 		xrt_pose poses[2];
@@ -1115,7 +1115,7 @@ TEST_CASE("DeviceBase_AllFeaturesDevice")
 
 		// Test get_compositor_info
 		REQUIRE(dev.get_compositor_info_count == 0);
-		xrt_device_compositor_mode mode = {};
+		const xrt_device_compositor_mode mode = {};
 		xrt_device_compositor_info info;
 		xdev->get_compositor_info(xdev, &mode, &info);
 		REQUIRE(dev.get_compositor_info_count == 1);

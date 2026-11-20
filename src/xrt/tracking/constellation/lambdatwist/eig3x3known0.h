@@ -99,10 +99,10 @@ eig3x3known0(const double *M, double *E, double *sigma)
 	const double tmp2 = 1.0 / (r2 * (r2 - m1_plus_m5) + m1m5_minus_m2sq);
 	/* 3: a₁ = (rm₃ + m₂m₆ - m₃m₅) / c */
 	/* 4: a₂ = (rm₆ + m₂m₃ - m₁m₆) / c */
-	double a11 = (r1 * m3 + m2m6_minus_m3m5) * tmp1;
-	double a12 = (r1 * m6 + m2m3_minus_m1m6) * tmp1;
-	double a21 = (r2 * m3 + m2m6_minus_m3m5) * tmp2;
-	double a22 = (r2 * m6 + m2m3_minus_m1m6) * tmp2;
+	const double a11 = (r1 * m3 + m2m6_minus_m3m5) * tmp1;
+	const double a12 = (r1 * m6 + m2m3_minus_m1m6) * tmp1;
+	const double a21 = (r2 * m3 + m2m6_minus_m3m5) * tmp2;
+	const double a22 = (r2 * m6 + m2m3_minus_m1m6) * tmp2;
 	/* 5: v = (a₁ a₂ 1) */
 	/* 6: Return v / |v| */
 	const double rnorm1 = 1.0 / sqrt(a11 * a11 + a12 * a12 + 1.0);

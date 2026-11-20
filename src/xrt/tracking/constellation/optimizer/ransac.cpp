@@ -76,7 +76,7 @@ ransacPose(bool deterministic,
 
 	std::mt19937 rng(deterministic ? 88888888 : std::random_device{}());
 
-	uint32_t num_data_points = data_points_2d_f32.size();
+	const uint32_t num_data_points = data_points_2d_f32.size();
 
 	// Convert into homogeneous coordinates and undistort the 2D points
 	std::vector<Eigen::Vector3d> data_points_homog_2d_f64(data_points_2d_f32.size());
@@ -88,8 +88,8 @@ ransacPose(bool deterministic,
 		// @note The size here is technically the size of the blob in *distorted* pixels, but we are using it as
 		// a rough estimate of the size in undistorted pixels. This is not perfect, but it should be good enough
 		// for RANSAC.
-		Eigen::Vector2f size = {data_points_2d_f32[i]->size.x / dist.calib_pinhole.fx,  //
-		                        data_points_2d_f32[i]->size.y / dist.calib_pinhole.fy}; //
+		const Eigen::Vector2f size = {data_points_2d_f32[i]->size.x / dist.calib_pinhole.fx,  //
+		                              data_points_2d_f32[i]->size.y / dist.calib_pinhole.fy}; //
 
 		data_points_homog_max_dist_sq[i] = size.squaredNorm();
 	}
@@ -139,7 +139,7 @@ ransacPose(bool deterministic,
 		}
 
 		// Run lambdatwistp3p to get up to 4 possible solutions for R and T
-		int valid = lambdatwist_p3p(              //
+		const int valid = lambdatwist_p3p(        //
 		    lambda_homog_points_f64[0].data(),    //
 		    lambda_homog_points_f64[1].data(),    //
 		    lambda_homog_points_f64[2].data(),    //
@@ -153,7 +153,7 @@ ransacPose(bool deterministic,
 			struct xrt_pose pose;
 
 			// Get the rotation matrix as an Eigen matrix
-			Eigen::Map<const Eigen::Matrix<double, 3, 3, Eigen::RowMajor>> rot(Rs[sol]);
+			const Eigen::Map<const Eigen::Matrix<double, 3, 3, Eigen::RowMajor>> rot(Rs[sol]);
 
 			// Convert the rotation matrix to a quaternion and store it in the pose
 			map_quat(pose.orientation) = Eigen::Quaterniond(rot).cast<float>();
@@ -177,11 +177,11 @@ ransacPose(bool deterministic,
 				    map_vec3(pose.position);
 
 				// And should be camera facing in this pose
-				Eigen::Vector3f checkdir =
+				const Eigen::Vector3f checkdir =
 				    map_quat(pose.orientation) * data_points_3d_normals_f32[random_indices[p]];
 
-				Eigen::Vector3f checkpos_normalized = checkpos.normalized();
-				double facing_dot = checkpos_normalized.dot(checkdir);
+				const Eigen::Vector3f checkpos_normalized = checkpos.normalized();
+				const double facing_dot = checkpos_normalized.dot(checkdir);
 
 				// Require only that the anchor LED not be actively facing away from the camera
 				// (that it's at worst perpendicular). Controller LEDs can be visible at that angle
@@ -191,12 +191,12 @@ ransacPose(bool deterministic,
 					break;
 				}
 
-				Eigen::Vector3f tmpblob = lambda_homog_points_f64[p].cast<float>();
+				const Eigen::Vector3f tmpblob = lambda_homog_points_f64[p].cast<float>();
 
 				// Calculate the image plane projection of the anchor LED position and check it's
 				// within 2.5mm of where it should be, to catch spurious failures in lambdatwist
-				Eigen::Vector3f projected_checkpos = checkpos / checkpos.z();
-				float l_sq = (projected_checkpos - tmpblob).squaredNorm();
+				const Eigen::Vector3f projected_checkpos = checkpos / checkpos.z();
+				const float l_sq = (projected_checkpos - tmpblob).squaredNorm();
 				if (l_sq > ANCHOR_LED_MAX_DISTANCE_M_SQ) {
 					checks_failed = true;
 					break; // @todo: Figure out why this happened
@@ -215,12 +215,12 @@ ransacPose(bool deterministic,
 			Eigen::Vector3f checkpos_eigen =
 			    map_quat(pose.orientation) * data_points_3d_f32[random_indices[3]] +
 			    map_vec3(pose.position);
-			Eigen::Vector3f projected_checkpos = checkpos_eigen / checkpos_eigen.z();
+			const Eigen::Vector3f projected_checkpos = checkpos_eigen / checkpos_eigen.z();
 
 			// Subtract projected point from undistorted 4th reference point to check error
 			const Eigen::Vector3f checkblob = data_points_homog_2d_f64[random_indices[3]].cast<float>();
 
-			float distance_sq = (projected_checkpos - checkblob).squaredNorm();
+			const float distance_sq = (projected_checkpos - checkblob).squaredNorm();
 
 			// Check that the 4th point projected to within its blob
 			if (distance_sq <= data_points_homog_max_dist_sq[random_indices[3]]) {
@@ -249,12 +249,12 @@ ransacPose(bool deterministic,
 					}
 
 					// Project the 3D point into the image plane
-					Eigen::Vector3f projected_checkpos = checkpos / checkpos.z();
+					const Eigen::Vector3f projected_checkpos = checkpos / checkpos.z();
 
 					// Subtract projected point from undistorted reference point to check error
 					const Eigen::Vector3f checkblob =
 					    data_points_homog_2d_f64[datapoint].cast<float>();
-					float distance_sq = (projected_checkpos - checkblob).squaredNorm();
+					const float distance_sq = (projected_checkpos - checkblob).squaredNorm();
 					// Add small margin for blob size for inliers specifically
 					if (distance_sq > (data_points_homog_max_dist_sq[datapoint] * 1.5f) ||
 					    distance_sq > (t * t)) {
@@ -285,9 +285,9 @@ ransacPose(bool deterministic,
 						const float epsilon = 1e-6f;
 
 						// Compute our inlier ratio, avoiding 0 and 1 cus log.
-						float w = std::clamp(static_cast<float>(best_score.inliers) /
-						                         static_cast<float>(num_data_points),
-						                     epsilon, 1.0f - epsilon);
+						const float w = std::clamp(static_cast<float>(best_score.inliers) /
+						                               static_cast<float>(num_data_points),
+						                           epsilon, 1.0f - epsilon);
 
 						// Update K to the new computed value
 						k = static_cast<uint32_t>(

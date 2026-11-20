@@ -89,15 +89,15 @@ struct cemu_device
 xrt_quat
 wct_to_quat(float waggle, float curl, float twist)
 {
-	xrt_vec3 waggle_axis = {0, 1, 0};
+	constexpr xrt_vec3 waggle_axis = {0, 1, 0};
 	xrt_quat just_waggle;
 	math_quat_from_angle_vector(waggle, &waggle_axis, &just_waggle);
 
-	xrt_vec3 curl_axis = {1, 0, 0};
+	constexpr xrt_vec3 curl_axis = {1, 0, 0};
 	xrt_quat just_curl;
 	math_quat_from_angle_vector(curl, &curl_axis, &just_curl);
 
-	xrt_vec3 twist_axis = {0, 0, 1};
+	constexpr xrt_vec3 twist_axis = {0, 0, 1};
 	xrt_quat just_twist;
 	math_quat_from_angle_vector(twist, &twist_axis, &just_twist);
 
@@ -156,7 +156,7 @@ cemu_device(struct xrt_device *xdev)
 static void
 cemu_device_destroy(struct xrt_device *xdev)
 {
-	struct cemu_device *dev = cemu_device(xdev);
+	const struct cemu_device *dev = cemu_device(xdev);
 	struct cemu_system *system = dev->sys;
 
 	// Remove the variable tracking.
@@ -181,7 +181,7 @@ cemu_device_get_hand_tracking(struct xrt_device *xdev,
 	// Shadows normal hand tracking - does nothing differently
 
 	struct cemu_device *dev = cemu_device(xdev);
-	struct cemu_system *system = dev->sys;
+	const struct cemu_system *system = dev->sys;
 
 	if (name != dev->ht_input_name) {
 		U_LOG_XDEV_UNSUPPORTED_INPUT(&dev->base, system->log_level, name);
@@ -224,7 +224,7 @@ do_grip_pose(struct xrt_hand_joint_set *joint_set,
 	xrt_pose offset_from_palm;
 	math_pose_identity(&offset_from_palm);
 	offset_from_palm.position.y = -grip_offset_from_palm;
-	xrt_pose palm = joint_pose_global(joint_set, XRT_HAND_JOINT_PALM);
+	const xrt_pose palm = joint_pose_global(joint_set, XRT_HAND_JOINT_PALM);
 
 	// Position.
 	struct xrt_relation_chain xrc = {};
@@ -234,11 +234,11 @@ do_grip_pose(struct xrt_hand_joint_set *joint_set,
 
 
 	// Orientation.
-	xrt_vec3 indx_position = joint_position_global(joint_set, XRT_HAND_JOINT_INDEX_PROXIMAL);
-	xrt_vec3 ring_position = joint_position_global(joint_set, XRT_HAND_JOINT_RING_PROXIMAL);
+	const xrt_vec3 indx_position = joint_position_global(joint_set, XRT_HAND_JOINT_INDEX_PROXIMAL);
+	const xrt_vec3 ring_position = joint_position_global(joint_set, XRT_HAND_JOINT_RING_PROXIMAL);
 	struct xrt_vec3 plus_z = ring_position - indx_position;
 	struct xrt_vec3 plus_x;
-	struct xrt_vec3 to_rotate = {0.0f, is_right ? 1.0f : -1.0f, 0.0f};
+	const struct xrt_vec3 to_rotate = {0.0f, is_right ? 1.0f : -1.0f, 0.0f};
 
 	math_quat_rotate_vec3(&palm.orientation, &to_rotate, &plus_x);
 
@@ -263,9 +263,9 @@ get_other_two(struct cemu_device *dev,
               xrt_pose *out_head,
               xrt_hand_joint_set *out_secondary)
 {
-	struct cemu_system *sys = dev->sys;
+	const struct cemu_system *sys = dev->sys;
 	struct xrt_space_relation head_rel;
-	xrt_result_t xret =
+	const xrt_result_t xret =
 	    xrt_device_get_tracked_pose(sys->in_head, XRT_INPUT_GENERIC_HEAD_POSE, head_timestamp_ns, &head_rel);
 	U_LOG_CHK_AND_RET(sys->log_level, xret, "xrt_device_get_tracked_pose");
 
@@ -291,9 +291,9 @@ do_aim_pose(struct cemu_device *dev,
             int64_t hand_timestamp_ns,
             struct xrt_space_relation *out_relation)
 {
-	struct cemu_system *sys = dev->sys;
+	const struct cemu_system *sys = dev->sys;
 
-	struct xrt_vec3 vec3_up = {0, 1, 0};
+	constexpr struct xrt_vec3 vec3_up = {0, 1, 0};
 	struct xrt_pose head;
 	struct xrt_hand_joint_set joint_set_secondary;
 #if 0
@@ -301,7 +301,7 @@ do_aim_pose(struct cemu_device *dev,
 	xrt_result_t xret = get_other_two(dev, hand_timestamp_ns, hand_timestamp_ns, &head, &joint_set_secondary);
 #else
 	// "Moshi way"
-	xrt_result_t xret = get_other_two(dev, head_timestamp_ns, hand_timestamp_ns, &head, &joint_set_secondary);
+	const xrt_result_t xret = get_other_two(dev, head_timestamp_ns, hand_timestamp_ns, &head, &joint_set_secondary);
 #endif
 	U_LOG_CHK_AND_RET(sys->log_level, xret, "get_other_two");
 
@@ -313,14 +313,14 @@ do_aim_pose(struct cemu_device *dev,
 
 	// Chest center is down to the base of the head, and then down the neck.
 	xrt_vec3 down_the_base_of_head;
-	xrt_vec3 base_head_direction = {0, -head_length, 0};
+	const xrt_vec3 base_head_direction = {0, -head_length, 0};
 
 	math_quat_rotate_vec3(&head.orientation, &base_head_direction, &down_the_base_of_head);
 
-	xrt_vec3 chest_center = head.position + down_the_base_of_head + xrt_vec3{0, -neck_length, 0};
+	const xrt_vec3 chest_center = head.position + down_the_base_of_head + xrt_vec3{0, -neck_length, 0};
 
 	xrt_vec3 face_fwd;
-	xrt_vec3 forwards = {0, 0, -1};
+	constexpr xrt_vec3 forwards = {0, 0, -1};
 
 	math_quat_rotate_vec3(&head.orientation, &forwards, &face_fwd);
 
@@ -340,13 +340,13 @@ do_aim_pose(struct cemu_device *dev,
 	math_vec3_normalize(&face_right);
 	face_right *= avg_shoulder_width;
 
-	xrt_vec3 shoulder = chest_center + face_right * (dev->hand_index == 1 ? 1.0f : -1.0f);
+	const xrt_vec3 shoulder = chest_center + face_right * (dev->hand_index == 1 ? 1.0f : -1.0f);
 
-	xrt_vec3 ray_joint = joint_position_global(joint_set_primary, XRT_HAND_JOINT_INDEX_PROXIMAL);
+	const xrt_vec3 ray_joint = joint_position_global(joint_set_primary, XRT_HAND_JOINT_INDEX_PROXIMAL);
 
 	struct xrt_vec3 ray_direction = shoulder - ray_joint;
 
-	struct xrt_vec3 up = {0, 1, 0};
+	constexpr struct xrt_vec3 up = {0, 1, 0};
 
 	struct xrt_vec3 out_x_vector;
 
@@ -372,7 +372,7 @@ cemu_device_get_tracked_pose(struct xrt_device *xdev,
                              struct xrt_space_relation *out_relation)
 {
 	struct cemu_device *dev = cemu_device(xdev);
-	struct cemu_system *sys = dev->sys;
+	const struct cemu_system *sys = dev->sys;
 
 	if (name != XRT_INPUT_HAND_CTRL_EMU_AIM_POSE && name != XRT_INPUT_HAND_CTRL_EMU_GRIP_POSE) {
 		U_LOG_XDEV_UNSUPPORTED_INPUT(&dev->base, dev->sys->log_level, name);
@@ -411,11 +411,11 @@ cemu_device_get_tracked_pose(struct xrt_device *xdev,
 static void
 decide(xrt_vec3 one, xrt_vec3 two, bool *out)
 {
-	float dist = m_vec3_len_sqrd(one - two);
+	const float dist = m_vec3_len_sqrd(one - two);
 	// These used to be 0.02f and 0.04f, but I bumped them way up to compensate for bad tracking. Once our tracking
 	// is better, bump these back down.
-	float activation_dist = 0.02f;
-	float deactivation_dist = 0.04f;
+	constexpr float activation_dist = 0.02f;
+	constexpr float deactivation_dist = 0.04f;
 	const float pinch_activation_dist =
 	    (*out ? deactivation_dist * deactivation_dist : activation_dist * activation_dist);
 
@@ -425,14 +425,14 @@ decide(xrt_vec3 one, xrt_vec3 two, bool *out)
 static xrt_result_t
 cemu_device_update_inputs(struct xrt_device *xdev)
 {
-	struct cemu_device *dev = cemu_device(xdev);
-	struct cemu_system *sys = dev->sys;
+	const struct cemu_device *dev = cemu_device(xdev);
+	const struct cemu_system *sys = dev->sys;
 
 	struct xrt_hand_joint_set joint_set;
 	int64_t noop;
 
-	xrt_result_t xret = xrt_device_get_hand_tracking(dev->sys->in_hand, dev->ht_input_name, os_monotonic_get_ns(),
-	                                                 &joint_set, &noop);
+	const xrt_result_t xret = xrt_device_get_hand_tracking(dev->sys->in_hand, dev->ht_input_name,
+	                                                       os_monotonic_get_ns(), &joint_set, &noop);
 	U_LOG_CHK_AND_RET(sys->log_level, xret, "xrt_device_get_hand_tracking");
 
 	if (!joint_set.is_active) {
@@ -465,7 +465,7 @@ cemu_devices_create(struct xrt_device *head, struct xrt_device *hands, struct xr
 		return 0;
 	}
 
-	enum u_device_alloc_flags flags = U_DEVICE_ALLOC_NO_FLAGS;
+	const enum u_device_alloc_flags flags = U_DEVICE_ALLOC_NO_FLAGS;
 
 	struct cemu_device *cemud[2];
 

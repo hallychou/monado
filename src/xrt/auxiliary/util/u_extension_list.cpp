@@ -114,7 +114,7 @@ is_experimental_vendor(std::string_view vendor)
 		return false;
 	}
 
-	size_t len = vendor.length();
+	const size_t len = vendor.length();
 	size_t i = len - 1;
 
 	// Skip trailing digits
@@ -135,22 +135,22 @@ static ExtensionSortKey
 get_extension_sort_key(const std::string_view name)
 {
 	// Find the first underscore to separate API prefix (e.g., "VK", "XR")
-	size_t first_underscore = name.find('_');
+	const size_t first_underscore = name.find('_');
 	if (first_underscore == std::string::npos) {
 		// No underscore, treat as is
 		return {name, ExtensionType::VENDOR, name};
 	}
 
-	std::string_view api_prefix = name.substr(0, first_underscore);
+	const std::string_view api_prefix = name.substr(0, first_underscore);
 
 	// Find the second underscore to get the vendor/type part
-	size_t second_underscore = name.find('_', first_underscore + 1);
+	const size_t second_underscore = name.find('_', first_underscore + 1);
 	if (second_underscore == std::string::npos) {
 		// Only one underscore, treat as vendor
 		return {api_prefix, ExtensionType::VENDOR, name};
 	}
 
-	std::string_view vendor = name.substr(first_underscore + 1, second_underscore - first_underscore - 1);
+	const std::string_view vendor = name.substr(first_underscore + 1, second_underscore - first_underscore - 1);
 
 	// Determine extension type based on vendor string
 	ExtensionType type;
@@ -247,7 +247,7 @@ u_extension_list_destroy(struct u_extension_list **list_ptr)
 	if (list_ptr == nullptr) {
 		return;
 	}
-	u_extension_list *list = *list_ptr;
+	const u_extension_list *list = *list_ptr;
 	if (list == nullptr) {
 		return;
 	}
@@ -441,7 +441,7 @@ u_extension_list_builder_build_sorted_for_extensions(struct u_extension_list_bui
 void
 u_extension_list_builder_destroy(struct u_extension_list_builder **builder_ptr)
 {
-	u_extension_list_builder *builder = *builder_ptr;
+	const u_extension_list_builder *builder = *builder_ptr;
 	if (builder == nullptr) {
 		return;
 	}

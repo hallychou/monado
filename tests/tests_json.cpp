@@ -95,7 +95,7 @@ TEST_CASE("u_json")
 
 	SECTION("JSONBuilder builds as expected")
 	{
-		string raw_json =
+		const string raw_json =
 		    "{"
 		    "\"alpha\": [1, true, 3.14, {\"beta\" : 4, \"gamma\" : 5}, {\"delta\" : 6}, [{\"epsilon\": [7], "
 		    "\"zeta\": "
@@ -110,7 +110,7 @@ TEST_CASE("u_json")
 		    "\"pi\": 3.141592,"
 		    "\"rho\": [{\"sigma\": [{ \"tau\": [{\"upsilon\": [[[]]]}]}]}]"
 		    "}";
-		JSONNode node_from_string{raw_json};
+		const JSONNode node_from_string{raw_json};
 		INFO("json_node=" << json_node.toString(false));
 		INFO("node_from_string=" << node_from_string.toString(false));
 		CHECK(json_node.toString(false) == node_from_string.toString(false));
@@ -118,7 +118,7 @@ TEST_CASE("u_json")
 
 	SECTION("Complex JSON is preserved through save and load")
 	{
-		JSONNode loaded{jb.getBuiltNode()->toString(false)};
+		const JSONNode loaded{jb.getBuiltNode()->toString(false)};
 		INFO("json_node=" << json_node.toString(false));
 		INFO("loaded=" << loaded.toString(false));
 		CHECK(json_node.toString(false) == loaded.toString(false));
@@ -140,7 +140,7 @@ TEST_CASE("u_json")
 
 	SECTION("Can make a double")
 	{
-		JSONNode stringToDouble("0.5");
+		const JSONNode stringToDouble("0.5");
 
 		constexpr float e = std::numeric_limits<float>::epsilon();
 

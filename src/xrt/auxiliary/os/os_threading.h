@@ -164,7 +164,7 @@ os_mutex_recursive_init(struct os_mutex *om)
 	pthread_mutexattr_t attr;
 	pthread_mutexattr_init(&attr);
 	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-	int ret = pthread_mutex_init(&om->mutex, &attr);
+	const int ret = pthread_mutex_init(&om->mutex, &attr);
 	pthread_mutexattr_destroy(&attr);
 
 	return ret;
@@ -444,8 +444,8 @@ os_semaphore_get_realtime_clock(struct timespec *ts, uint64_t timeout_ns)
 		assert(false);
 		return -1;
 	}
-	uint64_t now_ns = os_timespec_to_ns(&now);
-	uint64_t when_ns = timeout_ns + now_ns;
+	const uint64_t now_ns = os_timespec_to_ns(&now);
+	const uint64_t when_ns = timeout_ns + now_ns;
 
 	os_ns_to_timespec(when_ns, ts);
 	return 0;
@@ -547,7 +547,7 @@ os_thread_helper_start(struct os_thread_helper *oth, os_run_func_t func, void *p
 		return -1;
 	}
 
-	int ret = pthread_create(&oth->thread, NULL, func, ptr);
+	const int ret = pthread_create(&oth->thread, NULL, func, ptr);
 	if (ret != 0) {
 		pthread_mutex_unlock(&oth->mutex);
 		return ret;
@@ -678,7 +678,7 @@ os_thread_helper_is_running(struct os_thread_helper *oth)
 {
 	os_thread_helper_lock(oth);
 	assert(oth->initialized);
-	bool ret = oth->running;
+	const bool ret = oth->running;
 	os_thread_helper_unlock(oth);
 	return ret;
 }

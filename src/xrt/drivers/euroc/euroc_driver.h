@@ -24,7 +24,7 @@
 #define EUROC_ERROR(e, ...) U_LOG_IFL_E(e->log_level, __VA_ARGS__)
 #define EUROC_ASSERT(predicate, ...)                                                                                   \
 	do {                                                                                                           \
-		bool p = predicate;                                                                                    \
+		const bool p = predicate;                                                                              \
 		if (!p) {                                                                                              \
 			U_LOG(U_LOGGING_ERROR, __VA_ARGS__);                                                           \
 			assert(p && "EUROC_ASSERT failed: " #predicate);                                               \

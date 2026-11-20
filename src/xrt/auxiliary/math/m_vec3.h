@@ -95,7 +95,7 @@ m_vec3_len(struct xrt_vec3 l)
 static inline struct xrt_vec3
 m_vec3_normalize(struct xrt_vec3 l)
 {
-	float len = m_vec3_len(l);
+	const float len = m_vec3_len(l);
 	if (len <= FLT_EPSILON) {
 		return l;
 	}
@@ -111,7 +111,7 @@ m_vec3_normalize(struct xrt_vec3 l)
 static inline float
 m_vec3_angle(struct xrt_vec3 l, struct xrt_vec3 r)
 {
-	float dot = m_vec3_dot(l, r);
+	const float dot = m_vec3_dot(l, r);
 	float lengths = m_vec3_len_sqrd(l) * m_vec3_len_sqrd(r);
 
 	if (lengths == 0) {
@@ -125,8 +125,7 @@ m_vec3_angle(struct xrt_vec3 l, struct xrt_vec3 r)
 static inline struct xrt_vec3
 m_vec3_project(struct xrt_vec3 project_this, struct xrt_vec3 onto_this)
 {
-
-	float amnt = (m_vec3_dot(project_this, onto_this) / m_vec3_len_sqrd(onto_this));
+	const float amnt = (m_vec3_dot(project_this, onto_this) / m_vec3_len_sqrd(onto_this));
 
 	return m_vec3_mul_scalar(onto_this, amnt);
 }

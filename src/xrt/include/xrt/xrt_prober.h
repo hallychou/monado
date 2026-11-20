@@ -539,7 +539,7 @@ xrt_prober_get_builders(struct xrt_prober *xp,
 XRT_NONNULL_ALL static inline void
 xrt_prober_destroy(struct xrt_prober **xp_ptr)
 {
-	struct xrt_prober *xp = *xp_ptr;
+	const struct xrt_prober *xp = *xp_ptr;
 	if (xp == NULL) {
 		return;
 	}

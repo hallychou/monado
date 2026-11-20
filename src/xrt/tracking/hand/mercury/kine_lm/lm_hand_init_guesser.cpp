@@ -36,15 +36,15 @@ using namespace xrt::auxiliary::math;
 float
 sympy_guess_distance(float angle, float wrist_extra_distance_meters, float hand_size)
 {
-	float d1 = (1.0 / 2.0) *
-	           (-wrist_extra_distance_meters * (angle - 1) +
-	            sqrt((angle - 1) * (angle * pow(wrist_extra_distance_meters, 2) - 2 * pow(hand_size, 2) +
-	                                pow(wrist_extra_distance_meters, 2)))) /
-	           (angle - 1);
-	float d2 = -(wrist_extra_distance_meters * (angle - 1) +
-	             sqrt((angle - 1) * (angle * pow(wrist_extra_distance_meters, 2) - 2 * pow(hand_size, 2) +
-	                                 pow(wrist_extra_distance_meters, 2)))) /
-	           (2 * angle - 2);
+	const float d1 = (1.0 / 2.0) *
+	                 (-wrist_extra_distance_meters * (angle - 1) +
+	                  sqrt((angle - 1) * (angle * pow(wrist_extra_distance_meters, 2) - 2 * pow(hand_size, 2) +
+	                                      pow(wrist_extra_distance_meters, 2)))) /
+	                 (angle - 1);
+	const float d2 = -(wrist_extra_distance_meters * (angle - 1) +
+	                   sqrt((angle - 1) * (angle * pow(wrist_extra_distance_meters, 2) - 2 * pow(hand_size, 2) +
+	                                       pow(wrist_extra_distance_meters, 2)))) /
+	                 (2 * angle - 2);
 
 	if (d1 > d2) {
 		return d1;
@@ -80,12 +80,12 @@ hand_init_guess(one_frame_input &observation,
 		}
 		num_observation_views++;
 
-		Eigen::Quaternionf rotate = map_quat(v.look_dir);
+		const Eigen::Quaternionf rotate = map_quat(v.look_dir);
 		Eigen::Vector3f directions_rel_camera[21];
 
 		for (int i = 0; i < 21; i++) {
-			float sg_x = v.keypoints_in_scaled_stereographic[i].pos_2d.x * v.stereographic_radius;
-			float sg_y = v.keypoints_in_scaled_stereographic[i].pos_2d.y * v.stereographic_radius;
+			const float sg_x = v.keypoints_in_scaled_stereographic[i].pos_2d.x * v.stereographic_radius;
+			const float sg_y = v.keypoints_in_scaled_stereographic[i].pos_2d.y * v.stereographic_radius;
 			directions_rel_camera[i] = stereographic_unprojection(sg_x, sg_y);
 			directions_rel_camera[i] = rotate * directions_rel_camera[i];
 		}
@@ -95,11 +95,11 @@ hand_init_guess(one_frame_input &observation,
 		map_vec3(midpxm_dir) = directions_rel_camera[Joint21::MIDL_PXM];
 		map_vec3(wrist_dir) = directions_rel_camera[Joint21::WRIST];
 
-		float angle = cos(m_vec3_angle(midpxm_dir, wrist_dir));
-		float wrist_extra_distance_meters =
+		const float angle = cos(m_vec3_angle(midpxm_dir, wrist_dir));
+		const float wrist_extra_distance_meters =
 		    v.keypoints_in_scaled_stereographic[0].depth_relative_to_midpxm * hand_size;
 
-		float distance = sympy_guess_distance(angle, wrist_extra_distance_meters, hand_size);
+		const float distance = sympy_guess_distance(angle, wrist_extra_distance_meters, hand_size);
 
 		if (distance != distance) {
 			// Nan check.
@@ -172,7 +172,7 @@ hand_init_guess(one_frame_input &observation,
 
 #else
 	// Not negated
-	xrt_vec3 plus_z = m_vec3_normalize(wrist_global_sum - midpxm_global_sum);
+	const xrt_vec3 plus_z = m_vec3_normalize(wrist_global_sum - midpxm_global_sum);
 	// Negated
 	xrt_vec3 plus_x = m_vec3_normalize(litpxm_global_sum - indpxm_global_sum);
 #endif

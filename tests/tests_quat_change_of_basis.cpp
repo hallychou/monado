@@ -40,7 +40,7 @@ quat_difference(xrt_quat q1, xrt_quat q2)
 	// https://math.stackexchange.com/a/90098
 	// d(q1,q2)=1−⟨q1,q2⟩2
 
-	float inner_product = (q1.w * q2.w) + (q1.x * q2.x) + (q1.y * q2.y) + (q1.z * q2.z);
+	const float inner_product = (q1.w * q2.w) + (q1.x * q2.x) + (q1.y * q2.y) + (q1.z * q2.z);
 	return 1.0 - (inner_product * inner_product);
 }
 
@@ -112,7 +112,7 @@ slow_change_of_basis_unity_to_oxr(xrt_quat *in, xrt_quat *out)
 	q.y() = in->y;
 	q.z() = in->z;
 
-	Eigen::Matrix3f unity_rotation(q);
+	const Eigen::Matrix3f unity_rotation(q);
 
 	Eigen::Matrix3f mirror_unity_to_openxr = Eigen::Matrix3f::Identity();
 	mirror_unity_to_openxr(2, 2) = -1;

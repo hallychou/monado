@@ -109,7 +109,7 @@ do_print(struct openvr_logger &logger, const char *fmt, const char *prefix, va_l
 	const char *display_class_name = get_display_class_name(logger.class_name);
 	char buf[LOG_BUFFER_SIZE];
 
-	int remaining = sizeof(buf) - 2; // 2 for \n\0
+	const int remaining = sizeof(buf) - 2; // 2 for \n\0
 	int printed = 0;
 	int ret;
 

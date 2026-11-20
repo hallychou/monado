@@ -52,7 +52,7 @@ time_state_create(int64_t offset)
 extern "C" void
 time_state_destroy(struct time_state **state_ptr)
 {
-	struct time_state *state = *state_ptr;
+	const struct time_state *state = *state_ptr;
 
 	if (state == NULL) {
 		return;
@@ -84,7 +84,7 @@ time_state_to_timespec(struct time_state const *state, timepoint_ns timestamp, s
 	assert(state != NULL);
 	assert(out != NULL);
 
-	int64_t ns = time_state_ts_to_monotonic_ns(state, timestamp);
+	const int64_t ns = time_state_ts_to_monotonic_ns(state, timestamp);
 
 	out->tv_sec = ns / (U_TIME_1S_IN_NS);
 	out->tv_nsec = ns % (U_TIME_1S_IN_NS);

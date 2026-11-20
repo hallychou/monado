@@ -34,9 +34,9 @@ TEST_CASE("u_deque")
 		u_deque_timepoint_ns_push_back(dt, B);
 		u_deque_timepoint_ns_push_back(dt, C);
 
-		timepoint_ns a = u_deque_timepoint_ns_at(dt, 0);
-		timepoint_ns b = u_deque_timepoint_ns_at(dt, 1);
-		timepoint_ns c = u_deque_timepoint_ns_at(dt, 2);
+		const timepoint_ns a = u_deque_timepoint_ns_at(dt, 0);
+		const timepoint_ns b = u_deque_timepoint_ns_at(dt, 1);
+		const timepoint_ns c = u_deque_timepoint_ns_at(dt, 2);
 
 		CHECK(a == A);
 		CHECK(b == B);

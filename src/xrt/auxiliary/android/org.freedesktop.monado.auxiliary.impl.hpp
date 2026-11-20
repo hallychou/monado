@@ -67,11 +67,11 @@ namespace org::freedesktop::monado::auxiliary {
 	inline std::vector<float>
 	MonadoView::getSupportedRefreshRates(android::content::Context const &context)
 	{
-		jni::Object refreshRateArray =
+		const jni::Object refreshRateArray =
 		    Meta::data().clazz().call<jni::Object>(Meta::data().getSupportedRefreshRates, context.object());
 		jfloat *refreshRates =
 		    (jfloat *)jni::env()->GetFloatArrayElements((jfloatArray)refreshRateArray.getHandle(), 0);
-		jsize length = jni::env()->GetArrayLength((jfloatArray)refreshRateArray.getHandle());
+		const jsize length = jni::env()->GetArrayLength((jfloatArray)refreshRateArray.getHandle());
 		std::vector<float> refreshRateVector(refreshRates, refreshRates + length);
 		return refreshRateVector;
 	}

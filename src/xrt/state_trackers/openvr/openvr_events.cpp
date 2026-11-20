@@ -26,7 +26,7 @@ namespace xrt::state_trackers::openvr {
 static uint32_t
 getEventSize(vr::EVREventType event_type)
 {
-	uint32_t event_size_header = sizeof(vr::VREvent_t) - sizeof(vr::VREvent_Data_t);
+	const uint32_t event_size_header = sizeof(vr::VREvent_t) - sizeof(vr::VREvent_Data_t);
 
 	uint32_t data_size = 0;
 
@@ -124,7 +124,7 @@ Events::Events(xrt_session *xs) : xs(xs) {}
 void
 Events::trackedDeviceActivated(vr::TrackedDeviceIndex_t index)
 {
-	vr::VREvent_t event = {
+	const vr::VREvent_t event = {
 	    .eventType = vr::VREvent_TrackedDeviceActivated,
 	    .trackedDeviceIndex = index,
 	    .eventAgeSeconds = 0.f,
@@ -137,7 +137,7 @@ Events::trackedDeviceActivated(vr::TrackedDeviceIndex_t index)
 void
 Events::trackedDeviceUserInteractionStarted(vr::TrackedDeviceIndex_t index)
 {
-	vr::VREvent_t event = {
+	const vr::VREvent_t event = {
 	    .eventType = vr::VREvent_TrackedDeviceUserInteractionStarted,
 	    .trackedDeviceIndex = index,
 	    .eventAgeSeconds = 0.f,
@@ -152,7 +152,7 @@ Events::handleSessionEvents(openvr_logger &logger)
 {
 	xrt_session_event xse = {};
 	while (true) {
-		xrt_result_t xret = xrt_session_poll_events(this->xs, &xse);
+		const xrt_result_t xret = xrt_session_poll_events(this->xs, &xse);
 		if (xret != XRT_SUCCESS) {
 			OPENVR_LOG_ERROR_XRET(logger, "Failed to poll session events", xret);
 			return xret;
@@ -160,11 +160,11 @@ Events::handleSessionEvents(openvr_logger &logger)
 
 		switch (xse.type) {
 		case XRT_SESSION_EVENT_STATE_CHANGE: {
-			xrt_session_event_state_change &state_change = xse.state;
+			const xrt_session_event_state_change &state_change = xse.state;
 
 			if (state_change.visible != this->visible) {
 				// @todo dox the processes in question to the application
-				vr::VREvent_t event = {
+				const vr::VREvent_t event = {
 				    .eventType = vr::VREvent_SceneApplicationChanged,
 				    .trackedDeviceIndex = vr::k_unTrackedDeviceIndexInvalid,
 				    .eventAgeSeconds = 0.f,
@@ -228,7 +228,7 @@ Events::pollEvent(openvr_logger &logger, vr::VREvent_t &out_event, uint32_t even
 
 	auto &vr_event = event.event;
 
-	uint32_t required_size = getEventSize(static_cast<vr::EVREventType>(vr_event.eventType));
+	const uint32_t required_size = getEventSize(static_cast<vr::EVREventType>(vr_event.eventType));
 
 	// Event unsupported by client?
 	if (event_size < required_size) {

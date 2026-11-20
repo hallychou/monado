@@ -23,12 +23,11 @@ android_content_get_files_dir(void *context, char *dir, size_t size)
 		return false;
 	}
 
-	wrap::java::io::File file = wrap::android::content::Context{(jobject)context}.getFilesDir();
+	const wrap::java::io::File file = wrap::android::content::Context{(jobject)context}.getFilesDir();
 	if (file.isNull()) {
 		U_LOG_E("Failed to get File object");
 		return false;
 	}
-
 
 	const std::string dirPath = file.getAbsolutePath();
 	if (size < (dirPath.length() + 1)) {

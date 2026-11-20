@@ -81,9 +81,9 @@ namespace detail {
 				state = sample;
 				return;
 			}
-			math::Rational<Scalar> weightedAlpha = alpha * weight;
+			const math::Rational<Scalar> weightedAlpha = alpha * weight;
 
-			math::Rational<Scalar> oneMinusWeightedAlpha = weightedAlpha.complement();
+			const math::Rational<Scalar> oneMinusWeightedAlpha = weightedAlpha.complement();
 
 			Value scaledStateNumerator = oneMinusWeightedAlpha.numerator * state;
 			Value scaledSampleNumerator = weightedAlpha.numerator * sample;

@@ -229,7 +229,7 @@ static inline bool
 u_sink_debug_is_active(struct u_sink_debug *usd)
 {
 	os_mutex_lock(&usd->mutex);
-	bool active = usd->sink != NULL;
+	const bool active = usd->sink != NULL;
 	os_mutex_unlock(&usd->mutex);
 
 	return active;

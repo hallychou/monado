@@ -102,8 +102,8 @@ TEST_CASE("render_calc_uv_to_tangent_lengths_rect")
 		struct xrt_normalized_rect result;
 		render_calc_uv_to_tangent_lengths_rect(&f30, &result);
 
-		float t = tan(SIXTH_PI);
-		float t2 = t * 2;
+		const float t = tan(SIXTH_PI);
+		const float t2 = t * 2;
 
 		// We expect the offset to be -tan(PI/6) and the lengths to be tan(PI/6) * 2.
 		check(result, rect(-t, -t, t2, t2));

@@ -107,7 +107,7 @@ public:
 	inline vr::VRInputComponentHandle_t
 	new_input_handle_locked()
 	{
-		vr::VRInputComponentHandle_t h = ++this->ctx->input.next_handle;
+		const vr::VRInputComponentHandle_t h = ++this->ctx->input.next_handle;
 		this->handles.push_back(h);
 		return h;
 	}

@@ -163,5 +163,5 @@ using c_callback_type = bool (*)(MyCEvent event, void *userdata);
 
 TEST_CASE("u_generic_callbacks-C")
 {
-	GenericCallbacks<c_callback_type, MyCEvent> callbacks;
+	const GenericCallbacks<c_callback_type, MyCEvent> callbacks;
 }

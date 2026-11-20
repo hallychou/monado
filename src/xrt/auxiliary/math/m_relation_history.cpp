@@ -99,7 +99,7 @@ m_relation_history_push_with_motion_estimation(m_relation_history *mrh,
 try {
 	auto rh = from_mrh(mrh);
 
-	RelationHistoryEntry final = {
+	const RelationHistoryEntry final = {
 	    .relation = *in_relation,
 	    .timestamp = timestamp,
 	};

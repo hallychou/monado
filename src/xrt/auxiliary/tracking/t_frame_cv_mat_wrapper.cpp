@@ -31,10 +31,10 @@ namespace xrt::auxiliary::tracking {
 void
 FrameMat::fillInFields(cv::Mat mat, xrt_format format, const Params &params)
 {
-	uint32_t width = (uint32_t)mat.cols;
-	uint32_t height = (uint32_t)mat.rows;
-	size_t stride = mat.step[0];
-	size_t size = stride * height;
+	const uint32_t width = (uint32_t)mat.cols;
+	const uint32_t height = (uint32_t)mat.rows;
+	const size_t stride = mat.step[0];
+	const size_t size = stride * height;
 
 	this->matrix = mat;
 
@@ -67,7 +67,7 @@ FrameMat::FrameMat()
 void
 FrameMat::destroyFrame(xrt_frame *xf)
 {
-	FrameMat *fm = (FrameMat *)xf;
+	const FrameMat *fm = (FrameMat *)xf;
 	delete fm;
 }
 

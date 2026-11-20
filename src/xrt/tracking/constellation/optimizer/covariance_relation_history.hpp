@@ -65,7 +65,7 @@ public: // Methods
 	{
 		assert(this->imu_calibration != nullptr);
 
-		double delta_s = time_ns_to_s(delta_ns);
+		const double delta_s = time_ns_to_s(delta_ns);
 
 		CovarianceRelationHistoryEntry final = *this;
 		final.timestamp += delta_ns;
@@ -104,7 +104,7 @@ public: // Methods
 	CovarianceRelationHistoryEntry
 	interpolate(timepoint_ns to_ns, const CovarianceRelationHistoryEntry &successor) const
 	{
-		double t = (double)(to_ns - this->timestamp) / (double)(successor.timestamp - this->timestamp);
+		const double t = (double)(to_ns - this->timestamp) / (double)(successor.timestamp - this->timestamp);
 
 		auto final = CovarianceRelationHistoryEntry(this->RelationHistoryEntry::interpolate(to_ns, successor));
 

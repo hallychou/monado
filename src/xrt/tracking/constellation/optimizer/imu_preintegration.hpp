@@ -358,7 +358,7 @@ computeImuResidual(const PreintegratedImuSamples &imu_preintegration,
 	Quaternion<T> end_Q_world_device;
 	end_T_world_device.getQuaternion(end_Q_world_device);
 
-	Vector3<T> gravity_vector = world_gravity.toVector();
+	const Vector3<T> gravity_vector = world_gravity.toVector();
 
 	// I'm sure we've all seen these exact formulas a million times.
 	auto end_predicted_Q_start = start_Q_device_world * end_Q_world_device;
@@ -374,23 +374,25 @@ computeImuResidual(const PreintegratedImuSamples &imu_preintegration,
 	     (T(0.5) * gravity_vector * imu_preintegration.dt * imu_preintegration.dt));  //
 
 	// Compute the deltas for how much IMU bias has changed from now to preintegration.
-	Vector3<T> delta_accel_bias = imu_bias.accel_bias - imu_preintegration.accel_bias_at_integration.cast<T>();
-	Vector3<T> delta_gyro_bias = imu_bias.gyro_bias - imu_preintegration.gyro_bias_at_integration.cast<T>();
-	Vector3<T> delta_accel_scale = imu_bias.accel_scale - imu_preintegration.accel_scale_at_integration.cast<T>();
+	const Vector3<T> delta_accel_bias =
+	    imu_bias.accel_bias - imu_preintegration.accel_bias_at_integration.cast<T>();
+	const Vector3<T> delta_gyro_bias = imu_bias.gyro_bias - imu_preintegration.gyro_bias_at_integration.cast<T>();
+	const Vector3<T> delta_accel_scale =
+	    imu_bias.accel_scale - imu_preintegration.accel_scale_at_integration.cast<T>();
 
 	// Correct the amount of rotation by the change in gyro bias
-	Quaternion<T> corrected_Q_start_end =                                    //
+	const Quaternion<T> corrected_Q_start_end =                              //
 	    imu_preintegration.Q_start_end.cast<T>() *                           //
 	    quat_exp_so3(imu_preintegration.J_R_bg.cast<T>() * delta_gyro_bias); //
 
 	// Correct the change in velocity and position by the change by accel and gyro bias/scale.
-	Vector3<T> corrected_start_delta_velocity =                    //
+	const Vector3<T> corrected_start_delta_velocity =              //
 	    imu_preintegration.delta_velocity.cast<T>()                //
 	    + imu_preintegration.J_v_ba.cast<T>() * delta_accel_bias   //
 	    + imu_preintegration.J_v_bg.cast<T>() * delta_gyro_bias    //
 	    + imu_preintegration.J_v_sa.cast<T>() * delta_accel_scale; //
 
-	Vector3<T> corrected_start_delta_position =                    //
+	const Vector3<T> corrected_start_delta_position =              //
 	    imu_preintegration.delta_position.cast<T>()                //
 	    + imu_preintegration.J_p_ba.cast<T>() * delta_accel_bias   //
 	    + imu_preintegration.J_p_bg.cast<T>() * delta_gyro_bias    //

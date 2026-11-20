@@ -64,7 +64,7 @@ public:
 	getNumber(const std::string &name)
 	{
 		auto s = counters.find(name);
-		uint32_t count = (s != counters.end() ? s->second : 0u) + 1u;
+		const uint32_t count = (s != counters.end() ? s->second : 0u) + 1u;
 		counters[name] = count;
 
 		return count;
@@ -132,7 +132,7 @@ u_var_add_root(void *root, const char *c_name, bool suffix_with_number)
 		return;
 	}
 
-	std::unique_lock<std::mutex> lock(gTracker.mutex);
+	const std::unique_lock<std::mutex> lock(gTracker.mutex);
 
 	auto name = std::string(c_name);
 	auto raw_name = name;
@@ -161,7 +161,7 @@ u_var_remove_root(void *root)
 		return;
 	}
 
-	std::unique_lock<std::mutex> lock(gTracker.mutex);
+	const std::unique_lock<std::mutex> lock(gTracker.mutex);
 
 	auto s = gTracker.map.find((ptrdiff_t)root);
 	if (s == gTracker.map.end()) {
@@ -178,7 +178,7 @@ u_var_visit(u_var_root_cb enter_cb, u_var_root_cb exit_cb, u_var_elm_cb elem_cb,
 		return;
 	}
 
-	std::unique_lock<std::mutex> lock(gTracker.mutex);
+	const std::unique_lock<std::mutex> lock(gTracker.mutex);
 
 	std::vector<Obj *> tmp;
 	tmp.reserve(gTracker.map.size());

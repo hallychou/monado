@@ -93,11 +93,11 @@ XRTVRSystem_026::GetProjectionMatrix(vr::EVREye eEye, float fNearZ, float fFarZ)
 	this->GetProjectionRaw(eEye, &fLeft, &fRight, &fTop, &fBottom);
 
 	// https://github.com/ValveSoftware/openvr/wiki/IVRSystem::GetProjectionRaw
-	float idx = 1.0f / (fRight - fLeft);
-	float idy = 1.0f / (fBottom - fTop);
-	float idz = 1.0f / (fFarZ - fNearZ);
-	float sx = fRight + fLeft;
-	float sy = fBottom + fTop;
+	const float idx = 1.0f / (fRight - fLeft);
+	const float idy = 1.0f / (fBottom - fTop);
+	const float idz = 1.0f / (fFarZ - fNearZ);
+	const float sx = fRight + fLeft;
+	const float sy = fBottom + fTop;
 
 	vr::HmdMatrix44_t mat;
 	// @todo Move this to just the matrix definition when clang-format is updated in CI
@@ -135,7 +135,7 @@ XRTVRSystem_026::GetProjectionRaw(vr::EVREye eEye, float *pfLeft, float *pfRight
 	std::array<xrt_fov, 2> fovs;
 	std::array<xrt_pose, 2> poses;
 	xrt_pose head_relation;
-	xrt_result_t xret = this->core->compositor->getFrameRenderState(fovs, poses, head_relation);
+	const xrt_result_t xret = this->core->compositor->getFrameRenderState(fovs, poses, head_relation);
 	if (xret != XRT_SUCCESS) {
 		OPENVR_LOG_ERROR_XRET(logger, "GetProjectionRaw: Failed to get output data", xret);
 		XRT_DEBUGBREAK();
@@ -233,7 +233,7 @@ XRTVRSystem_026::GetEyeToHeadTransform(vr::EVREye eEye)
 	std::array<xrt_fov, 2> fovs;
 	std::array<xrt_pose, 2> T_head_eyes;
 	xrt_pose head_relation;
-	xrt_result_t xret = this->core->compositor->getFrameRenderState(fovs, T_head_eyes, head_relation);
+	const xrt_result_t xret = this->core->compositor->getFrameRenderState(fovs, T_head_eyes, head_relation);
 	if (xret != XRT_SUCCESS) {
 		OPENVR_LOG_ERROR_XRET(logger, "GetEyeToHeadTransform: Failed to get output data", xret);
 		XRT_DEBUGBREAK();
@@ -562,7 +562,7 @@ XRTVRSystem_026::GetStringTrackedDeviceProperty(vr::TrackedDeviceIndex_t unDevic
 		return 0;
 	}
 
-	size_t str_size = str.length() + 1;
+	const size_t str_size = str.length() + 1;
 
 	if (str_size > unBufferSize) {
 		SET_ERROR(pError, vr::ETrackedPropertyError::TrackedProp_BufferTooSmall);
@@ -594,7 +594,7 @@ XRTVRSystem_026::PollNextEvent(vr::VREvent_t *pEvent, uint32_t uncbVREvent)
 	openvr_logger logger;
 	OPENVR_LOGGER_INIT(logger);
 
-	bool ret = this->core->events->pollEvent(logger, *pEvent, uncbVREvent);
+	const bool ret = this->core->events->pollEvent(logger, *pEvent, uncbVREvent);
 
 	// No event
 	if (!ret) {

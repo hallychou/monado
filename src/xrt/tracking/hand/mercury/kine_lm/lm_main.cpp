@@ -55,7 +55,7 @@ eval_hand_set_rel_translations(const OptimizerHand<T> &opt, Translations55<T> &r
 
 	// What's the best place to put this? Here works, but is there somewhere we could put it where it gets accessed
 	// faster?
-	T finger_joint_lengths[4][4] = {
+	const T finger_joint_lengths[4][4] = {
 	    {
 	        T(-0.66),
 	        T(-0.365719),
@@ -94,7 +94,7 @@ eval_hand_set_rel_translations(const OptimizerHand<T> &opt, Translations55<T> &r
 	// Index to little finger
 	for (int finger = 0; finger < 4; finger++) {
 		for (int i = 0; i < 4; i++) {
-			int bone = i + 1;
+			const int bone = i + 1;
 			rel_translations.t[finger + 1][bone] = {T(0), T(0), T(finger_joint_lengths[finger][i])};
 		}
 	}
@@ -193,7 +193,7 @@ eval_hand_with_orientation(const KinematicHandLM &state,
 		const Quat<T> *last_orientation = &opt.wrist_final_orientation;
 		for (size_t bone = 0; bone < kNumOrientationsInFinger; bone++) {
 			Quat<T> &out_orientation = orientations_absolute.q[finger][bone];
-			Quat<T> &rel_orientation = rel_orientations.q[finger][bone];
+			const Quat<T> &rel_orientation = rel_orientations.q[finger][bone];
 
 			QuaternionProduct(*last_orientation, rel_orientation, out_orientation);
 			last_orientation = &out_orientation;
@@ -208,7 +208,7 @@ eval_hand_with_orientation(const KinematicHandLM &state,
 		const Quat<T> *last_orientation = &opt.wrist_final_orientation;
 		for (size_t bone = 0; bone < kNumJointsInFinger; bone++) {
 			Vec3<T> &out_translation = translations_absolute.t[finger][bone];
-			Vec3<T> &rel_translation = rel_translations.t[finger][bone];
+			const Vec3<T> &rel_translation = rel_translations.t[finger][bone];
 
 			UnitQuaternionRotateAndScalePoint(*last_orientation, rel_translation, opt.hand_size,
 			                                  out_translation);
@@ -246,8 +246,8 @@ get_avg_curl_value(const one_frame_input &obs, const int finger)
 		if (!inp.active) {
 			continue;
 		}
-		float conf = 1 / inp.curls[finger].variance; // Can't divide by 0, variance is always >0
-		float val = inp.curls[finger].value;
+		const float conf = 1 / inp.curls[finger].variance; // Can't divide by 0, variance is always >0
+		const float val = inp.curls[finger].value;
 		avg += val * conf;
 		sum += conf;
 	}
@@ -257,13 +257,13 @@ get_avg_curl_value(const one_frame_input &obs, const int finger)
 HandScalar
 calc_stability_curl_multiplier(const OptimizerFinger<HandScalar> &finger_last, HandScalar obs_curl)
 {
-	HandScalar last_curl_sum = HandScalar(finger_last.proximal_swing.x + finger_last.rots[0] + finger_last.rots[1]);
+	const HandScalar last_curl_sum =
+	    HandScalar(finger_last.proximal_swing.x + finger_last.rots[0] + finger_last.rots[1]);
 	//!@todo Use the neural net's output variance somehow
-	HandScalar curl_disagreement = abs(obs_curl - last_curl_sum);
+	const HandScalar curl_disagreement = abs(obs_curl - last_curl_sum);
 
 	HandScalar curl_sub_mul = 1.0f - curl_disagreement;
 	curl_sub_mul += 0.2;
-
 
 	curl_sub_mul = std::max<HandScalar>(curl_sub_mul, 0);
 	curl_sub_mul = std::min<HandScalar>(curl_sub_mul, 1.0);
@@ -283,10 +283,8 @@ computeResidualStability_Finger(const one_frame_input &observation,
 	const OptimizerFinger<T> &finger = hand.finger[finger_idx];
 	const OptimizerFinger<HandScalar> &finger_last = last_hand.finger[finger_idx];
 
-
-	HandScalar obs_curl = HandScalar(get_avg_curl_value(observation, finger_idx + 1));
-	HandScalar curl_sub_mul = calc_stability_curl_multiplier(finger_last, obs_curl);
-
+	const HandScalar obs_curl = HandScalar(get_avg_curl_value(observation, finger_idx + 1));
+	const HandScalar curl_sub_mul = calc_stability_curl_multiplier(finger_last, obs_curl);
 
 	helper.AddValue((finger.proximal_swing.x - finger_last.proximal_swing.x) * //
 	                stab.stabilityFingerPXMSwingX * curl_sub_mul);
@@ -312,8 +310,7 @@ computeResidualStability(const OptimizerHand<T> &hand,
                          const KinematicHandLM &state,
                          ResidualHelper<T> &helper)
 {
-	HandStability stab(state.smoothing_factor);
-
+	const HandStability stab(state.smoothing_factor);
 
 	if constexpr (optimize_hand_size) {
 		helper.AddValue( //
@@ -328,7 +325,6 @@ computeResidualStability(const OptimizerHand<T> &hand,
 	helper.AddValue((hand.wrist_post_location.y) * stab.stabilityRootPosition);
 	helper.AddValue((hand.wrist_post_location.z) * stab.stabilityRootPosition);
 
-
 	// Needed because d/dx(sqrt(x)) at x=0 is undefined, and the first iteration *always* starts at 0.
 	// x-2sin(0.5x) at x=0.001 is 4.16e-11 - this is a reasonable epsilon to pick.
 	const float epsilon = 0.001;
@@ -342,15 +338,12 @@ computeResidualStability(const OptimizerHand<T> &hand,
 		T rotation_magnitude = hand.wrist_post_orientation_aax.norm();
 		T magnitude_sin = T(2) * sin(T(0.5) * rotation_magnitude);
 
-		Vec3<T> rotation_axis = hand.wrist_post_orientation_aax.normalized();
-
+		const Vec3<T> rotation_axis = hand.wrist_post_orientation_aax.normalized();
 
 		helper.AddValue((magnitude_sin * rotation_axis.x) * (T)(stab.stabilityHandOrientationXY));
 		helper.AddValue((magnitude_sin * rotation_axis.y) * (T)(stab.stabilityHandOrientationXY));
 		helper.AddValue((magnitude_sin * rotation_axis.z) * (T)(stab.stabilityHandOrientationZ));
 	}
-
-
 
 	helper.AddValue((hand.thumb.metacarpal.swing.x - last_hand.thumb.metacarpal.swing.x) *
 	                stab.stabilityThumbMCPSwing);
@@ -537,7 +530,7 @@ CostFunctor_PositionsPart(const OptimizerHand<T> &hand,
 		if (!state.observation->views[view].active) {
 			continue;
 		}
-		HandScalar stereographic_radius = state.observation->views[view].stereographic_radius;
+		const HandScalar stereographic_radius = state.observation->views[view].stereographic_radius;
 		Vec3<T> model_joints_rel_camera[21] = {};
 
 		cjrc(state, hand, translations_absolute, view, model_joints_rel_camera);
@@ -596,7 +589,7 @@ diff_stereographic_reprojection_error(const Vec3<T> &model_joint_pos_rel_camera_
 
 	//!@todo This works well but we can get a way more "rooted in math" way of increasing repro error with
 	//! low-confidence measurements than this.
-	HandScalar mul = 1 / (0.2 + confidence_xy);
+	const HandScalar mul = 1 / (0.2 + confidence_xy);
 
 	helper.AddValue((stereographic_model_dir.x - (T)(observed_ray_sg.pos_2d.x)) * mul);
 	helper.AddValue((stereographic_model_dir.y - (T)(observed_ray_sg.pos_2d.y)) * mul);
@@ -619,7 +612,7 @@ simple_reprojection_error(const OptimizerHand<T> &hand,
 			continue;
 		}
 
-		HandScalar stereographic_radius = state.observation->views[view].stereographic_radius;
+		const HandScalar stereographic_radius = state.observation->views[view].stereographic_radius;
 		Vec3<T> model_joints_rel_camera[21] = {};
 		cjrc(state, hand, translations_absolute, view, model_joints_rel_camera);
 
@@ -675,15 +668,14 @@ template <typename T>
 bool
 CostFunctor<optimize_hand_size>::operator()(const T *const x, T *residual) const
 {
-
-	struct KinematicHandLM &state = this->parent;
+	const struct KinematicHandLM &state = this->parent;
 	OptimizerHand<T> hand = {};
 	// ??? should I do the below? probably.
 	Quat<T> tmp = this->parent.this_frame_pre_rotation;
 	OptimizerHandInit<T>(hand, tmp);
 	OptimizerHandUnpackFromVector(x, state, hand);
 
-	XRT_MAYBE_UNUSED size_t residual_size =
+	XRT_MAYBE_UNUSED const size_t residual_size =
 	    calc_residual_size(state.use_stability, optimize_hand_size, state.num_observation_views);
 
 // When you're hacking, you want to set the residuals to always-0 so that any of them you forget to touch keep their 0
@@ -846,17 +838,18 @@ opt_run(KinematicHandLM &state, one_frame_input &observation, xrt_hand_joint_set
 {
 	constexpr size_t input_size = calc_input_size(optimize_hand_size);
 
-	size_t residual_size = calc_residual_size(state.use_stability, optimize_hand_size, state.num_observation_views);
+	const size_t residual_size =
+	    calc_residual_size(state.use_stability, optimize_hand_size, state.num_observation_views);
 
 	LM_DEBUG(state, "Running with %zu inputs and %zu residuals, viewed in %d cameras", input_size, residual_size,
 	         state.num_observation_views);
 
-	CostFunctor<optimize_hand_size> cf(state, residual_size);
+	const CostFunctor<optimize_hand_size> cf(state, residual_size);
 
 	using AutoDiffCostFunctor =
 	    ceres::TinySolverAutoDiffFunction<CostFunctor<optimize_hand_size>, Eigen::Dynamic, input_size, HandScalar>;
 
-	AutoDiffCostFunctor f(cf);
+	const AutoDiffCostFunctor f(cf);
 
 	ceres::TinySolver<AutoDiffCostFunctor> solver = {};
 	solver.options.max_num_iterations = 30;
@@ -872,17 +865,17 @@ opt_run(KinematicHandLM &state, one_frame_input &observation, xrt_hand_joint_set
 
 	Eigen::Matrix<HandScalar, input_size, 1> inp = state.TinyOptimizerInput.head<input_size>();
 
-	XRT_MAYBE_UNUSED uint64_t start = os_monotonic_get_ns();
-	XRT_MAYBE_UNUSED auto summary = solver.Solve(f, &inp);
-	XRT_MAYBE_UNUSED uint64_t end = os_monotonic_get_ns();
+	XRT_MAYBE_UNUSED const uint64_t start = os_monotonic_get_ns();
+	XRT_MAYBE_UNUSED const auto summary = solver.Solve(f, &inp);
+	XRT_MAYBE_UNUSED const uint64_t end = os_monotonic_get_ns();
 
 	//!@todo Is there a zero-copy way of doing this?
 	state.TinyOptimizerInput.head<input_size>() = inp;
 
 	if (state.log_level <= U_LOGGING_DEBUG) {
 
-		uint64_t diff = end - start;
-		double time_taken = (double)diff / (double)U_TIME_1MS_IN_NS;
+		const uint64_t diff = end - start;
+		const double time_taken = (double)diff / (double)U_TIME_1MS_IN_NS;
 
 		const char *status = nullptr;
 

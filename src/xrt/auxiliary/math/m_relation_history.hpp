@@ -46,7 +46,7 @@ struct RelationHistoryEntry
 	RelationHistoryEntry
 	predict(time_duration_ns delta_ns) const
 	{
-		double delta_s = time_ns_to_s(delta_ns);
+		const double delta_s = time_ns_to_s(delta_ns);
 
 		RelationHistoryEntry final = *this;
 		final.timestamp += delta_ns;
@@ -62,10 +62,10 @@ struct RelationHistoryEntry
 		RelationHistoryEntry final = *this;
 		final.timestamp = to_ns;
 
-		int64_t diff_before = to_ns - this->timestamp;
-		int64_t diff_after = successor.timestamp - to_ns;
+		const int64_t diff_before = to_ns - this->timestamp;
+		const int64_t diff_after = successor.timestamp - to_ns;
 
-		float amount_to_lerp = (float)diff_before / (float)(diff_before + diff_after);
+		const float amount_to_lerp = (float)diff_before / (float)(diff_before + diff_after);
 
 		auto &result_relation = final.relation;
 
@@ -111,11 +111,11 @@ struct RelationHistoryEntry
 		xrt_vec3 &out_angular_velocity = in_out_end.relation.angular_velocity;
 		enum xrt_space_relation_flags &out_flags = in_out_end.relation.relation_flags;
 
-		double dt = time_ns_to_s(in_out_end.timestamp - this->timestamp);
+		const double dt = time_ns_to_s(in_out_end.timestamp - this->timestamp);
 
 		assert(dt != 0.0f);
 
-		enum xrt_space_relation_flags shared_flags =
+		const enum xrt_space_relation_flags shared_flags =
 		    (enum xrt_space_relation_flags)(old_relation.relation_flags & new_relation.relation_flags);
 
 		// Don't do anything if the new relation already has linear velocity
@@ -249,8 +249,8 @@ public: // Methods (thread-unsafe)
 			// The desired timestamp is after what our buffer contains.
 			// (pose-prediction)
 			// Output flags match the most recent buffer entry.
-			time_duration_ns delta_ns = timestamp_ns - this->impl.back().timestamp;
-			double delta_s = time_ns_to_s(delta_ns);
+			const time_duration_ns delta_ns = timestamp_ns - this->impl.back().timestamp;
+			const double delta_s = time_ns_to_s(delta_ns);
 
 			U_LOG_T("Extrapolating %f s past the back of the buffer!", delta_s);
 
@@ -269,8 +269,8 @@ public: // Methods (thread-unsafe)
 			// The desired timestamp is before what our buffer contains.
 			// (an edge case where somebody asks for a really old pose and we do our best)
 			// Output flags are the same as the input flags for the history entry we use
-			time_duration_ns delta_ns = timestamp_ns - this->impl.front().timestamp;
-			double delta_s = time_ns_to_s(delta_ns);
+			const time_duration_ns delta_ns = timestamp_ns - this->impl.front().timestamp;
+			const double delta_s = time_ns_to_s(delta_ns);
 			U_LOG_T("Extrapolating %f s before the front of the buffer!", delta_s);
 			out_entry = this->impl.front().predict(delta_ns);
 
@@ -340,7 +340,7 @@ public: // Methods (thread-unsafe)
 
 		if (it != b) {
 			const auto &before = *(it - 1);
-			time_duration_ns diff = timestamp_ns - before.timestamp;
+			const time_duration_ns diff = timestamp_ns - before.timestamp;
 			if (diff <= best_diff) {
 				best = before;
 				best_diff = diff;
@@ -349,7 +349,7 @@ public: // Methods (thread-unsafe)
 
 		if (it != e) {
 			const auto &after = *it;
-			time_duration_ns diff = after.timestamp - timestamp_ns;
+			const time_duration_ns diff = after.timestamp - timestamp_ns;
 			// Strictly less, so ties go to the older entry.
 			if (diff < best_diff || (!best.has_value() && diff <= best_diff)) {
 				best = after;
@@ -368,7 +368,7 @@ public: // Methods (thread-safe)
 	bool
 	pushOrUpdate(const T &entry, bool allow_update)
 	{
-		std::unique_lock<os::Mutex> lock(this->mutex);
+		const std::unique_lock<os::Mutex> lock(this->mutex);
 		return this->pushOrUpdateLocked(entry, allow_update);
 	}
 
@@ -380,7 +380,7 @@ public: // Methods (thread-safe)
 	std::optional<T>
 	getLatest() const
 	{
-		std::unique_lock<os::Mutex> lock(this->mutex);
+		const std::unique_lock<os::Mutex> lock(this->mutex);
 		return this->getLatestLocked();
 	}
 
@@ -392,7 +392,7 @@ public: // Methods (thread-safe)
 	bool
 	pushWithMotionEstimation(const T &new_entry, bool allow_update)
 	{
-		std::unique_lock<os::Mutex> lock(this->mutex);
+		const std::unique_lock<os::Mutex> lock(this->mutex);
 		const auto begin_entry = this->getLatestLocked();
 
 		T end_entry = new_entry;
@@ -411,7 +411,7 @@ public: // Methods (thread-safe)
 	uint32_t
 	size() const
 	{
-		std::unique_lock<os::Mutex> lock(this->mutex);
+		const std::unique_lock<os::Mutex> lock(this->mutex);
 		return static_cast<uint32_t>(this->impl.size());
 	}
 
@@ -423,7 +423,7 @@ public: // Methods (thread-safe)
 	void
 	clear()
 	{
-		std::unique_lock<os::Mutex> lock(this->mutex);
+		const std::unique_lock<os::Mutex> lock(this->mutex);
 		this->impl.clear();
 	}
 
@@ -435,7 +435,7 @@ public: // Methods (thread-safe)
 	m_relation_history_result
 	get(timepoint_ns timestamp_ns, T &out_entry) const
 	{
-		std::unique_lock<os::Mutex> lock(this->mutex);
+		const std::unique_lock<os::Mutex> lock(this->mutex);
 		return this->getLocked(timestamp_ns, out_entry);
 	}
 
@@ -447,7 +447,7 @@ public: // Methods (thread-safe)
 	std::optional<T>
 	getExact(timepoint_ns timestamp_ns) const
 	{
-		std::unique_lock<os::Mutex> lock(this->mutex);
+		const std::unique_lock<os::Mutex> lock(this->mutex);
 		return this->getExactLocked(timestamp_ns);
 	}
 
@@ -459,7 +459,7 @@ public: // Methods (thread-safe)
 	std::optional<T>
 	getNearest(timepoint_ns timestamp_ns, time_duration_ns max_slop_ns) const
 	{
-		std::unique_lock<os::Mutex> lock(this->mutex);
+		const std::unique_lock<os::Mutex> lock(this->mutex);
 		return this->getNearestLocked(timestamp_ns, max_slop_ns);
 	}
 };

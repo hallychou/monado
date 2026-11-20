@@ -20,7 +20,7 @@ using namespace xrt::auxiliary::util;
 
 TEST_CASE("TaskCollection")
 {
-	SharedThreadPool pool{2, 3, "Test"};
+	const SharedThreadPool pool{2, 3, "Test"};
 	bool calledA[] = {
 	    false,
 	    false,
@@ -33,20 +33,20 @@ TEST_CASE("TaskCollection")
 	    false,
 	};
 
-	std::vector<TaskCollection::Functor> funcsA = {
+	const std::vector<TaskCollection::Functor> funcsA = {
 	    [&] { calledA[0] = true; },
 	    [&] { calledA[1] = true; },
 	    [&] { calledA[2] = true; },
 	};
 
-	std::vector<TaskCollection::Functor> funcsB = {
+	const std::vector<TaskCollection::Functor> funcsB = {
 	    [&] { calledB[0] = true; },
 	    [&] { calledB[1] = true; },
 	    [&] { calledB[2] = true; },
 	};
 
-	SharedThreadGroup groupA{pool};
-	SharedThreadGroup groupB{pool};
+	const SharedThreadGroup groupA{pool};
+	const SharedThreadGroup groupB{pool};
 
 	CHECK(!calledA[0]);
 	CHECK(!calledA[1]);
@@ -66,7 +66,7 @@ TEST_CASE("TaskCollection")
 		CHECK(!calledB[2]);
 
 		{
-			TaskCollection collectionB{groupB, funcsB};
+			const TaskCollection collectionB{groupB, funcsB};
 		}
 		CHECK(calledB[0]);
 		CHECK(calledB[1]);
@@ -80,7 +80,7 @@ TEST_CASE("TaskCollection")
 		CHECK(!calledB[2]);
 
 		{
-			TaskCollection collectionB{groupB, funcsB};
+			const TaskCollection collectionB{groupB, funcsB};
 		}
 
 		CHECK(calledB[0]);
@@ -101,7 +101,7 @@ TEST_CASE("TaskCollection")
 		CHECK(!calledB[2]);
 
 		{
-			TaskCollection collectionB{
+			const TaskCollection collectionB{
 			    groupB,
 			    {
 			        [&] {
