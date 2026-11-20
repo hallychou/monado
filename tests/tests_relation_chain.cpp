@@ -139,9 +139,9 @@ run_func(struct xrt_relation_chain *xrc, Functions fn)
 	do {                                                                                                           \
 		struct xrt_space_relation result = XRT_STRUCT_INIT;                                                    \
 		struct xrt_relation_chain xrc = XRT_STRUCT_INIT;                                                       \
-		Functions fns[] = {__VA_ARGS__};                                                                       \
+		const Functions fns[] = {__VA_ARGS__};                                                                 \
 		std::string str = {};                                                                                  \
-		for (Functions fn : fns) {                                                                             \
+		for (const Functions fn : fns) {                                                                       \
 			run_func(&xrc, fn);                                                                            \
 			stringify(str, fn);                                                                            \
 		}                                                                                                      \

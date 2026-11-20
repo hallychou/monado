@@ -42,7 +42,7 @@ interpret_as_rt8(const t_camera_calibration &cc, t_camera_model_params &out_para
 		        t_stringify_camera_distortion_model(T_DISTORTION_OPENCV_RADTAN_8));
 	}
 
-	size_t dist_num = t_num_params_from_distortion_model(cc.distortion_model);
+	const size_t dist_num = t_num_params_from_distortion_model(cc.distortion_model);
 
 	for (size_t i = 0; i < dist_num; i++) {
 		// Copy only the valid values over. The high indices will be zero, which means that rt4 and rt5
@@ -141,7 +141,7 @@ bool
 t_camera_models_unproject_and_flip(
     const t_camera_model_params *dist, const float x, const float y, float *out_x, float *out_y, float *out_z)
 {
-	bool ret = t_camera_models_unproject(dist, x, y, out_x, out_y, out_z);
+	const bool ret = t_camera_models_unproject(dist, x, y, out_x, out_y, out_z);
 
 	*out_z *= -1;
 	*out_y *= -1;
@@ -173,8 +173,8 @@ t_camera_models_flip_and_project(const t_camera_model_params *dist, //
                                  float *out_x,                      //
                                  float *out_y)
 {
-	float _y = y * -1;
-	float _z = z * -1;
+	const float _y = y * -1;
+	const float _z = z * -1;
 
 	return t_camera_models_project(dist, x, _y, _z, out_x, out_y);
 }

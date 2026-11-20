@@ -36,8 +36,8 @@ math_quat_integrate_velocity(const struct xrt_quat *quat,
 	assert(dt != 0);
 
 
-	Eigen::Quaternionf q = map_quat(*quat);
-	Eigen::Quaternionf incremental_rotation = quat_exp_so3(map_vec3(*ang_vel) * dt).normalized();
+	const Eigen::Quaternionf q = map_quat(*quat);
+	const Eigen::Quaternionf incremental_rotation = quat_exp_so3(map_vec3(*ang_vel) * dt).normalized();
 	map_quat(*result) = q * incremental_rotation;
 }
 
@@ -53,7 +53,7 @@ math_quat_finite_difference(const struct xrt_quat *quat0,
 	assert(dt != 0);
 
 
-	Eigen::Quaternionf inc_quat = map_quat(*quat1) * map_quat(*quat0).conjugate();
+	const Eigen::Quaternionf inc_quat = map_quat(*quat1) * map_quat(*quat0).conjugate();
 	map_vec3(*out_ang_vel) = quat_ln_so3(inc_quat) / dt;
 }
 
@@ -66,6 +66,6 @@ math_quat_exp_so3(const struct xrt_vec3 *axis_angle, struct xrt_quat *out_quat)
 extern "C" void
 math_quat_ln_so3(const struct xrt_quat *quat, struct xrt_vec3 *out_axis_angle)
 {
-	Eigen::Quaternionf eigen_quat = map_quat(*quat);
+	const Eigen::Quaternionf eigen_quat = map_quat(*quat);
 	map_vec3(*out_axis_angle) = quat_ln_so3(eigen_quat);
 }

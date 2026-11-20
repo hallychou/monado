@@ -31,7 +31,7 @@ DEBUG_GET_ONCE_LOG_OPTION(json_log, "JSON_LOG", U_LOGGING_WARN)
 #define JSON_ERROR(...) U_LOG_IFL_E(debug_get_log_option_json_log(), __VA_ARGS__)
 #define JSON_ASSERT(fatal, predicate, ...)                                                                             \
 	do {                                                                                                           \
-		bool p = predicate;                                                                                    \
+		const bool p = predicate;                                                                              \
 		if (!p) {                                                                                              \
 			JSON_ERROR(__VA_ARGS__);                                                                       \
 			if (fatal) {                                                                                   \
@@ -95,7 +95,7 @@ public:
 	{
 		if (isInvalid()) {
 			const int max_length = 64;
-			string msg = string(cJSON_GetErrorPtr()).substr(0, max_length);
+			const string msg = string(cJSON_GetErrorPtr()).substr(0, max_length);
 			JSON_ERROR("Invalid syntax right before: '%s'", msg.c_str());
 			throw std::runtime_error(msg);
 		}
@@ -163,7 +163,7 @@ public:
 	static JSONNode
 	loadFromFile(const string &filepath)
 	{
-		std::ifstream file(filepath);
+		const std::ifstream file(filepath);
 		if (!file.is_open()) {
 			JSON_ERROR("Unable to open file %s", filepath.c_str());
 			return JSONNode{};
@@ -171,7 +171,7 @@ public:
 
 		std::stringstream stream{};
 		stream << file.rdbuf();
-		string content = stream.str();
+		const string content = stream.str();
 
 		return JSONNode{content};
 	}
@@ -179,7 +179,7 @@ public:
 	bool
 	saveToFile(const string &filepath) const
 	{
-		string contents = toString(false);
+		const string contents = toString(false);
 		std::ofstream file(filepath);
 
 		if (!file.is_open()) {
@@ -455,7 +455,7 @@ private:
 	void
 	transition(InputAlphabet symbol, const JSONValue &value)
 	{
-		StackAlphabet top = stack.top();
+		const StackAlphabet top = stack.top();
 		JSON_DEBUG("stacksz=%zu top=%d state=%d symbol=%d value=%s", stack.size(), static_cast<int>(top),
 		           static_cast<int>(state), static_cast<int>(symbol), valueToString(value).c_str());
 
@@ -607,7 +607,7 @@ public:
 	JSONBuilder &
 	operator<<(const JSONValue &value)
 	{
-		bool is_string = holds_alternative<string>(value) || holds_alternative<const char *>(value);
+		const bool is_string = holds_alternative<string>(value) || holds_alternative<const char *>(value);
 		if (!is_string) {
 			transition(S::PushValue, value);
 			return *this;

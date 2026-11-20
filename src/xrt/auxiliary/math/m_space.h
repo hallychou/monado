@@ -34,7 +34,7 @@ extern "C" {
 static inline bool
 m_pose_is_identity(const struct xrt_pose *pose)
 {
-	struct xrt_pose p = *pose;
+	const struct xrt_pose p = *pose;
 
 	return ((p.position.x == 0.0f || p.position.x == -0.0f) &&       // x
 	        (p.position.y == 0.0f || p.position.y == -0.0f) &&       // y
@@ -60,12 +60,12 @@ m_pose_is_identity(const struct xrt_pose *pose)
 static inline void
 m_space_relation_from_pose(const struct xrt_pose *pose, bool set_tracked, struct xrt_space_relation *out_relation)
 {
-	enum xrt_space_relation_flags flags =
+	const enum xrt_space_relation_flags flags =
 	    set_tracked ? XRT_SPACE_RELATION_BITMASK_ALL
 	                : (enum xrt_space_relation_flags)(XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
 	                                                  XRT_SPACE_RELATION_POSITION_VALID_BIT);
 
-	struct xrt_space_relation relation = {
+	const struct xrt_space_relation relation = {
 	    flags,
 	    *pose,
 	    XRT_VEC3_ZERO,
@@ -81,7 +81,7 @@ m_space_relation_from_pose(const struct xrt_pose *pose, bool set_tracked, struct
 static inline void
 m_space_relation_ident(struct xrt_space_relation *out_relation)
 {
-	struct xrt_pose identity = XRT_POSE_IDENTITY;
+	const struct xrt_pose identity = XRT_POSE_IDENTITY;
 
 	m_space_relation_from_pose(&identity, false, out_relation);
 }
@@ -180,13 +180,12 @@ m_relation_chain_push_pose(struct xrt_relation_chain *xrc, const struct xrt_pose
 static inline void
 m_relation_chain_push_pose_if_not_identity(struct xrt_relation_chain *xrc, const struct xrt_pose *pose)
 {
-	struct xrt_pose p = *pose;
-
+	const struct xrt_pose p = *pose;
 	if (m_pose_is_identity(&p)) {
 		return;
 	}
 
-	m_relation_chain_push_pose(xrc, &p);
+	m_relation_chain_push_pose(xrc, pose);
 }
 
 /*!
@@ -199,14 +198,13 @@ m_relation_chain_push_pose_if_not_identity(struct xrt_relation_chain *xrc, const
 static inline void
 m_relation_chain_push_inverted_pose_if_not_identity(struct xrt_relation_chain *xrc, const struct xrt_pose *pose)
 {
-	struct xrt_pose p = *pose;
-
+	const struct xrt_pose p = *pose;
 	if (m_pose_is_identity(&p)) {
 		return;
 	}
 
 	struct xrt_pose invert;
-	math_pose_invert(&p, &invert);
+	math_pose_invert(pose, &invert);
 	m_relation_chain_push_pose(xrc, &invert);
 }
 

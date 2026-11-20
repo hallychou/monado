@@ -2596,7 +2596,7 @@ enum xrt_visibility_mask_type
 static inline void
 xrt_reference_inc(struct xrt_reference *xref)
 {
-	XRT_MAYBE_UNUSED int32_t count = xrt_atomic_s32_inc_return(&xref->count);
+	XRT_MAYBE_UNUSED const int32_t count = xrt_atomic_s32_inc_return(&xref->count);
 
 	XRT_REFERENCE_DEBUG_PRINT(Incremented, xref, count);
 }
@@ -2610,7 +2610,7 @@ xrt_reference_inc(struct xrt_reference *xref)
 static inline void
 xrt_reference_dec(struct xrt_reference *xref)
 {
-	XRT_MAYBE_UNUSED int32_t count = xrt_atomic_s32_dec_return(&xref->count);
+	XRT_MAYBE_UNUSED const int32_t count = xrt_atomic_s32_dec_return(&xref->count);
 
 	XRT_REFERENCE_DEBUG_PRINT(Decremented, xref, count);
 }
@@ -2624,7 +2624,7 @@ xrt_reference_dec(struct xrt_reference *xref)
 XRT_CHECK_RESULT static inline bool
 xrt_reference_inc_and_was_zero(struct xrt_reference *xref)
 {
-	int32_t count = xrt_atomic_s32_inc_return(&xref->count);
+	const int32_t count = xrt_atomic_s32_inc_return(&xref->count);
 
 	XRT_REFERENCE_DEBUG_PRINT(Incremented, xref, count);
 
@@ -2640,7 +2640,7 @@ xrt_reference_inc_and_was_zero(struct xrt_reference *xref)
 XRT_CHECK_RESULT static inline bool
 xrt_reference_dec_and_is_zero(struct xrt_reference *xref)
 {
-	int32_t count = xrt_atomic_s32_dec_return(&xref->count);
+	const int32_t count = xrt_atomic_s32_dec_return(&xref->count);
 
 	XRT_REFERENCE_DEBUG_PRINT(Decremented, xref, count);
 

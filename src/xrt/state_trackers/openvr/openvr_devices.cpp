@@ -48,7 +48,7 @@ Device::Device(openvr_logger &logger, Devices &devices, xrt_device *xdev) : xdev
 		}
 
 		if (input_name.has_value()) {
-			xrt_result_t xret =
+			const xrt_result_t xret =
 			    xrt_space_overseer_create_pose_space(devices.xso, xdev, input_name.value(), &pose_space);
 			if (xret != XRT_SUCCESS) {
 				OPENVR_LOG_ERROR_XRET(logger, "Failed to create pose space for device %s", xret,
@@ -142,9 +142,9 @@ Devices::trackDevices(openvr_logger &logger,
 
 	xrt_space *space = this->space_mappings[universe];
 
-	xrt_pose identity_pose = XRT_POSE_IDENTITY;
+	constexpr xrt_pose identity_pose = XRT_POSE_IDENTITY;
 
-	vr::TrackedDevicePose_t identity_tracked_pose = {
+	constexpr vr::TrackedDevicePose_t identity_tracked_pose = {
 	    .mDeviceToAbsoluteTracking = {},
 	    .vVelocity = {0.0f, 0.0f, 0.0f},
 	    .vAngularVelocity = {0.0f, 0.0f, 0.0f},
@@ -155,9 +155,9 @@ Devices::trackDevices(openvr_logger &logger,
 
 	// For each device, if it's connected, update the corresponding device in the array with the new pose.
 	for (vr::TrackedDeviceIndex_t i = 0; i < pose_count && i < vr::k_unMaxTrackedDeviceCount; ++i) {
-		Device &device = this->device_array[i];
+		const Device &device = this->device_array[i];
 
-		xrt_device *xdev = device.xdev;
+		const xrt_device *xdev = device.xdev;
 		if (xdev == nullptr || device.tracked_class == vr::TrackedDeviceClass_Invalid ||
 		    device.pose_space == nullptr) {
 			// Can't track device

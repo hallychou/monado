@@ -83,9 +83,9 @@ public:
 		tmp.x = UV.x - 0.5f;
 		tmp.y = UV.y - 0.5f;
 		tmp.z = 0.f;
-		Vector3 dir = clipToWorld.MultiplyPoint(tmp * 2.f) - cameraPosition;
+		const Vector3 dir = clipToWorld.MultiplyPoint(tmp * 2.f) - cameraPosition;
 
-		float mag = dir.Magnitude();
+		const float mag = dir.Magnitude();
 		out = dir / mag;
 	}
 
@@ -111,7 +111,7 @@ private:
 inline Vector3
 Project(const Vector3 &v1, const Vector3 &v2)
 {
-	Vector3 v2Norm = (v2 / v2.Magnitude());
+	const Vector3 v2Norm = (v2 / v2.Magnitude());
 	return v2Norm * Vector3::Dot(v1, v2Norm);
 }
 
@@ -122,8 +122,8 @@ intersectLineSphere(const Vector3 &Origin,
                     float SphereRadiusSqrd,
                     bool frontSide = true)
 {
-	Vector3 L = spherePos - Origin;
-	Vector3 offsetFromSphereCenterToRay = Project(L, Direction) - L;
+	const Vector3 L = spherePos - Origin;
+	const Vector3 offsetFromSphereCenterToRay = Project(L, Direction) - L;
 	return (offsetFromSphereCenterToRay.sqrMagnitude() <= SphereRadiusSqrd)
 	           ? Vector3::Dot(L, Direction) - (sqrt(SphereRadiusSqrd - offsetFromSphereCenterToRay.sqrMagnitude()) *
 	                                           (frontSide ? 1.f : -1.f))
@@ -134,11 +134,10 @@ inline float
 intersectPlane(const Vector3 &n, const Vector3 &p0, const Vector3 &l0, const Vector3 &l)
 {
 
-	float denom = Vector3::Dot((Vector3::Zero() - n), l);
+	const float denom = Vector3::Dot((Vector3::Zero() - n), l);
 	if (denom > 1.4e-45f) {
-		Vector3 p0l0 = p0 - l0;
-		float t = Vector3::Dot(p0l0, (Vector3::Zero() - n)) / denom;
-		return t;
+		const Vector3 p0l0 = p0 - l0;
+		return Vector3::Dot(p0l0, (Vector3::Zero() - n)) / denom;
 	}
 	return -1.f;
 }

@@ -40,7 +40,7 @@ struct u_frame_times_widget
 static inline void
 u_frame_times_widget_push_sample(struct u_frame_times_widget *widget, uint64_t new_frame_time)
 {
-	int last_index = widget->index;
+	const int last_index = widget->index;
 
 	widget->index++;
 	widget->index %= FPS_WIDGET_NUM_FRAME_TIMES;
@@ -50,12 +50,12 @@ u_frame_times_widget_push_sample(struct u_frame_times_widget *widget, uint64_t n
 		float total_ms = 0;
 
 		// frame *timings* are durations between *times*
-		int NUM_FRAME_TIMINGS = FPS_WIDGET_NUM_FRAME_TIMES - 1;
+		const int NUM_FRAME_TIMINGS = FPS_WIDGET_NUM_FRAME_TIMES - 1;
 
 		for (int i = 0; i < NUM_FRAME_TIMINGS; i++) {
 			total_ms += widget->timings_ms[i];
 		}
-		float avg_frametime_ms = total_ms / ((float)NUM_FRAME_TIMINGS);
+		const float avg_frametime_ms = total_ms / ((float)NUM_FRAME_TIMINGS);
 		widget->fps = 1000.f / avg_frametime_ms;
 	}
 
@@ -66,14 +66,14 @@ u_frame_times_widget_push_sample(struct u_frame_times_widget *widget, uint64_t n
 	assert(last_index >= 0);
 	assert(last_index < FPS_WIDGET_NUM_FRAME_TIMES);
 
-	uint64_t diff = widget->times_ns[widget->index] - widget->times_ns[last_index];
+	const uint64_t diff = widget->times_ns[widget->index] - widget->times_ns[last_index];
 	widget->timings_ms[widget->index] = (float)time_ns_to_ms_f(diff);
 }
 
 static inline void
 u_frame_times_widget_init(struct u_frame_times_widget *widget, float target_frame_time_ms, float range)
 {
-	uint64_t now = os_monotonic_get_ns();
+	const uint64_t now = os_monotonic_get_ns();
 	for (int i = 0; i < FPS_WIDGET_NUM_FRAME_TIMES; i++) {
 		widget->times_ns[i] = now + i;
 	}

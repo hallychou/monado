@@ -81,7 +81,7 @@ handDot(cv::Mat &mat, xrt_vec2 place, float radius, float hue, float intensity, 
 inline void
 handSquare(cv::Mat &debug_frame, xrt_vec2 center, float radius, cv::Scalar color)
 {
-	cv::Point2i pt((int)center.x, (int)center.y);
+	const cv::Point2i pt((int)center.x, (int)center.y);
 	cv::rectangle(debug_frame, cv::Rect(pt - cv::Point2i(radius / 2, radius / 2), cv::Size(radius, radius)), color,
 	              1);
 }

@@ -57,7 +57,7 @@ TEMPLATE_TEST_CASE("Rational", "", int32_t, uint32_t, int64_t, uint64_t)
 	}
 
 	{
-		R val{5, 8};
+		const R val{5, 8};
 		CAPTURE(val);
 		CHECK((R::simplestUnity() * val) == val);
 		CHECK((val * R::simplestUnity()) == val);
@@ -74,8 +74,8 @@ TEMPLATE_TEST_CASE("Rational", "", int32_t, uint32_t, int64_t, uint64_t)
 	}
 
 	if constexpr (std::is_signed<TestType>::value) {
-		R val{5, -8};
-		R valNonNegativeDenominator = val.withNonNegativeDenominator();
+		const R val{5, -8};
+		const R valNonNegativeDenominator = val.withNonNegativeDenominator();
 
 		CAPTURE(val);
 		CHECK((R::simplestUnity() * val) == valNonNegativeDenominator);
@@ -95,7 +95,7 @@ TEMPLATE_TEST_CASE("Rational", "", int32_t, uint32_t, int64_t, uint64_t)
 	// Check all our predicates, and our float convesions
 	{
 		// This is divide by zero error, all should be false
-		R val{0, 0};
+		const R val{0, 0};
 		CAPTURE(val);
 		CHECK_FALSE(val.isZero());
 		CHECK_FALSE(val.isBetweenZeroAndOne());
@@ -103,7 +103,7 @@ TEMPLATE_TEST_CASE("Rational", "", int32_t, uint32_t, int64_t, uint64_t)
 		CHECK_FALSE(val.isOverUnity());
 	}
 	{
-		R val{0, 8};
+		const R val{0, 8};
 		CAPTURE(val);
 		CHECK(val.isZero());
 		CHECK_FALSE(val.isBetweenZeroAndOne());
@@ -115,7 +115,7 @@ TEMPLATE_TEST_CASE("Rational", "", int32_t, uint32_t, int64_t, uint64_t)
 	}
 
 	{
-		R val{5, 8};
+		const R val{5, 8};
 		CAPTURE(val);
 		CHECK_FALSE(val.isZero());
 		CHECK(val.isBetweenZeroAndOne());
@@ -129,7 +129,7 @@ TEMPLATE_TEST_CASE("Rational", "", int32_t, uint32_t, int64_t, uint64_t)
 	}
 
 	{
-		R val{8, 8};
+		const R val{8, 8};
 		CAPTURE(val);
 		CHECK_FALSE(val.isZero());
 		CHECK_FALSE(val.isBetweenZeroAndOne());
@@ -140,7 +140,7 @@ TEMPLATE_TEST_CASE("Rational", "", int32_t, uint32_t, int64_t, uint64_t)
 		CHECK(val.as_double() == 1.0);
 	}
 	{
-		R val = R::simplestUnity();
+		const R val = R::simplestUnity();
 		CAPTURE(val);
 		CHECK_FALSE(val.isZero());
 		CHECK_FALSE(val.isBetweenZeroAndOne());
@@ -151,7 +151,7 @@ TEMPLATE_TEST_CASE("Rational", "", int32_t, uint32_t, int64_t, uint64_t)
 		CHECK(val.as_double() == 1.0);
 	}
 	{
-		R val{8, 5};
+		const R val{8, 5};
 		CAPTURE(val);
 		CHECK_FALSE(val.isZero());
 		CHECK_FALSE(val.isBetweenZeroAndOne());

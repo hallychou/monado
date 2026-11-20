@@ -314,7 +314,7 @@ TEST_CASE("IteratorBase")
 	buffer.push_back(4);
 	using namespace xrt::auxiliary::util;
 	using const_iterator = typename HistoryBuffer<int, 4>::const_iterator;
-	const_iterator default_constructed{};
+	const const_iterator default_constructed{};
 	const_iterator begin_constructed = buffer.begin();
 	const_iterator end_constructed = buffer.end();
 

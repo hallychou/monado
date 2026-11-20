@@ -936,7 +936,7 @@ seedParameterBlocks(RigCalibrationProblem &problem)
 			continue;
 		}
 
-		Map<Vector<double, Pose<double>::kNumParameters>> parameters(
+		const Map<Vector<double, Pose<double>::kNumParameters>> parameters(
 		    blocks.dynamic_cameras.at(camera.dynamic_parameter_idx).data());
 
 		if (camera_seeds.count(pair.first) == 0) {
@@ -1163,7 +1163,7 @@ RigCalibration::~RigCalibration()
 void
 RigCalibration::addCamera(const CameraDescription &camera_description)
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	this->cameras.push_back(camera_description);
 }
@@ -1171,7 +1171,7 @@ RigCalibration::addCamera(const CameraDescription &camera_description)
 void
 RigCalibration::addDevice(t_constellation_device_id_t device_id, const xrt_imu_noise_calibration &sensor_calibration)
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	this->sensor_calibrations[device_id] = sensor_calibration;
 }
@@ -1179,7 +1179,7 @@ RigCalibration::addDevice(t_constellation_device_id_t device_id, const xrt_imu_n
 void
 RigCalibration::removeDevice(t_constellation_device_id_t device_id)
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	this->sensor_calibrations.erase(device_id);
 	this->device_samples.erase(device_id);
@@ -1188,7 +1188,7 @@ RigCalibration::removeDevice(t_constellation_device_id_t device_id)
 void
 RigCalibration::beginCollectingData()
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 	this->collecting_data = true;
 
 	this->device_samples.clear();
@@ -1197,21 +1197,21 @@ RigCalibration::beginCollectingData()
 void
 RigCalibration::endCollectingData()
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 	this->collecting_data = false;
 }
 
 bool
 RigCalibration::isCollectingData()
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 	return this->collecting_data;
 }
 
 void
 RigCalibration::pushCameraSample(ConstellationTracker *tracker, const CameraSample &sample)
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	if (!this->collecting_data) {
 		return;
@@ -1249,7 +1249,7 @@ RigCalibration::pushCameraSample(ConstellationTracker *tracker, const CameraSamp
 		for (uint32_t j = 0; j < sample.blob_count; j++) {
 			const auto &blob = sample.blobs[j];
 			if (blob.matched_device_id == device_id) {
-				int32_t index =
+				const int32_t index =
 				    findLedIndexById(device->search_model->led_model, blob.matched_device_led_id);
 				if (index == -1) {
 					continue;
@@ -1275,7 +1275,7 @@ RigCalibration::pushCameraSample(ConstellationTracker *tracker, const CameraSamp
 			continue;
 		}
 
-		DeviceCameraSample device_sample = {
+		const DeviceCameraSample device_sample = {
 		    .mosaic_idx = sample.mosaic_index,
 		    .camera_idx = sample.camera_index,
 
@@ -1296,7 +1296,7 @@ RigCalibration::pushCameraSample(ConstellationTracker *tracker, const CameraSamp
 void
 RigCalibration::pushImuSample(t_constellation_device_id_t device_id, const xrt_imu_sample &sample)
 {
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	if (!this->collecting_data) {
 		return;
@@ -1328,7 +1328,7 @@ RigCalibration::optimize(CalibrationResult &out_result)
 	t_constellation_device_id_t device_to_optimize_for;
 
 	{
-		std::unique_lock<os::Mutex> lock(this->lock);
+		const std::unique_lock<os::Mutex> lock(this->lock);
 
 		if (this->cameras.size() == 0) {
 			assert(false); // This should never happen
@@ -1545,7 +1545,7 @@ RigCalibration::numSamplesForBestDevice(size_t &out_num_samples) const
 		return false;
 	}
 
-	std::unique_lock<os::Mutex> lock(this->lock);
+	const std::unique_lock<os::Mutex> lock(this->lock);
 
 	t_constellation_device_id_t best_device;
 	if (!this->bestDeviceLocked(best_device)) {
@@ -1579,7 +1579,7 @@ RigCalibration::solveWithCameraTimeOffset(t_constellation_device_id_t device_id,
                                           CalibrationResult &out_result)
 {
 	// Seed with our identity bias.
-	ImuBias<ImuBiasJet> imu_bias = ImuBias<double>().seed();
+	const ImuBias<ImuBiasJet> imu_bias = ImuBias<double>().seed();
 
 	/*
 	 * Applied before the grouping below, so a shift large enough to move a sample past a neighbour changes which
@@ -1630,9 +1630,10 @@ RigCalibration::solveWithCameraTimeOffset(t_constellation_device_id_t device_id,
 			 * Only cameras of the same mosaic share an exposure, so a sample from a different mosaic
 			 * always starts a new keyframe no matter how close in time it lands.
 			 */
-			bool same_exposure = camera_sample.mosaic_idx == accumulated_mosaic_idx &&
-			                     std::abs(camera_sample.timestamp_ns - accumulated_keyframe.timestamp_ns) <=
-			                         kKeyframeGroupingToleranceNs;
+			const bool same_exposure =
+			    camera_sample.mosaic_idx == accumulated_mosaic_idx &&
+			    std::abs(camera_sample.timestamp_ns - accumulated_keyframe.timestamp_ns) <=
+			        kKeyframeGroupingToleranceNs;
 
 			if (!same_exposure) {
 				keyframes.push_back(std::move(accumulated_keyframe));
@@ -1739,7 +1740,7 @@ RigCalibration::solveWithCameraTimeOffset(t_constellation_device_id_t device_id,
 	// write world gravity guess
 	{
 		auto gravity = WorldGravity<double>();
-		Map<Vector<double, WorldGravity<double>::kNumParameters>> gravity_parameters(
+		const Map<Vector<double, WorldGravity<double>::kNumParameters>> gravity_parameters(
 		    blocks.world_gravity.data());
 		gravity.pack(gravity_parameters);
 	}
@@ -1747,14 +1748,14 @@ RigCalibration::solveWithCameraTimeOffset(t_constellation_device_id_t device_id,
 	// write IMU bias guess
 	{
 		auto bias = ImuBias<double>();
-		Map<Vector<double, ImuBias<double>::kNumParameters>> bias_parameters(blocks.imu_bias.data());
+		const Map<Vector<double, ImuBias<double>::kNumParameters>> bias_parameters(blocks.imu_bias.data());
 		bias.pack(bias_parameters);
 	}
 
 	// write IMU extrinsics guess
 	{
 		auto extrinsics = ImuExtrinsics<double>(Quaterniond::Identity());
-		Map<Vector<double, ImuExtrinsics<double>::kNumParameters>> extrinsics_parameters(
+		const Map<Vector<double, ImuExtrinsics<double>::kNumParameters>> extrinsics_parameters(
 		    blocks.imu_extrinsics.data());
 		extrinsics.pack(extrinsics_parameters);
 	}

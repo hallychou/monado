@@ -43,7 +43,7 @@ XRTVRInput_011::GetActionSetHandle(const char *pchActionSetName, VRActionSetHand
 		return vr::EVRInputError::VRInputError_InvalidParam;
 	}
 
-	std::string name(pchActionSetName);
+	const std::string name(pchActionSetName);
 
 	auto ret = this->core->input->getActionSetHandle(name, *pHandle);
 
@@ -63,7 +63,7 @@ XRTVRInput_011::GetActionHandle(const char *pchActionName, VRActionHandle_t *pHa
 		return vr::EVRInputError::VRInputError_InvalidParam;
 	}
 
-	std::string name(pchActionName);
+	const std::string name(pchActionName);
 
 	auto ret = this->core->input->getActionHandle(name, *pHandle);
 
@@ -83,7 +83,7 @@ XRTVRInput_011::GetInputSourceHandle(const char *pchInputSourcePath, VRInputValu
 		return vr::EVRInputError::VRInputError_InvalidParam;
 	}
 
-	std::string path(pchInputSourcePath);
+	const std::string path(pchInputSourcePath);
 
 	auto ret = this->core->input->getInputSourceHandle(path, *pHandle);
 

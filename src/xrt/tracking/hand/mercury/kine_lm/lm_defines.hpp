@@ -465,7 +465,7 @@ public:
 		}
 
 
-		HandScalar margin = 0.0001;
+		const HandScalar margin = 0.0001;
 
 		fingers[0].mcp_swing_y = {HandScalar(-0.19) - margin, HandScalar(-0.19) + margin};
 		fingers[1].mcp_swing_y = {HandScalar(0.00) - margin, HandScalar(0.00) + margin};

@@ -63,8 +63,8 @@ XRTVRCompositor_029::WaitGetPoses(VR_ARRAY_COUNT(unRenderPoseArrayCount) vr::Tra
 		return error;
 	}
 
-	timepoint_ns render_time_ns = this->core->compositor->getTimeForPredictions();
-	timepoint_ns game_time_ns = render_time_ns + this->core->compositor->getFramePeriod();
+	const timepoint_ns render_time_ns = this->core->compositor->getTimeForPredictions();
+	const timepoint_ns game_time_ns = render_time_ns + this->core->compositor->getFramePeriod();
 
 	this->core->devices->trackDevices(logger, render_time_ns, this->core->compositor->current_tracking_universe,
 	                                  this->core->compositor->last_render_poses.data(),
@@ -165,7 +165,7 @@ XRTVRCompositor_029::SubmitWithArrayIndex(vr::EVREye eEye,
 		return vr::EVRCompositorError::VRCompositorError_InvalidTexture;
 	}
 
-	vr::VRTextureBounds_t default_bounds = {.uMin = 0.0f, .vMin = 0.0f, .uMax = 1.0f, .vMax = 1.0f};
+	const vr::VRTextureBounds_t default_bounds = {.uMin = 0.0f, .vMin = 0.0f, .uMax = 1.0f, .vMax = 1.0f};
 	if (pBounds == nullptr) {
 		pBounds = &default_bounds;
 	}

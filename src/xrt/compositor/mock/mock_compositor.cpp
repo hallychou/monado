@@ -50,7 +50,7 @@ mock_compositor_swapchain_acquire_image(struct xrt_swapchain *xsc, uint32_t *out
 	if (mc->swapchain_hooks.acquire_image) {
 		return mc->swapchain_hooks.acquire_image(mc, mcsc, out_index);
 	}
-	uint32_t index = mcsc->next_to_acquire;
+	const uint32_t index = mcsc->next_to_acquire;
 	mcsc->next_to_acquire = (mcsc->next_to_acquire + 1) % mcsc->base.base.image_count;
 	mcsc->acquired[index] = true;
 
@@ -81,7 +81,7 @@ mock_compositor_swapchain_create(struct xrt_compositor *xc,
 	struct mock_compositor *mc = mock_compositor(xc);
 	// Mini implementation of get_swapchain_create_properties to avoid an actual call causing confusing traces in
 	// the mock
-	uint32_t image_count = (0 != (info->create & XRT_SWAPCHAIN_CREATE_STATIC_IMAGE)) ? 1 : 3;
+	const uint32_t image_count = (0 != (info->create & XRT_SWAPCHAIN_CREATE_STATIC_IMAGE)) ? 1 : 3;
 	constexpr bool use_dedicated_allocation = false;
 
 

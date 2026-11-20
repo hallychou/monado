@@ -43,7 +43,7 @@ u_truncate_vsnprintf(char *chars, size_t char_count, const char *fmt, va_list ar
 	}
 
 	// Will always be able to write null terminator.
-	int ret = vsnprintf(chars, char_count, fmt, args);
+	const int ret = vsnprintf(chars, char_count, fmt, args);
 	if (ret < 0) {
 		return ret;
 	}
@@ -81,7 +81,7 @@ u_truncate_snprintf(char *chars, size_t char_count, const char *fmt, ...)
 
 	va_list args;
 	va_start(args, fmt);
-	int ret = u_truncate_vsnprintf(chars, char_count, fmt, args);
+	const int ret = u_truncate_vsnprintf(chars, char_count, fmt, args);
 	va_end(args);
 
 	return ret;

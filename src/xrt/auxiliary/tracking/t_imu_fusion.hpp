@@ -144,7 +144,7 @@ public:
 	Eigen::Vector3d
 	getCorrectedWorldAccel(Eigen::Vector3d const &accel) const
 	{
-		Eigen::Vector3d adjusted_accel = accel * getAccelScaleFactor_();
+		const Eigen::Vector3d adjusted_accel = accel * getAccelScaleFactor_();
 		return (quat_ * adjusted_accel) - (Eigen::Vector3d::UnitY() * MATH_GRAVITY_M_S2);
 	}
 
@@ -208,13 +208,13 @@ private:
 inline Eigen::Quaterniond
 SimpleIMUFusion::getPredictedQuat(timepoint_ns timestamp) const
 {
-	timepoint_ns state_time = std::max(last_accel_timestamp_, last_gyro_timestamp_);
+	const timepoint_ns state_time = std::max(last_accel_timestamp_, last_gyro_timestamp_);
 	if (state_time == 0) {
 		// no data yet.
 		return Eigen::Quaterniond::Identity();
 	}
-	time_duration_ns delta_ns = timestamp - state_time;
-	double dt = time_ns_to_s(delta_ns);
+	const time_duration_ns delta_ns = timestamp - state_time;
+	const double dt = time_ns_to_s(delta_ns);
 	return quat_ * flexkalman::util::quat_exp(angVel_ * dt * 0.5);
 }
 inline bool
@@ -236,9 +236,9 @@ SimpleIMUFusion::handleGyro(Eigen::Vector3d const &gyro, timepoint_ns timestamp)
 		// Does not affect updating the last gyro timestamp.
 		delta_ns = (time_duration_ns)1e10;
 	}
-	float dt = time_ns_to_s(delta_ns);
+	const float dt = time_ns_to_s(delta_ns);
 	last_gyro_timestamp_ = timestamp;
-	Eigen::Vector3d incRot = gyro * dt;
+	const Eigen::Vector3d incRot = gyro * dt;
 	// Crude handling of "approximately zero"
 	if (incRot.squaredNorm() < gyro_min_squared_length_) {
 		SIMPLE_IMU_TRACE("Discarding gyro data that is approximately zero");
@@ -255,8 +255,8 @@ SimpleIMUFusion::handleGyro(Eigen::Vector3d const &gyro, timepoint_ns timestamp)
 inline bool
 SimpleIMUFusion::handleAccel(Eigen::Vector3d const &accel, timepoint_ns timestamp)
 {
-	uint64_t delta_ns = (last_accel_timestamp_ == 0) ? 1e6 : timestamp - last_accel_timestamp_;
-	float dt = time_ns_to_s(delta_ns);
+	const uint64_t delta_ns = (last_accel_timestamp_ == 0) ? 1e6 : timestamp - last_accel_timestamp_;
+	const float dt = time_ns_to_s(delta_ns);
 	if (!started_) {
 		auto diff = std::abs(accel.norm() - MATH_GRAVITY_M_S2);
 		if (diff > 1.) {
@@ -299,7 +299,7 @@ SimpleIMUFusion::handleAccel(Eigen::Vector3d const &accel, timepoint_ns timestam
 	gravity_filter_.addSample(accel.norm(), timestamp);
 
 	// Adjust scale of accelerometer
-	Eigen::Vector3d adjusted_accel = accel_filter_.getState() * getAccelScaleFactor_();
+	const Eigen::Vector3d adjusted_accel = accel_filter_.getState() * getAccelScaleFactor_();
 
 	// How different is the acceleration length from gravity?
 	auto diff = std::abs(adjusted_accel.norm() - MATH_GRAVITY_M_S2);
@@ -313,7 +313,7 @@ SimpleIMUFusion::handleAccel(Eigen::Vector3d const &accel, timepoint_ns timestam
 
 	// This should match the global gravity vector if the rotation
 	// is right.
-	Eigen::Vector3d measuredGravityDirection = (quat_ * adjusted_accel).normalized();
+	const Eigen::Vector3d measuredGravityDirection = (quat_ * adjusted_accel).normalized();
 
 #if defined(__GNUC__) && !defined(__clang__)
 	/*
@@ -328,8 +328,8 @@ SimpleIMUFusion::handleAccel(Eigen::Vector3d const &accel, timepoint_ns timestam
 #pragma GCC diagnostic pop
 #endif // defined(__GNUC__) && !defined(__clang__)
 
-	double alpha = scale * gravity_scale_ * dt;
-	Eigen::Quaterniond scaledIncrementalQuat = Eigen::Quaterniond::Identity().slerp(alpha, incremental);
+	const double alpha = scale * gravity_scale_ * dt;
+	const Eigen::Quaterniond scaledIncrementalQuat = Eigen::Quaterniond::Identity().slerp(alpha, incremental);
 
 	// Update orientation
 	quat_ = scaledIncrementalQuat * quat_;

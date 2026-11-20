@@ -17,7 +17,7 @@
 static inline void
 vec3_normalise(double *v)
 {
-	double rnorm = 1.0 / sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+	const double rnorm = 1.0 / sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 	v[0] *= rnorm;
 	v[1] *= rnorm;
 	v[2] *= rnorm;

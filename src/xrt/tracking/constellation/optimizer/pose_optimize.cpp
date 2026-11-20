@@ -108,8 +108,8 @@ pickLabelledBlobs(t_blob *blobs,
 	uint64_t taken = 0;
 	uint32_t num_leds = 0;
 	for (uint32_t i = 0; i < num_blobs; i++) {
-		t_constellation_device_id_t blob_device_id = blobs[i].matched_device_id;
-		t_constellation_led_id_it blob_led_id = blobs[i].matched_device_led_id;
+		const t_constellation_device_id_t blob_device_id = blobs[i].matched_device_id;
+		const t_constellation_led_id_it blob_led_id = blobs[i].matched_device_led_id;
 
 		// Invalid or LED id for another object
 		if (blob_device_id != device_id) {
@@ -117,7 +117,7 @@ pickLabelledBlobs(t_blob *blobs,
 		}
 
 		// Labelled with an id this model doesn't have
-		int32_t led_index = findLedIndexById(leds_model, blob_led_id);
+		const int32_t led_index = findLedIndexById(leds_model, blob_led_id);
 		if (led_index < 0) {
 			continue;
 		}
@@ -142,8 +142,8 @@ pickLabelledBlobs(t_blob *blobs,
 	taken = 0;
 	num_leds = 0;
 	for (uint32_t i = 0; i < num_blobs; i++) {
-		t_constellation_device_id_t blob_device_id = blobs[i].matched_device_id;
-		t_constellation_led_id_it blob_led_id = blobs[i].matched_device_led_id;
+		const t_constellation_device_id_t blob_device_id = blobs[i].matched_device_id;
+		const t_constellation_led_id_it blob_led_id = blobs[i].matched_device_led_id;
 
 		// Invalid or LED id for another object
 		if (blob_device_id != device_id) {
@@ -151,7 +151,7 @@ pickLabelledBlobs(t_blob *blobs,
 		}
 
 		// Labelled with an id this model doesn't have
-		int32_t led_index = findLedIndexById(leds_model, blob_led_id);
+		const int32_t led_index = findLedIndexById(leds_model, blob_led_id);
 		if (led_index < 0) {
 			continue;
 		}
@@ -161,7 +161,7 @@ pickLabelledBlobs(t_blob *blobs,
 			continue;
 		}
 
-		t_constellation_tracker_led &led = leds_model->leds[led_index];
+		const t_constellation_tracker_led &led = leds_model->leds[led_index];
 
 		// Get the center we're using
 		xrt_vec2 center;
@@ -252,23 +252,23 @@ optimizePose(u_logging_level log_level,
 	}
 
 	// We only should run RANSAC if we have more than four labelled LEDs (and it's enabled)
-	bool run_ransac = num_leds > 4 && kRunRansac;
+	const bool run_ransac = num_leds > 4 && kRunRansac;
 
 	if (run_ransac) {
 		std::vector<size_t> ransac_inlier_indices;
 		xrt_pose computed_ransac_pose;
 
-		bool success = ransacPose(deterministic,         //
-		                          params,                //
-		                          inlier_blobs,          //
-		                          points3d,              //
-		                          normals3d,             //
-		                          ransac_inlier_indices, //
-		                          computed_ransac_pose); //
+		const bool success = ransacPose(deterministic,         //
+		                                params,                //
+		                                inlier_blobs,          //
+		                                points3d,              //
+		                                normals3d,             //
+		                                ransac_inlier_indices, //
+		                                computed_ransac_pose); //
 		if (success) {
 			init_pose = computed_ransac_pose;
 
-			uint32_t original_num_leds = num_leds;
+			const uint32_t original_num_leds = num_leds;
 
 			// Iterate over all input inlier blobs and mark them as unlabelled (outliers)
 			for (auto blob : inlier_blobs) {
@@ -282,7 +282,7 @@ optimizePose(u_logging_level log_level,
 			std::vector<Eigen::Vector3f> inlier_points3d;
 			inlier_points3d.reserve(ransac_inlier_indices.size());
 
-			for (size_t index : ransac_inlier_indices) {
+			for (const size_t index : ransac_inlier_indices) {
 				inlier_points2d.push_back(points2d[index]);
 				inlier_points3d.push_back(points3d[index]);
 

@@ -21,7 +21,7 @@
 extern "C" void
 u_ls_ns_get_and_reset(struct u_live_stats_ns *uls, uint64_t *out_median, uint64_t *out_mean, uint64_t *out_worst)
 {
-	uint32_t count = uls->value_count;
+	const uint32_t count = uls->value_count;
 
 	if (count == 0) {
 		*out_median = 0;
@@ -32,8 +32,8 @@ u_ls_ns_get_and_reset(struct u_live_stats_ns *uls, uint64_t *out_median, uint64_
 
 	std::sort(&uls->values[0], &uls->values[count]);
 
-	uint64_t worst = uls->values[count - 1]; // Always greater then 0.
-	uint64_t median = uls->values[count / 2];
+	const uint64_t worst = uls->values[count - 1]; // Always greater then 0.
+	const uint64_t median = uls->values[count / 2];
 
 	uint64_t mean = 0;
 	for (uint32_t i = 0; i < count; ++i) {

@@ -61,7 +61,7 @@ public:
 
 		OrtStatus *status = std::forward<Fn>(fn)(this->api);
 		if (status != nullptr) {
-			std::string msg = this->api->GetErrorMessage(status);
+			const std::string msg = this->api->GetErrorMessage(status);
 			ONNX_ERROR(this, "[%s:%u]: %s", loc.file_name(), loc.line(), msg.c_str());
 			this->api->ReleaseStatus(status);
 			throw onnx::Error(msg); // throw it as an exception.

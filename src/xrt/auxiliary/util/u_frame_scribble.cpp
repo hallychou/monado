@@ -52,9 +52,9 @@ scalar_from_rgba_u8(const struct xrt_colour_rgba_u8 *color)
 static double
 pixel_size_to_text_scale(float pixel_size, int font_face, int thickness)
 {
-	double font_scale = 100.;
+	const double font_scale = 100.;
 
-	int test_thickness = 1;
+	const int test_thickness = 1;
 
 	int baseline;
 	auto size = cv::getTextSize("X", font_face, font_scale, test_thickness, &baseline);
@@ -76,10 +76,10 @@ u_frame_scribble_rect(struct xrt_frame *frame,
 		return;
 	}
 
-	cv::Scalar cv_color = scalar_from_rgba_u8(color);
-	cv::Rect cv_rect(rect->offset.w, rect->offset.h, rect->extent.w, rect->extent.h);
+	const cv::Scalar cv_color = scalar_from_rgba_u8(color);
+	const cv::Rect cv_rect(rect->offset.w, rect->offset.h, rect->extent.w, rect->extent.h);
 
-	int thickness = fill ? cv::FILLED : 1;
+	const int thickness = fill ? cv::FILLED : 1;
 
 	cv::rectangle(frame_mat, cv_rect, cv_color, thickness);
 #else
@@ -108,7 +108,7 @@ u_frame_scribble_line(
 		return;
 	}
 
-	cv::Scalar cv_color = scalar_from_rgba_u8(color);
+	const cv::Scalar cv_color = scalar_from_rgba_u8(color);
 	cv::line(frame_mat, cv::Point(x0, y0), cv::Point(x1, y1), cv_color);
 #else
 	(void)frame;
@@ -137,9 +137,9 @@ u_frame_scribble_text(struct xrt_frame *frame,
 	const int font_face = cv::FONT_HERSHEY_PLAIN;
 	const int thickness = 1;
 
-	cv::Scalar cv_color = scalar_from_rgba_u8(color);
+	const cv::Scalar cv_color = scalar_from_rgba_u8(color);
 
-	double font_scale = pixel_size_to_text_scale(size, font_face, thickness);
+	const double font_scale = pixel_size_to_text_scale(size, font_face, thickness);
 
 	cv::putText(frame_mat, text, cv::Point(x, y), font_face, font_scale, cv_color, thickness);
 #else

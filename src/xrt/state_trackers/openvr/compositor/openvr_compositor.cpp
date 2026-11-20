@@ -70,7 +70,7 @@ SwapchainCache::ensureSwapchain(xrt_compositor *xc,
 		}
 	}
 
-	struct xrt_swapchain_create_info swapchain_create_info = {
+	const struct xrt_swapchain_create_info swapchain_create_info = {
 	    .create = flags,
 	    .bits = usage_bits,
 	    .format = storage_format,
@@ -84,7 +84,7 @@ SwapchainCache::ensureSwapchain(xrt_compositor *xc,
 	    .formats = {storage_format, sample_format},
 	};
 
-	xrt_result_t xret = xrt_comp_create_swapchain(xc, &swapchain_create_info, &this->xsc);
+	const xrt_result_t xret = xrt_comp_create_swapchain(xc, &swapchain_create_info, &this->xsc);
 	if (xret != XRT_SUCCESS) {
 		// Failed to create swapchain
 		return xret;
@@ -278,8 +278,8 @@ Compositor::submit(openvr_logger &logger,
 xrt_layer_projection_view_data
 Compositor::getProjectionLayerDataForEye(vr::EVREye eye, const EyeState &eye_state)
 {
-	xrt_pose T_origin_head = this->render_state_cache->head_relation;
-	xrt_pose T_head_eye = this->render_state_cache->T_head_eyes[eye];
+	const xrt_pose T_origin_head = this->render_state_cache->head_relation;
+	const xrt_pose T_head_eye = this->render_state_cache->T_head_eyes[eye];
 
 	xrt_pose T_origin_eye;
 	math_pose_transform(&T_origin_head, &T_head_eye, &T_origin_eye);
@@ -318,7 +318,7 @@ Compositor::completeFrame(openvr_logger &logger)
 
 	auto &active_frame = this->active_frame.value();
 
-	struct xrt_layer_frame_data frame_data = {
+	const struct xrt_layer_frame_data frame_data = {
 	    .frame_id = active_frame.frame_id,
 	    .display_time_ns = active_frame.predicted_display_time,
 	    .env_blend_mode = XRT_BLEND_MODE_OPAQUE,
@@ -336,7 +336,7 @@ Compositor::completeFrame(openvr_logger &logger)
 	    this->frame_eye_states[1]->texture.xsc,
 	};
 
-	xrt_layer_data projection_layer_data = {
+	const xrt_layer_data projection_layer_data = {
 	    .type = XRT_LAYER_PROJECTION,
 	    .name = XRT_INPUT_GENERIC_HEAD_POSE,
 	    .timestamp = this->getTimeForPredictions(),
@@ -425,9 +425,9 @@ Compositor::getFrameRenderState(std::array<xrt_fov, 2> &fovs,
 {
 	const xrt_vec3 default_eye_relation = {.x = 0.0635f, .y = 0.0f, .z = 0.0f};
 	xrt_space_relation head_relation_space;
-	xrt_result_t xret = xrt_device_get_view_poses(this->xsysd->static_roles.head, &default_eye_relation,
-	                                              this->getTimeForPredictions(), XRT_VIEW_TYPE_STEREO, 2,
-	                                              &head_relation_space, fovs.data(), T_head_eyes.data());
+	const xrt_result_t xret = xrt_device_get_view_poses(this->xsysd->static_roles.head, &default_eye_relation,
+	                                                    this->getTimeForPredictions(), XRT_VIEW_TYPE_STEREO, 2,
+	                                                    &head_relation_space, fovs.data(), T_head_eyes.data());
 	if (xret != XRT_SUCCESS) {
 		return xret;
 	}

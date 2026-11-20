@@ -80,7 +80,7 @@ struct Fixture
 		std::unique_lock<std::mutex> lock(f.mutex);
 		f.condition.wait(lock, [&] { return f.start_allowed; });
 		ipc_server_client_thread_set_running(f.server.get(), &thread);
-		bool running = ipc_server_client_thread_is_running(f.server.get(), &thread);
+		const bool running = ipc_server_client_thread_is_running(f.server.get(), &thread);
 		f.revived |= running;
 #ifdef XRT_OS_WINDOWS
 		if (f.pipe != INVALID_HANDLE_VALUE) {
@@ -136,7 +136,7 @@ struct Fixture
 	void
 	release_client_gates()
 	{
-		std::lock_guard<std::mutex> lock(mutex);
+		const std::lock_guard<std::mutex> lock(mutex);
 		start_allowed = true;
 #ifdef XRT_OS_WINDOWS
 		read_allowed = true;
@@ -179,7 +179,7 @@ TEST_CASE("shutdown prevents a late client startup from reviving its stopped loo
 	std::thread release_start([&] {
 		while (true) {
 			os_mutex_lock(&f.server->global_state.lock);
-			bool stopping = f.server->threads[0].state == IPC_THREAD_STOPPING;
+			const bool stopping = f.server->threads[0].state == IPC_THREAD_STOPPING;
 			os_mutex_unlock(&f.server->global_state.lock);
 			if (stopping) {
 				break;
@@ -201,7 +201,7 @@ TEST_CASE("shutdown joins an already stopping thread once")
 	Fixture f;
 	f.start(1);
 	{
-		std::lock_guard<std::mutex> lock(f.mutex);
+		const std::lock_guard<std::mutex> lock(f.mutex);
 		os_mutex_lock(&f.server->global_state.lock);
 		f.server->threads[0].state = IPC_THREAD_STOPPING;
 		os_mutex_unlock(&f.server->global_state.lock);
@@ -214,7 +214,7 @@ TEST_CASE("shutdown joins an already stopping thread once")
 
 TEST_CASE("shutdown with no client threads is harmless")
 {
-	Fixture f;
+	const Fixture f;
 	ipc_server_stop_and_join_client_threads(f.server.get());
 }
 
@@ -292,7 +292,7 @@ struct SocketPair
 	int fds[2] = {-1, -1};
 	~SocketPair()
 	{
-		for (int fd : fds) {
+		for (const int fd : fds) {
 			if (fd >= 0) {
 				close(fd);
 			}

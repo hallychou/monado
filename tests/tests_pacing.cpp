@@ -220,7 +220,7 @@ static constexpr auto longGpuTime = 2ms;
 
 TEST_CASE("u_pacing_compositor_display_timing")
 {
-	struct u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
+	const struct u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
 	u_pacing_compositor *upc = nullptr;
 	MockClock clock;
 	REQUIRE(XRT_SUCCESS == u_pc_display_timing_create(frame_interval_ns.count(), &config, &upc));
@@ -440,7 +440,7 @@ createPacer(PacerKind kind, int64_t now_ns)
 	switch (kind) {
 	case PacerKind::Fake: REQUIRE(XRT_SUCCESS == u_pc_fake_create(frame_interval_ns.count(), now_ns, &upc)); break;
 	case PacerKind::DisplayTiming: {
-		u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
+		const u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
 		REQUIRE(XRT_SUCCESS == u_pc_display_timing_create(frame_interval_ns.count(), &config, &upc));
 		break;
 	}
@@ -512,19 +512,19 @@ TEST_CASE("u_pacing_compositor update present offset")
 	SECTION("Offset set between begin and predict is used")
 	{
 		const int64_t offset_ns = unanoseconds(7ms).count();
-		CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
+		const CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
 		CHECK(displayMinusPresent(p) == offset_ns);
 	}
 	SECTION("Small positive offset is used")
 	{
 		const int64_t offset_ns = unanoseconds(500us).count();
-		CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
+		const CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
 		CHECK(displayMinusPresent(p) == offset_ns);
 	}
 	SECTION("Zero offset is used")
 	{
 		const int64_t offset_ns = 0;
-		CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
+		const CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), &offset_ns);
 		CHECK(displayMinusPresent(p) == 0);
 	}
 	SECTION("Offset persists to later frames and can be changed")
@@ -556,7 +556,7 @@ TEST_CASE("u_pacing_compositor default present to display offset")
 	u_pacing_compositor *upc = createPacer(kind, clock.now());
 	clock.advance(1ms);
 
-	CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), nullptr);
+	const CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), nullptr);
 	CHECK(displayMinusPresent(p) == unanoseconds(4ms).count());
 
 	u_pc_destroy(&upc);
@@ -580,7 +580,7 @@ TEST_CASE("u_pacing_compositor_display_timing keeps cadence without present info
 
 	int64_t last_desired_present_time_ns = 0;
 	for (int i = 0; i < 8; ++i) {
-		CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), nullptr);
+		const CompositorPredictions p = beginUpdateAndPredict(upc, clock.now(), nullptr);
 		INFO("frame " << p.frame_id);
 		basicPredictionConsistencyChecks(clock.now(), p);
 		CHECK(displayMinusPresent(p) == offset_ns);

@@ -90,7 +90,7 @@ m_lowpass_float_destroy(struct m_lowpass_float **ptr_to_mlf)
 		if (ptr_to_mlf == nullptr) {
 			return;
 		}
-		struct m_lowpass_float *mlf = *ptr_to_mlf;
+		const struct m_lowpass_float *mlf = *ptr_to_mlf;
 		if (mlf == nullptr) {
 			return;
 		}

@@ -330,7 +330,7 @@ u_id_ringbuffer_destroy(struct u_id_ringbuffer **ptr_to_uirb)
 		if (ptr_to_uirb == nullptr) {
 			return;
 		}
-		struct u_id_ringbuffer *uirb = *ptr_to_uirb;
+		const struct u_id_ringbuffer *uirb = *ptr_to_uirb;
 		if (uirb == nullptr) {
 			return;
 		}

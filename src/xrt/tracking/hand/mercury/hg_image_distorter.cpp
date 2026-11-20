@@ -304,10 +304,10 @@ StereographicDistort(projection_state &mi)
 bool
 slow(projection_state &mi, float x, float y, cv::Point2i &out)
 {
-	float sg_x =
+	const float sg_x =
 	    map_ranges<float>(x, 0, wsize, -mi.instructions.stereographic_radius, mi.instructions.stereographic_radius);
 
-	float sg_y =
+	const float sg_y =
 	    map_ranges<float>(y, 0, wsize, mi.instructions.stereographic_radius, -mi.instructions.stereographic_radius);
 
 	Eigen::Vector3f dir = stereographic_unprojection(sg_x, sg_y);
@@ -320,7 +320,7 @@ slow(projection_state &mi, float x, float y, cv::Point2i &out)
 	float _x = {};
 	float _y = {};
 
-	bool ret = t_camera_models_project(&mi.dist, dir.x(), dir.y(), dir.z(), &_x, &_y);
+	const bool ret = t_camera_models_project(&mi.dist, dir.x(), dir.y(), dir.z(), &_x, &_y);
 
 	out.x = _x;
 	out.y = _y;
@@ -351,7 +351,7 @@ add_or_draw_line(projection_state &mi,             //
                  cv::Mat &img)
 {
 	cv::Point2i e = {};
-	bool retval = slow(mi, x, y, e);
+	const bool retval = slow(mi, x, y, e);
 
 	if (!started) {
 		started = true;
@@ -378,25 +378,25 @@ draw_boundary(projection_state &mi, const cv::Scalar &color, cv::Mat img)
 
 	// x = 0, y = 0->128
 	for (int y = 0; y <= wsize; y += step) {
-		int x = 0;
+		const int x = 0;
 		add_or_draw_line(mi, x, y, line_vec, color, good_most_recent, started, img);
 	}
 
 	// x = 0->128, y = 128
 	for (int x = step; x <= wsize; x += step) {
-		int y = wsize;
+		const int y = wsize;
 		add_or_draw_line(mi, x, y, line_vec, color, good_most_recent, started, img);
 	}
 
 	// x = 128, y = 128->0
 	for (int y = wsize - step; y >= 0; y -= step) {
-		int x = wsize;
+		const int x = wsize;
 		add_or_draw_line(mi, x, y, line_vec, color, good_most_recent, started, img);
 	}
 
 	// x = 128->0, y = 0
 	for (int x = wsize - step; x >= 0; x -= step) {
-		int y = 0;
+		const int y = 0;
 		add_or_draw_line(mi, x, y, line_vec, color, good_most_recent, started, img);
 	}
 
@@ -413,9 +413,9 @@ project_21_points_unscaled(Eigen::Array<float, 3, 21> &joints_local,
 		direction.normalize();
 
 		direction = rot_quat.conjugate() * direction;
-		float denom = 1 - direction.z();
-		float sg_x = direction.x() / denom;
-		float sg_y = direction.y() / denom;
+		const float denom = 1 - direction.z();
+		const float sg_x = direction.x() / denom;
+		const float sg_y = direction.y() / denom;
 		// sg_x *= mi.stereographic_radius;
 		// sg_y *= mi.stereographic_radius;
 
@@ -429,9 +429,9 @@ void
 project_point_scaled(projection_state &mi, Eigen::Vector3f direction, V2 &out_img_pt)
 {
 	direction = mi.instructions.rot_quat.conjugate() * direction;
-	float denom = 1 - direction.z();
-	float sg_x = direction.x() / denom;
-	float sg_y = direction.y() / denom;
+	const float denom = 1 - direction.z();
+	const float sg_x = direction.x() / denom;
+	const float sg_y = direction.y() / denom;
 
 	out_img_pt.pos_2d.x = map_ranges<float>(sg_x, -mi.instructions.stereographic_radius,
 	                                        mi.instructions.stereographic_radius, 0, wsize);
@@ -452,7 +452,7 @@ project_21_points_scaled(projection_state &mi, Eigen::Array<float, 3, 21> &joint
 Eigen::Quaternionf
 direction(const Eigen::Vector3f &dir, float twist)
 {
-	Eigen::Quaternionf one = Eigen::Quaternionf().setFromTwoVectors(-Eigen::Vector3f::UnitZ(), dir);
+	const Eigen::Quaternionf one = Eigen::Quaternionf().setFromTwoVectors(-Eigen::Vector3f::UnitZ(), dir);
 
 	Eigen::Quaternionf two;
 	two = Eigen::AngleAxisf(twist, -Eigen::Vector3f::UnitZ());
@@ -462,28 +462,28 @@ direction(const Eigen::Vector3f &dir, float twist)
 void
 add_rel_depth(const Eigen::Array<float, 3, 21> &joints, hand21_2d &out_joints_in_img)
 {
-	float hand_size = (Eigen::Vector3f(joints.col(0)) - Eigen::Vector3f(joints.col(9))).norm();
+	const float hand_size = (Eigen::Vector3f(joints.col(0)) - Eigen::Vector3f(joints.col(9))).norm();
 
-	float midpxm_depth = Eigen::Vector3f(joints.col(9)).norm();
+	const float midpxm_depth = Eigen::Vector3f(joints.col(9)).norm();
 	for (int i = 0; i < 21; i++) {
-		float jd = Eigen::Vector3f(joints.col(i)).norm();
+		const float jd = Eigen::Vector3f(joints.col(i)).norm();
 		out_joints_in_img[i].depth_relative_to_midpxm = (jd - midpxm_depth) / hand_size;
 	}
 }
 
 static float
-palm_length(hand21_2d &joints)
+palm_length(const hand21_2d &joints)
 {
-	vec2_5 wrist = joints[0];
-	vec2_5 middle_proximal = joints[9];
+	const vec2_5 wrist = joints[0];
+	const vec2_5 middle_proximal = joints[9];
 
-	vec2_5 index_proximal = joints[5];
-	vec2_5 ring_proximal = joints[17];
+	const vec2_5 index_proximal = joints[5];
+	const vec2_5 ring_proximal = joints[17];
 
-	float fwd = m_vec2_len(wrist.pos_2d - middle_proximal.pos_2d);
-	float side = m_vec2_len(index_proximal.pos_2d - ring_proximal.pos_2d);
+	const float fwd = m_vec2_len(wrist.pos_2d - middle_proximal.pos_2d);
+	const float side = m_vec2_len(index_proximal.pos_2d - ring_proximal.pos_2d);
 
-	float length = fmaxf(fwd, side);
+	const float length = fmaxf(fwd, side);
 
 	return length;
 }
@@ -502,7 +502,7 @@ make_projection_instructions(t_camera_model_params &dist,
 
 	out_instructions.flip = flip_after;
 
-	Eigen::Vector3f dir = Eigen::Vector3f(joints.col(9)).normalized();
+	const Eigen::Vector3f dir = Eigen::Vector3f(joints.col(9)).normalized();
 
 	out_instructions.rot_quat = direction(dir, twist);
 
@@ -517,7 +517,7 @@ make_projection_instructions(t_camera_model_params &dist,
 		xrt_vec2 max = out_hand[0].pos_2d;
 
 		for (int i = 0; i < 21; i++) {
-			xrt_vec2 pt = out_hand[i].pos_2d;
+			const xrt_vec2 pt = out_hand[i].pos_2d;
 			min.x = fmin(pt.x, min.x);
 			min.y = fmin(pt.y, min.y);
 
@@ -526,9 +526,9 @@ make_projection_instructions(t_camera_model_params &dist,
 		}
 
 
-		xrt_vec2 center = m_vec2_mul_scalar(min + max, 0.5);
+		const xrt_vec2 center = m_vec2_mul_scalar(min + max, 0.5);
 
-		float r = fmax(center.x - min.x, center.y - min.y);
+		const float r = fmax(center.x - min.x, center.y - min.y);
 		out_instructions.stereographic_radius = r;
 
 		Eigen::Vector3f new_direction = stereographic_unprojection(center.x, center.y);
@@ -550,8 +550,8 @@ make_projection_instructions(t_camera_model_params &dist,
 	project_21_points_unscaled(joints, out_instructions.rot_quat, out_hand);
 
 	// These are to ensure that the bounding box doesn't get too small around a closed fist.
-	float palm_l = palm_length(out_hand);
-	float radius_around_palm = palm_l * 0.5 * (2.2 / 1.65) * expand_val;
+	const float palm_l = palm_length(out_hand);
+	const float radius_around_palm = palm_l * 0.5 * (2.2 / 1.65) * expand_val;
 
 	out_instructions.stereographic_radius *= expand_val;
 
@@ -584,13 +584,13 @@ make_projection_instructions_angular(xrt_vec3 direction_3d,
 
 	out_instructions.flip = flip_after;
 
-	xrt_vec3 imaginary_direction = {0, sinf(angular_radius), -cosf(angular_radius)};
+	const xrt_vec3 imaginary_direction = {0, sinf(angular_radius), -cosf(angular_radius)};
 
 	out_instructions.stereographic_radius = imaginary_direction.y / (1 - imaginary_direction.z);
 
 	math_vec3_normalize(&direction_3d);
 
-	Eigen::Vector3f dir = xrt::auxiliary::math::map_vec3(direction_3d);
+	const Eigen::Vector3f dir = xrt::auxiliary::math::map_vec3(direction_3d);
 
 
 	out_instructions.rot_quat = direction(dir, twist);

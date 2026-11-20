@@ -256,21 +256,21 @@ metacarpal_joints_to_bone_transform(struct xrt_hand_joint_set *hand_joint_set,
                                     vr::VRBoneTransform_t *out_bone_transforms,
                                     xrt_hand hand)
 {
-	struct xrt_hand_joint_value *joint_values = hand_joint_set->values.hand_joint_set_default;
+	const struct xrt_hand_joint_value *joint_values = hand_joint_set->values.hand_joint_set_default;
 
 	// Apply orientations for four-finger metacarpals.
-	for (int joint :
+	for (const int joint :
 	     {XRT_HAND_JOINT_THUMB_METACARPAL, XRT_HAND_JOINT_INDEX_METACARPAL, XRT_HAND_JOINT_MIDDLE_METACARPAL,
 	      XRT_HAND_JOINT_RING_METACARPAL, XRT_HAND_JOINT_LITTLE_METACARPAL}) {
-		struct xrt_hand_joint_value *current_joint = &joint_values[joint];
-		struct xrt_hand_joint_value *parent_joint = &joint_values[XRT_HAND_JOINT_WRIST];
+		const struct xrt_hand_joint_value *current_joint = &joint_values[joint];
+		const struct xrt_hand_joint_value *parent_joint = &joint_values[XRT_HAND_JOINT_WRIST];
 
 		xrt_quat diff_openxr;
 		// These should do the exact same things.
 		xrt_quat parent_inv;
 		math_quat_invert(&parent_joint->relation.pose.orientation, &parent_inv);
 		math_quat_rotate(&parent_inv, &current_joint->relation.pose.orientation, &diff_openxr);
-		xrt_quat diff_openvr = apply_bone_hand_transform(diff_openxr, hand);
+		const xrt_quat diff_openvr = apply_bone_hand_transform(diff_openxr, hand);
 
 
 		/**
@@ -296,7 +296,7 @@ metacarpal_joints_to_bone_transform(struct xrt_hand_joint_set *hand_joint_set,
 		math_quat_rotate(&magic_prerotate, &diff_openvr, &final_diff);
 		convert_quaternion(final_diff, out_bone_transforms[joint].orientation);
 
-		xrt_vec3 global_diff_from_this_to_parent =
+		const xrt_vec3 global_diff_from_this_to_parent =
 		    m_vec3_sub(current_joint->relation.pose.position, parent_joint->relation.pose.position);
 
 		xrt_vec3 translation_wrist_rel;
@@ -318,7 +318,7 @@ flexion_joints_to_bone_transform(struct xrt_hand_joint_set *hand_joint_set,
                                  vr::VRBoneTransform_t *out_bone_transforms,
                                  xrt_hand hand)
 {
-	struct xrt_hand_joint_value *joint_values = hand_joint_set->values.hand_joint_set_default;
+	const struct xrt_hand_joint_value *joint_values = hand_joint_set->values.hand_joint_set_default;
 
 	// Apply orientations for four-finger pxm and onward
 	int parent = -1;
@@ -327,21 +327,21 @@ flexion_joints_to_bone_transform(struct xrt_hand_joint_set *hand_joint_set,
 			parent = joint;
 			continue;
 		}
-		struct xrt_hand_joint_value *current_joint = &joint_values[joint];
-		struct xrt_hand_joint_value *parent_joint = &joint_values[parent];
+		const struct xrt_hand_joint_value *current_joint = &joint_values[joint];
+		const struct xrt_hand_joint_value *parent_joint = &joint_values[parent];
 
 
 		xrt_quat diff_openxr;
 		math_quat_unrotate(&parent_joint->relation.pose.orientation, &current_joint->relation.pose.orientation,
 		                   &diff_openxr);
 
-		xrt_quat diff_openvr = apply_bone_hand_transform(diff_openxr, hand);
+		const xrt_quat diff_openvr = apply_bone_hand_transform(diff_openxr, hand);
 		convert_quaternion(diff_openvr, out_bone_transforms[joint].orientation);
-		xrt_vec3 global_diff_from_this_to_parent =
+		const xrt_vec3 global_diff_from_this_to_parent =
 		    m_vec3_sub(current_joint->relation.pose.position, parent_joint->relation.pose.position);
 
 
-		float bone_length = m_vec3_len(global_diff_from_this_to_parent);
+		const float bone_length = m_vec3_len(global_diff_from_this_to_parent);
 		// OpenVR left hand has +X forward. Weird, huh?
 		out_bone_transforms[joint].position = {bone_length, 0, 0, 1};
 
@@ -358,7 +358,7 @@ hand_joint_set_to_bone_transform(struct xrt_hand_joint_set hand_joint_set,
                                  xrt_hand hand)
 {
 	// fill bone transforms with a default open pose to manipulate later
-	for (int i : {XRT_HAND_JOINT_WRIST, XRT_HAND_JOINT_PALM}) {
+	for (const int i : {XRT_HAND_JOINT_WRIST, XRT_HAND_JOINT_PALM}) {
 		out_bone_transforms[i] = hand == XRT_HAND_LEFT ? leftOpenPose[i] : rightOpenPose[i];
 	}
 
@@ -443,7 +443,7 @@ public:
 	           enum xrt_input_name monado_input_name,
 	           struct MonadoInputComponent *component)
 	{
-		enum xrt_input_type monado_input_type = XRT_GET_INPUT_TYPE(monado_input_name);
+		const enum xrt_input_type monado_input_type = XRT_GET_INPUT_TYPE(monado_input_name);
 
 		SteamVRDriverControlInput in;
 
@@ -488,7 +488,7 @@ public:
 		SteamVRDriverControlOutput out;
 
 		/// @todo when there are multiple output types: XRT_GET_OUTPUT_TYPE(monado_output_name);
-		enum xrt_output_type monado_output_type = XRT_OUTPUT_TYPE_VIBRATION;
+		const enum xrt_output_type monado_output_type = XRT_OUTPUT_TYPE_VIBRATION;
 
 		out.monado_output_type = monado_output_type;
 		out.steamvr_control_path = steamvr_control_path;
@@ -506,7 +506,7 @@ public:
 	                   const char *steamvr_control_path,
 	                   enum xrt_input_name monado_input_name)
 	{
-		enum xrt_input_type monado_input_type = XRT_GET_INPUT_TYPE(monado_input_name);
+		const enum xrt_input_type monado_input_type = XRT_GET_INPUT_TYPE(monado_input_name);
 
 		SteamVRDriverControlInput in;
 
@@ -515,7 +515,7 @@ public:
 		in.monado_input_name = monado_input_name;
 		in.component.has_component = false;
 
-		vr::EVRInputError err = vr::VRDriverInput()->CreateSkeletonComponent(
+		const vr::EVRInputError err = vr::VRDriverInput()->CreateSkeletonComponent(
 		    m_ulPropertyContainer, steamvr_skeleton_name, steamvr_control_path, "/pose/raw",
 		    vr::VRSkeletalTracking_Full, NULL, OPENVR_BONE_COUNT, &in.control_handle);
 		if (err) {
@@ -707,10 +707,10 @@ public:
 	void
 	AddMonadoInput(struct binding_template *b)
 	{
-		enum xrt_input_name monado_input_name = b->input;
+		const enum xrt_input_name monado_input_name = b->input;
 		const char *steamvr_path = b->steamvr_path;
 
-		enum xrt_input_type monado_input_type = XRT_GET_INPUT_TYPE(monado_input_name);
+		const enum xrt_input_type monado_input_type = XRT_GET_INPUT_TYPE(monado_input_name);
 
 		switch (monado_input_type) {
 		case XRT_INPUT_TYPE_BOOLEAN:
@@ -718,8 +718,8 @@ public:
 		case XRT_INPUT_TYPE_VEC1_ZERO_TO_ONE: AddControl(steamvr_path, monado_input_name, NULL); break;
 
 		case XRT_INPUT_TYPE_VEC2_MINUS_ONE_TO_ONE: {
-			std::string xpath = std::string(steamvr_path) + std::string("/x");
-			std::string ypath = std::string(steamvr_path) + std::string("/y");
+			const std::string xpath = std::string(steamvr_path) + std::string("/x");
+			const std::string ypath = std::string(steamvr_path) + std::string("/y");
 
 			struct MonadoInputComponent x = {true, true, false};
 			struct MonadoInputComponent y = {true, false, true};
@@ -739,7 +739,7 @@ public:
 	void
 	AddMonadoControls()
 	{
-		struct profile_template *p = get_profile_template(m_xdev->name);
+		const struct profile_template *p = get_profile_template(m_xdev->name);
 		if (!p) {
 			ovrd_log("No profile template for %s\n", m_xdev->str);
 			return;
@@ -824,7 +824,7 @@ public:
 			}
 		} else {
 
-			struct profile_template *p = get_profile_template(m_xdev->name);
+			const struct profile_template *p = get_profile_template(m_xdev->name);
 
 			if (p == NULL) {
 				ovrd_log("Monado device has unknown profile: %d\n", m_xdev->name);
@@ -927,12 +927,12 @@ public:
 			grip_name = XRT_INPUT_GENERIC_HEAD_POSE; // ???
 		}
 
-		timepoint_ns now_ns = os_monotonic_get_ns();
+		const timepoint_ns now_ns = os_monotonic_get_ns();
 
 		struct xrt_space_relation rel;
 		xrt_device_get_tracked_pose(m_xdev, grip_name, now_ns, &rel);
 
-		struct xrt_pose *offset = &m_xdev->tracking_origin->initial_offset;
+		const struct xrt_pose *offset = &m_xdev->tracking_origin->initial_offset;
 
 		struct xrt_relation_chain chain = {};
 		m_relation_chain_push_relation(&chain, &rel);
@@ -946,7 +946,7 @@ public:
 		         m_pose.qRotation.y, m_pose.qRotation.z, m_pose.qRotation.w, m_pose.vecPosition[0],
 		         m_pose.vecPosition[1], m_pose.vecPosition[2]);
 #endif
-		vr::HmdQuaternion_t identityquat{1, 0, 0, 0};
+		const vr::HmdQuaternion_t identityquat{1, 0, 0, 0};
 		m_pose.qWorldFromDriverRotation = identityquat;
 		m_pose.qDriverFromHeadRotation = identityquat;
 		m_pose.vecDriverFromHeadTranslation[0] = 0.f;
@@ -967,9 +967,9 @@ public:
 			// ovrd_log("Update %d: %s\n", i,
 			// m_controls[i].steamvr_control_path);
 
-			enum xrt_input_name binding_name = in.monado_input_name;
+			const enum xrt_input_name binding_name = in.monado_input_name;
 
-			struct xrt_input *input = NULL;
+			const struct xrt_input *input = NULL;
 			for (uint32_t ii = 0; ii < m_xdev->input_count; ii++) {
 				if (m_xdev->inputs[ii].name == binding_name) {
 					input = &m_xdev->inputs[ii];
@@ -982,10 +982,10 @@ public:
 				continue;
 			}
 
-			vr::VRInputComponentHandle_t handle = in.control_handle;
+			const vr::VRInputComponentHandle_t handle = in.control_handle;
 
 			if (in.monado_input_type == XRT_INPUT_TYPE_BOOLEAN) {
-				bool state = input->value.boolean;
+				const bool state = input->value.boolean;
 				vr::VRDriverInput()->UpdateBooleanComponent(handle, state, 0);
 				// ovrd_log("Update %s: %d\n",
 				// m_controls[i].steamvr_control_path, state);
@@ -1139,7 +1139,7 @@ public:
 		//! @todo latency
 		m_flSecondsFromVsyncToPhotons = 0.011f;
 
-		float ns = (float)m_xdev->hmd->screens->nominal_frame_interval_ns;
+		const float ns = (float)m_xdev->hmd->screens->nominal_frame_interval_ns;
 		m_flDisplayFrequency = 1.f / ns * 1000.f * 1000.f * 1000.f;
 		ovrd_log("display frequency from device: %f\n", m_flDisplayFrequency);
 
@@ -1150,10 +1150,10 @@ public:
 		}
 
 		//! @todo get ipd user setting from monado session
-		float ipd_meters = 0.063f;
-		struct xrt_vec3 ipd_vec = {ipd_meters, 0, 0};
+		const float ipd_meters = 0.063f;
+		const struct xrt_vec3 ipd_vec = {ipd_meters, 0, 0};
 
-		timepoint_ns now_ns = os_monotonic_get_ns();
+		const timepoint_ns now_ns = os_monotonic_get_ns();
 
 		//! @todo more than 2 views
 		struct xrt_space_relation head_relation;
@@ -1161,7 +1161,7 @@ public:
 		                          m_view_pose);
 
 		//! @todo more versatile IPD calculation
-		float actual_ipd = -m_view_pose[0].position.x + m_view_pose[1].position.x;
+		const float actual_ipd = -m_view_pose[0].position.x + m_view_pose[1].position.x;
 
 		m_flIPD = actual_ipd;
 
@@ -1217,8 +1217,8 @@ private:
 static void
 create_translation_rotation_matrix(struct xrt_pose *pose, struct vr::HmdMatrix34_t *res)
 {
-	struct xrt_vec3 t = pose->position;
-	struct xrt_quat r = pose->orientation;
+	const struct xrt_vec3 t = pose->position;
+	const struct xrt_quat r = pose->orientation;
 	res->m[0][0] = (1.0f - 2.0f * (r.y * r.y + r.z * r.z));
 	res->m[1][0] = (r.x * r.y + r.z * r.w) * 2.0f;
 	res->m[2][0] = (r.x * r.z - r.y * r.w) * 2.0f;
@@ -1342,11 +1342,11 @@ vr::DriverPose_t
 CDeviceDriver_Monado::GetPose()
 {
 
-	timepoint_ns now_ns = os_monotonic_get_ns();
+	const timepoint_ns now_ns = os_monotonic_get_ns();
 	struct xrt_space_relation rel;
 	xrt_device_get_tracked_pose(m_xdev, XRT_INPUT_GENERIC_HEAD_POSE, now_ns, &rel);
 
-	struct xrt_pose *offset = &m_xdev->tracking_origin->initial_offset;
+	const struct xrt_pose *offset = &m_xdev->tracking_origin->initial_offset;
 
 	struct xrt_relation_chain chain = {};
 	m_relation_chain_push_relation(&chain, &rel);
@@ -1426,10 +1426,8 @@ CDeviceDriver_Monado::IsDisplayRealDisplay()
 void
 CDeviceDriver_Monado::GetRecommendedRenderTargetSize(uint32_t *pnWidth, uint32_t *pnHeight)
 {
-	int scale = debug_get_num_option_scale_percentage();
-	float fscale = (float)scale / 100.f;
-
-
+	const int scale = debug_get_num_option_scale_percentage();
+	const float fscale = (float)scale / 100.f;
 
 	*pnWidth = m_xdev->hmd->screens[0].w_pixels * fscale;
 	*pnHeight = m_xdev->hmd->screens[0].h_pixels * fscale;
@@ -1467,7 +1465,7 @@ CDeviceDriver_Monado::ComputeDistortion(vr::EVREye eEye, float fU, float fV)
 	 * UVs range from 0 to 1 with 0,0 in the upper left corner of the
 	 * source render target. The 0,0 to 1,1 range covers a single eye. */
 
-	struct xrt_vec2 *rot = m_xdev->hmd->views[eEye].rot.vecs;
+	const struct xrt_vec2 *rot = m_xdev->hmd->views[eEye].rot.vecs;
 
 	// multiply 2x2 rotation matrix with fU, fV scaled to [-1, 1]
 	float U = rot[0].x * (fU * 2 - 1) + rot[0].y * (fV * 2 - 1);
@@ -1479,7 +1477,7 @@ CDeviceDriver_Monado::ComputeDistortion(vr::EVREye eEye, float fU, float fV)
 
 	struct xrt_uv_triplet d;
 
-	xrt_result_t xret = m_xdev->compute_distortion(m_xdev, eEye, U, V, &d);
+	const xrt_result_t xret = m_xdev->compute_distortion(m_xdev, eEye, U, V, &d);
 	if (xret != XRT_SUCCESS) {
 		ovrd_log("Failed to compute distortion for view %d at %f,%f! Got error %d\n", eEye, U, V, xret);
 
@@ -1646,9 +1644,9 @@ CServerDriver_Monado::Cleanup()
 void
 CServerDriver_Monado::HandleHapticEvent(vr::VREvent_t *event)
 {
-	float freq = event->data.hapticVibration.fFrequency;
-	float amp = event->data.hapticVibration.fAmplitude;
-	float duration = event->data.hapticVibration.fDurationSeconds;
+	const float freq = event->data.hapticVibration.fFrequency;
+	const float amp = event->data.hapticVibration.fAmplitude;
+	const float duration = event->data.hapticVibration.fDurationSeconds;
 
 	ovrd_log("Haptic vibration %fs %fHz %famp\n", duration, freq, amp);
 
@@ -1680,9 +1678,9 @@ CServerDriver_Monado::HandleHapticEvent(vr::VREvent_t *event)
 	}
 
 	// TODO: controllers with more than 1 haptic motors
-	SteamVRDriverControlOutput *control = &controller->m_output_controls.at(0);
+	const SteamVRDriverControlOutput *control = &controller->m_output_controls.at(0);
 
-	enum xrt_output_name name = control->monado_output_name;
+	const enum xrt_output_name name = control->monado_output_name;
 	ovrd_log("Haptic vibration %s, %d\n", control->steamvr_control_path, name);
 	controller->m_xdev->set_output(controller->m_xdev, name, &out);
 }

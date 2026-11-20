@@ -81,7 +81,7 @@ getAppInfo(std::string const &packageName, jobject application_context)
 		const auto n = resolutions.size();
 		ApplicationInfo appInfo;
 		for (int32_t i = 0; i < n; ++i) {
-			wrap::android::content::pm::ResolveInfo resolution{resolutions.get(i)};
+			const wrap::android::content::pm::ResolveInfo resolution{resolutions.get(i)};
 			auto service = resolution.getServiceInfo();
 			if (service.isNull()) {
 				continue;
@@ -160,7 +160,7 @@ loadClassFromRuntimeApk(jobject application_context, const char *clazz_name)
 		return {};
 	}
 
-	std::string runtimeApkPath = getRuntimeSourceDir() + "/base.apk";
+	const std::string runtimeApkPath = getRuntimeSourceDir() + "/base.apk";
 	return loadClassFromApk(application_context, runtimeApkPath.c_str(), clazz_name);
 }
 
@@ -175,7 +175,7 @@ android_load_class_from_package(struct _JavaVM *vm,
 {
 	using namespace xrt::auxiliary::android;
 	jni::init(vm);
-	Context context((jobject)application_context);
+	const Context context((jobject)application_context);
 	auto info = getAppInfo(pkgname, (jobject)application_context);
 	if (info.isNull()) {
 		U_LOG_E("Could not get application info for package '%s'", pkgname);

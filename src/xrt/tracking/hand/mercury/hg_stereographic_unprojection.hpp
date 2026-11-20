@@ -13,14 +13,14 @@
 static inline Eigen::Vector3f
 stereographic_unprojection(float sg_x, float sg_y)
 {
-	float X = sg_x;
-	float Y = sg_y;
+	const float X = sg_x;
+	const float Y = sg_y;
 
-	float denom = (1 + X * X + Y * Y);
+	const float denom = (1 + X * X + Y * Y);
 
-	float x = (2 * X) / denom;
-	float y = (2 * Y) / denom;
-	float z = (-1 + X * X + Y * Y) / denom;
+	const float x = (2 * X) / denom;
+	const float y = (2 * Y) / denom;
+	const float z = (-1 + X * X + Y * Y) / denom;
 
 	// forward is -z
 	return {x, y, z};

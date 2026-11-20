@@ -33,7 +33,7 @@ using std::vector;
                                                                                                                        \
 	void u_vector_##TYPE##_destroy(u_vector_##TYPE *uv)                                                            \
 	{                                                                                                              \
-		vector<TYPE> *v = static_cast<vector<TYPE> *>(uv->ptr);                                                \
+		const vector<TYPE> *v = static_cast<vector<TYPE> *>(uv->ptr);                                          \
 		delete v;                                                                                              \
 		uv->ptr = nullptr;                                                                                     \
 	}

@@ -202,10 +202,10 @@ opengloves_alpha_encoding_decode(const char *data, struct opengloves_input *out)
 	try {
 		// five fingers, 2 (curl + splay)
 		for (int i = 0; i < 5; i++) {
-			int enum_position = i * 2;
+			const int enum_position = i * 2;
 			// curls
 			if (input_map.find(enum_position) != input_map.end()) {
-				float fin_curl_value = std::stof(input_map.at(enum_position));
+				const float fin_curl_value = std::stof(input_map.at(enum_position));
 				std::fill(std::begin(out->flexion[i]), std::begin(out->flexion[i]) + 4,
 				          fin_curl_value / OPENGLOVES_ENCODING_MAX_ANALOG_VALUE);
 			}

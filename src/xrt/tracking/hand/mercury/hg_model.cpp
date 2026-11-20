@@ -48,10 +48,10 @@ blackbar(const cv::Mat &in, enum t_camera_orientation rot, cv::Mat &out, xrt_siz
 
 	// Figure out from the rotation and frame sizes if the black bars need to be on top and bottom, or on left and
 	// right?
-	float scale_down_w = (float)out_size.w / in_w; // 128/1280 = 0.1
-	float scale_down_h = (float)out_size.h / in_h; // 128/800 =  0.16
+	const float scale_down_w = (float)out_size.w / in_w; // 128/1280 = 0.1
+	const float scale_down_h = (float)out_size.h / in_h; // 128/800 =  0.16
 
-	float scale_down = fmin(scale_down_w, scale_down_h); // 0.1
+	const float scale_down = fmin(scale_down_w, scale_down_h); // 0.1
 
 	float width_inside, height_inside;
 
@@ -63,11 +63,11 @@ blackbar(const cv::Mat &in, enum t_camera_orientation rot, cv::Mat &out, xrt_siz
 		height_inside = (float)in.rows * scale_down;
 	}
 
-	float translate_x = (out_size.w - width_inside) / 2;  // should be 0 for 1280x800
-	float translate_y = (out_size.h - height_inside) / 2; // should be (1280-800)/2 = 240
+	const float translate_x = (out_size.w - width_inside) / 2;  // should be 0 for 1280x800
+	const float translate_y = (out_size.h - height_inside) / 2; // should be (1280-800)/2 = 240
 
 	cv::Matx23f go;
-	cv::Point2f center(in.rows / 2, in.cols / 2);
+	const cv::Point2f center(in.rows / 2, in.cols / 2);
 
 	switch (rot) {
 	case CAMERA_ORIENTATION_0:
@@ -195,23 +195,21 @@ refine_center_of_distribution(struct HandTracking *hgt, //
 	float sum_of_values_times_locations_x = 0;
 	float sum_of_values_times_locations_y = 0;
 
-	int max_kern_width = 10;
-
+	const int max_kern_width = 10;
 
 	//! @todo this is not good and has at least one edge case, make it more readable and link to a jupyter notebook
-	int kern_width_x = std::max(0, std::min(coarse_x, std::min(max_kern_width, abs(coarse_x - w) - 1)));
-	int kern_width_y = std::max(0, std::min(coarse_y, std::min(max_kern_width, abs(coarse_y - h) - 1)));
-	int min_x = coarse_x - kern_width_x;
-	int max_x = coarse_x + kern_width_x;
+	const int kern_width_x = std::max(0, std::min(coarse_x, std::min(max_kern_width, abs(coarse_x - w) - 1)));
+	const int kern_width_y = std::max(0, std::min(coarse_y, std::min(max_kern_width, abs(coarse_y - h) - 1)));
+	const int min_x = coarse_x - kern_width_x;
+	const int max_x = coarse_x + kern_width_x;
 
-	int min_y = coarse_y - kern_width_y;
-	int max_y = coarse_y + kern_width_y;
-
+	const int min_y = coarse_y - kern_width_y;
+	const int max_y = coarse_y + kern_width_y;
 
 	for (int y = min_y; y <= max_y; y++) {
 		for (int x = min_x; x <= max_x; x++) {
-			int acc = (y * w) + x;
-			float val = data[acc];
+			const int acc = (y * w) + x;
+			const float val = data[acc];
 			sum_of_values += val;
 			sum_of_values_times_locations_y += val * ((float)y + 0.5);
 			sum_of_values_times_locations_x += val * ((float)x + 0.5);
@@ -309,11 +307,11 @@ static void
 run_hand_detection_unsafe(hand_detection_run_info *info)
 {
 	ht_view *view = info->view;
-	HandTracking *hgt = view->hgt;
+	const HandTracking *hgt = view->hgt;
 	onnx_state *state = &view->detection;
 	OnnxWrapper &wrap = *state->wrap;
 
-	cv::Mat &orig_data = view->run_model_on_this;
+	const cv::Mat &orig_data = view->run_model_on_this;
 
 	cv::Mat binned_uint8;
 
@@ -395,10 +393,10 @@ run_hand_detection_unsafe(hand_detection_run_info *info)
 
 		if (hgt->debug_scribble) {
 			// note: this will multiply the model outputs by 255, don't do anything with them after this.
-			int top_of_rect_y = kVisSpacerSize; // 8 + 128 + 8 + 128 + 8;
-			int left_of_rect_x = kVisSpacerSize + ((kKeypointInputSize + kVisSpacerSize) * 4);
-			int start_y = top_of_rect_y + ((kDetectionInputSize + kVisSpacerSize) * view->view);
-			cv::Rect p = cv::Rect(left_of_rect_x, start_y, kDetectionInputSize, kDetectionInputSize);
+			const int top_of_rect_y = kVisSpacerSize; // 8 + 128 + 8 + 128 + 8;
+			const int left_of_rect_x = kVisSpacerSize + ((kKeypointInputSize + kVisSpacerSize) * 4);
+			const int start_y = top_of_rect_y + ((kDetectionInputSize + kVisSpacerSize) * view->view);
+			const cv::Rect p = cv::Rect(left_of_rect_x, start_y, kDetectionInputSize, kDetectionInputSize);
 
 			binned_uint8.copyTo(hgt->visualizers.mat(p));
 		}
@@ -558,12 +556,12 @@ enum xrt_hand_joint joints_ml_to_xr[21]{
 void
 make_keypoint_heatmap_output(int camera_idx, int hand_idx, int grid_pt_x, int grid_pt_y, float *plane, cv::Mat &out)
 {
-	int root_x = 8 + ((1 + 2 * hand_idx) * (128 + 8));
-	int root_y = 8 + ((2 * camera_idx) * (128 + 8));
+	const int root_x = 8 + ((1 + 2 * hand_idx) * (128 + 8));
+	const int root_y = 8 + ((2 * camera_idx) * (128 + 8));
 
-	int org_x = (root_x) + (grid_pt_x * 25);
-	int org_y = (root_y) + (grid_pt_y * 25);
-	cv::Rect p = cv::Rect(org_x, org_y, 22, 22);
+	const int org_x = (root_x) + (grid_pt_x * 25);
+	const int org_y = (root_y) + (grid_pt_y * 25);
+	const cv::Rect p = cv::Rect(org_x, org_y, 22, 22);
 
 
 	cv::Mat start(cv::Size(22, 22), CV_32FC1, plane, 22 * sizeof(float));
@@ -580,19 +578,16 @@ make_keypoint_depth_heatmap_output(int camera_idx, //
                                    float *plane, //
                                    cv::Mat &out)
 {
-	int root_x = 8 + ((1 + 2 * hand_idx) * (128 + 8));
-	int root_y = 8 + ((1 + 2 * camera_idx) * (128 + 8));
+	const int root_x = 8 + ((1 + 2 * hand_idx) * (128 + 8));
+	const int root_y = 8 + ((1 + 2 * camera_idx) * (128 + 8));
 
-	int org_x = (root_x) + (grid_pt_x * 25);
-	int org_y = (root_y) + (grid_pt_y * 25);
+	const int org_x = (root_x) + (grid_pt_x * 25);
+	const int org_y = (root_y) + (grid_pt_y * 25);
 
-
-	cv::Rect p = cv::Rect(org_x, org_y, 22, 22);
-
+	const cv::Rect p = cv::Rect(org_x, org_y, 22, 22);
 
 	cv::Mat start(cv::Size(22, 22), CV_32FC1);
 	float *ptr = (float *)start.data; // Cope cope cope cope cope
-
 
 	for (int i = 0; i < 22; i++) {
 		for (int j = 0; j < 22; j++) {
@@ -621,13 +616,13 @@ run_keypoint_estimation_unsafe(keypoint_estimation_run_info &info)
 
 	struct HandTracking *hgt = info.view->hgt;
 
-	int view_idx = info.view->view;
-	int hand_idx = info.hand_idx;
+	const int view_idx = info.view->view;
+	const int hand_idx = info.hand_idx;
 	one_frame_one_view &this_output = hgt->keypoint_outputs[hand_idx].views[view_idx];
 	MLOutput2D &px_coord = this_output.keypoints_in_scaled_stereographic;
 	// Factor out starting here
 
-	hand_region_of_interest &output = info.view->regions_of_interest_this_frame[hand_idx];
+	const hand_region_of_interest &output = info.view->regions_of_interest_this_frame[hand_idx];
 
 	cv::Mat data_128x128_uint8;
 
@@ -635,12 +630,9 @@ run_keypoint_estimation_unsafe(keypoint_estimation_run_info &info)
 	instr.rot_quat = Eigen::Quaternionf::Identity();
 	instr.stereographic_radius = 0.4;
 
-
-
 	t_camera_model_params dist = info.view->hgdist;
 
-
-	float twist = 0;
+	const float twist = 0;
 
 	if (output.provenance == ROIProvenance::HAND_DETECTION) {
 
@@ -652,8 +644,8 @@ run_keypoint_estimation_unsafe(keypoint_estimation_run_info &info)
 		t_camera_models_unproject_and_flip(&hgt->views[view_idx].hgdist, output.center_px.x, output.center_px.y,
 		                                   &center.x, &center.y, &center.z);
 
-		xrt_vec2 r = {output.size_px / 2, 0};
-		xrt_vec2 d = {0, output.size_px / 2};
+		const xrt_vec2 r = {output.size_px / 2, 0};
+		const xrt_vec2 d = {0, output.size_px / 2};
 		xrt_vec2 v;
 
 		// note! we do not need to rotate this! it's *already* in camera space.
@@ -699,7 +691,7 @@ run_keypoint_estimation_unsafe(keypoint_estimation_run_info &info)
 		} else {
 			for (int i = 0; i < 21; i++) {
 
-				Eigen::Quaternionf ori = map_quat(hgt->left_in_right.orientation);
+				const Eigen::Quaternionf ori = map_quat(hgt->left_in_right.orientation);
 				Eigen::Vector3f tmp = hgt->pose_predicted_keypoints[hand_idx].col(i);
 
 				tmp = ori * tmp;
@@ -782,21 +774,19 @@ run_keypoint_estimation_unsafe(keypoint_estimation_run_info &info)
 	// This was added for debug scribbling, and should be added back at some point.
 	// xrt_vec2 *keypoints_global = px_coord.kps;
 
-	size_t plane_size = 22 * 22;
+	const size_t plane_size = 22 * 22;
 
 	for (int i = 0; i < 21; i++) {
-		float *data = &out_data[i * plane_size];
-
+		const float *data = &out_data[i * plane_size];
 
 		// This will be optimized out if nan checking is disabled in hg_numerics_checker
 		for (size_t x = 0; x < plane_size; x++) {
 			CHECK_NOT_NAN(data[x]);
 		}
 
-
-		int out_idx = argmax(data, 22 * 22);
-		int row = out_idx / 22;
-		int col = out_idx % 22;
+		const int out_idx = argmax(data, 22 * 22);
+		const int row = out_idx / 22;
+		const int col = out_idx % 22;
 
 		xrt_vec2 loc = {};
 
@@ -861,7 +851,7 @@ run_keypoint_estimation_unsafe(keypoint_estimation_run_info &info)
 	ORT_SAFE(wrap, GetTensorMutableData(output_tensors[3], (void **)&out_data_curls));
 
 	for (int i = 0; i < 5; i++) {
-		float curl = out_data_curls[i];
+		const float curl = out_data_curls[i];
 		float variance = out_data_curls[5 + i];
 
 		// Next two lines directly correspond to py_training/settings.py
@@ -879,10 +869,10 @@ run_keypoint_estimation_unsafe(keypoint_estimation_run_info &info)
 	if (hgt->debug_scribble) {
 		int data_acc_idx = 0;
 
-		int root_x = 8 + ((2 * hand_idx) * (128 + 8));
-		int root_y = 8 + (2 * info.view->view * (128 + 8));
+		const int root_x = 8 + ((2 * hand_idx) * (128 + 8));
+		const int root_y = 8 + (2 * info.view->view * (128 + 8));
 
-		cv::Rect p = cv::Rect(root_x, root_y, 128, 128);
+		const cv::Rect p = cv::Rect(root_x, root_y, 128, 128);
 
 		data_128x128_uint8.copyTo(hgt->visualizers.mat(p));
 
@@ -927,16 +917,16 @@ run_keypoint_estimation_unsafe(keypoint_estimation_run_info &info)
 		cv::rectangle(hgt->visualizers.mat, cv::Rect(cv::Point2i{root_x, root_y + 128 + 22}, cv::Size{128, 60}),
 		              {255}, cv::FILLED);
 		for (int i = 0; i < 5; i++) {
-			int r = 15;
+			const int r = 15;
 
-			cv::Point2i center = {root_x + r + (20 * i), root_y + 128 + 60};
+			const cv::Point2i center = {root_x + r + (20 * i), root_y + 128 + 60};
 
 			cv::circle(hgt->visualizers.mat, center, 1, {0}, 1);
 
-			float c = this_output.curls[i].value * 0.3;
-			int x = cos(c) * r;
+			const float c = this_output.curls[i].value * 0.3;
+			const int x = cos(c) * r;
 			// Remember, OpenCV has (0,0) at top left
-			int y = -sin(c) * r;
+			const int y = -sin(c) * r;
 
 			cv::Point2i pt2 = {x, y};
 			pt2 += center;
@@ -969,9 +959,9 @@ run_keypoint_estimation(void *ptr)
 void
 release_onnx_state(onnx_state *state)
 {
-	OnnxWrapper &wrap = *state->wrap;
+	const OnnxWrapper &wrap = *state->wrap;
 
-	for (model_input_wrap &a : state->wraps) {
+	for (const model_input_wrap &a : state->wraps) {
 		wrap.api->ReleaseValue(a.tensor);
 		free(a.data);
 	}

@@ -46,17 +46,17 @@ TEST_CASE("input_transform")
 
 	oxr_input_value_tagged input = {};
 	oxr_input_value_tagged output = {};
-	mock_binding_point mock_float{"/mock_float"};
-	mock_binding_point mock_bool{"/mock_bool"};
-	mock_binding_point mock_pose{"/mock_pose"};
-	mock_binding_point mock{"/mock"};
-	mock_binding_point mock_vec2{"/mock_vec2"};
-	mock_binding_point mock_vec2_x{"/mock_vec2/x", OXR_BINDING_VALUE_TRANSFORM_VEC2_GET_X};
-	mock_binding_point mock_vec2_y{"/mock_vec2/y", OXR_BINDING_VALUE_TRANSFORM_VEC2_GET_Y};
+	const mock_binding_point mock_float{"/mock_float"};
+	const mock_binding_point mock_bool{"/mock_bool"};
+	const mock_binding_point mock_pose{"/mock_pose"};
+	const mock_binding_point mock{"/mock"};
+	const mock_binding_point mock_vec2{"/mock_vec2"};
+	const mock_binding_point mock_vec2_x{"/mock_vec2/x", OXR_BINDING_VALUE_TRANSFORM_VEC2_GET_X};
+	const mock_binding_point mock_vec2_y{"/mock_vec2/y", OXR_BINDING_VALUE_TRANSFORM_VEC2_GET_Y};
 
 	SECTION("Float action")
 	{
-		XrActionType action_type = XR_ACTION_TYPE_FLOAT_INPUT;
+		const XrActionType action_type = XR_ACTION_TYPE_FLOAT_INPUT;
 
 		SECTION("From Vec1 -1 to 1 identity")
 		{
@@ -179,7 +179,7 @@ TEST_CASE("input_transform")
 
 	SECTION("Bool action")
 	{
-		XrActionType action_type = XR_ACTION_TYPE_BOOLEAN_INPUT;
+		const XrActionType action_type = XR_ACTION_TYPE_BOOLEAN_INPUT;
 		SECTION("From Bool identity")
 		{
 			input.type = XRT_INPUT_TYPE_BOOLEAN;
@@ -303,7 +303,7 @@ TEST_CASE("input_transform")
 
 	SECTION("Vector2 action")
 	{
-		XrActionType action_type = XR_ACTION_TYPE_VECTOR2F_INPUT;
+		const XrActionType action_type = XR_ACTION_TYPE_VECTOR2F_INPUT;
 		input.type = XRT_INPUT_TYPE_VEC2_MINUS_ONE_TO_ONE;
 
 		SECTION("From Vec2 identity")
@@ -335,7 +335,7 @@ TEST_CASE("input_transform")
 
 	SECTION("Pose action")
 	{
-		XrActionType action_type = XR_ACTION_TYPE_POSE_INPUT;
+		const XrActionType action_type = XR_ACTION_TYPE_POSE_INPUT;
 
 		SECTION("From Pose identity")
 		{
@@ -418,14 +418,14 @@ TEST_CASE("input_transform_dpad")
 	oxr_input_value_tagged input = {};
 	oxr_input_value_tagged output = {};
 
-	struct oxr_dpad_binding_modification *dpad_binding_modification = NULL;
+	const struct oxr_dpad_binding_modification *dpad_binding_modification = NULL;
 	enum xrt_input_type activation_input_type = XRT_INPUT_TYPE_VEC1_ZERO_TO_ONE;
 	struct xrt_input activation_input = {};
-	enum oxr_dpad_region dpad_region = OXR_DPAD_REGION_UP;
+	const enum oxr_dpad_region dpad_region = OXR_DPAD_REGION_UP;
 
 	SECTION("Default settings")
 	{
-		XrActionType action_type = XR_ACTION_TYPE_BOOLEAN_INPUT;
+		const XrActionType action_type = XR_ACTION_TYPE_BOOLEAN_INPUT;
 
 		SECTION("without an activation input")
 		{
@@ -554,9 +554,9 @@ TEST_CASE("input_transform_dpad")
 	}
 	SECTION("Sticky enabled")
 	{
-		XrActionType action_type = XR_ACTION_TYPE_BOOLEAN_INPUT;
+		const XrActionType action_type = XR_ACTION_TYPE_BOOLEAN_INPUT;
 
-		struct oxr_dpad_binding_modification dpad_binding_modification_val = {
+		const struct oxr_dpad_binding_modification dpad_binding_modification_val = {
 		    XR_NULL_PATH, // XrPath binding, unused at this stage
 		    {
 		        0.5f,          // float forceThreshold

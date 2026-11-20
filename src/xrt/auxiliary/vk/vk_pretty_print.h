@@ -135,7 +135,7 @@ vk_str_display_plane_alpha_flag_bits_or_null(VkDisplayPlaneAlphaFlagBitsKHR bits
 	static inline const char *NAME(TYPE bits)                                                                      \
 	{                                                                                                              \
 		const char *str = NAME##_or_null(bits);                                                                \
-		uint32_t value = (uint32_t)bits;                                                                       \
+		const uint32_t value = (uint32_t)bits;                                                                 \
 		if (str != NULL) {                                                                                     \
 			return str;                                                                                    \
 		} else if (value == 0) {                                                                               \

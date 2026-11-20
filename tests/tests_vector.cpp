@@ -24,13 +24,9 @@ TEST_CASE("u_vector")
 		u_vector_float_push_back(vf, B);
 		u_vector_float_push_back(vf, C);
 
-		float a = u_vector_float_at(vf, 0);
-		float b = u_vector_float_at(vf, 1);
-		float c = u_vector_float_at(vf, 2);
-
-		CHECK(a == A);
-		CHECK(b == B);
-		CHECK(c == C);
+		CHECK(u_vector_float_at(vf, 0) == A);
+		CHECK(u_vector_float_at(vf, 1) == B);
+		CHECK(u_vector_float_at(vf, 2) == C);
 
 		u_vector_float_destroy(&vf);
 		CHECK(vf.ptr == NULL);

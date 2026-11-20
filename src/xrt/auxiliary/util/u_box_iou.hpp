@@ -35,15 +35,14 @@ static float
 overlap(float x1, float w1, float x2, float w2)
 {
 	// farthest-right left edge
-	float l1 = x1 - w1 / 2;
-	float l2 = x2 - w2 / 2;
-	float left = std::max(l1, l2);
-
+	const float l1 = x1 - w1 / 2;
+	const float l2 = x2 - w2 / 2;
+	const float left = std::max(l1, l2);
 
 	// farthest-left right edge
-	float r1 = x1 + w1 / 2;
-	float r2 = x2 + w2 / 2;
-	float right = std::min(r1, r2);
+	const float r1 = x1 + w1 / 2;
+	const float r2 = x2 + w2 / 2;
+	const float right = std::min(r1, r2);
 
 	return right - left;
 }
@@ -51,8 +50,8 @@ overlap(float x1, float w1, float x2, float w2)
 static float
 boxIntersection(const Box &a, const Box &b)
 {
-	float w = overlap(a.cx, a.w, b.cx, b.w);
-	float h = overlap(a.cy, a.h, b.cy, b.h);
+	const float w = overlap(a.cx, a.w, b.cx, b.w);
+	const float h = overlap(a.cy, a.h, b.cy, b.h);
 
 	if (w < 0 || h < 0)
 		return 0;

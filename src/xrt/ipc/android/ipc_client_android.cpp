@@ -82,7 +82,7 @@ ipc_client_android_blocking_connect(struct ipc_client_android *ica)
 		// blockingConnect will block until binder is ready, the app-glue code will deadlock without this.
 		JavaVM *vm = ica->vm;
 		android_looper_poll_until_activity_resumed(vm, ica->activity.object().getHandle());
-		int fd = ica->client.blockingConnect(ica->activity, XRT_ANDROID_PACKAGE);
+		const int fd = ica->client.blockingConnect(ica->activity, XRT_ANDROID_PACKAGE);
 		return fd;
 	} catch (std::exception const &e) {
 		U_LOG_E("Failure while connecting to IPC server: %s", e.what());

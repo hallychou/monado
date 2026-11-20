@@ -65,7 +65,7 @@
 #define SLAM_ERROR(...) U_LOG_IFL_E(t.log_level, __VA_ARGS__)
 #define SLAM_ASSERT(predicate, ...)                                                                                    \
 	do {                                                                                                           \
-		bool p = predicate;                                                                                    \
+		const bool p = predicate;                                                                              \
 		if (!p) {                                                                                              \
 			U_LOG(U_LOGGING_ERROR, __VA_ARGS__);                                                           \
 			assert(p && "SLAM_ASSERT failed: " #predicate);                                                \
@@ -132,9 +132,9 @@ using xrt::auxiliary::math::RelationHistory;
 ostream &
 operator<<(ostream &os, const xrt_pose_sample &s)
 {
-	timepoint_ns ts = s.timestamp_ns;
-	xrt_vec3 p = s.pose.position;
-	xrt_quat r = s.pose.orientation;
+	const timepoint_ns ts = s.timestamp_ns;
+	const xrt_vec3 p = s.pose.position;
+	const xrt_quat r = s.pose.orientation;
 	os << ts << ",";
 	os << p.x << "," << p.y << "," << p.z << ",";
 	os << r.w << "," << r.x << "," << r.y << "," << r.z << CSV_EOL;
@@ -145,7 +145,7 @@ ostream &
 operator<<(ostream &os, const timing_sample &timestamps)
 {
 	for (const timepoint_ns &ts : timestamps) {
-		string delimiter = &ts != &timestamps.back() ? "," : CSV_EOL;
+		const string delimiter = &ts != &timestamps.back() ? "," : CSV_EOL;
 		os << ts << delimiter;
 	}
 	return os;
@@ -161,7 +161,7 @@ ostream &
 operator<<(ostream &os, const feature_count_sample &s)
 {
 	os << s.ts;
-	for (int count : s.counts) {
+	for (const int count : s.counts) {
 		os << "," << count;
 	}
 	os << CSV_EOL;
@@ -191,7 +191,7 @@ private:
 		file = ofstream{directory + "/" + filename};
 		file << "#";
 		for (const string &col : column_names) {
-			string delimiter = &col != &column_names.back() ? "," : CSV_EOL;
+			const string delimiter = &col != &column_names.back() ? "," : CSV_EOL;
 			file << col << delimiter;
 		}
 		file << std::fixed << std::setprecision(CSV_PRECISION);
@@ -207,7 +207,7 @@ public:
 	void
 	push(const RowType &row)
 	{
-		unique_lock lock(mutex);
+		const unique_lock lock(mutex);
 
 		if (!enabled) {
 			return;
@@ -428,13 +428,14 @@ timing_ui_setup(TrackerSlam &t)
 	u_var_add_ro_raw_text(&t, "\nTracker timing", "Tracker timing");
 
 	// Setup toggle button
-	static const char *msg[2] = {"[OFF] Enable timing", "[ON] Disable timing"};
+	static const char *const msg[2] = {"[OFF] Enable timing", "[ON] Disable timing"};
 	u_var_button_cb cb = [](void *t_ptr) {
 		TrackerSlam *t = (TrackerSlam *)t_ptr;
 		u_var_button &btn = t->timing.enable_btn;
-		bool e = !t->timing.enabled;
+		const bool e = !t->timing.enabled;
 		snprintf(btn.label, sizeof(btn.label), "%s", msg[e]);
-		vit_result_t vres = t->vit.tracker_enable_extension(t->tracker, VIT_TRACKER_EXTENSION_POSE_TIMING, e);
+		const vit_result_t vres =
+		    t->vit.tracker_enable_extension(t->tracker, VIT_TRACKER_EXTENSION_POSE_TIMING, e);
 		if (vres != VIT_SUCCESS) {
 			U_LOG_IFL_E(t->log_level, "Failed to set tracker timing extension");
 			return;
@@ -452,7 +453,7 @@ timing_ui_setup(TrackerSlam &t)
 	// Only fill the timing columns if the tracker supports pose timing
 	if (t.exts.has_pose_timing) {
 		vit_tracker_timing_titles titles = {};
-		vit_result_t vres = t.vit.tracker_get_timing_titles(t.tracker, &titles);
+		const vit_result_t vres = t.vit.tracker_get_timing_titles(t.tracker, &titles);
 		if (vres != VIT_SUCCESS) {
 			SLAM_ERROR("Failed to get timing titles from tracker");
 			return;
@@ -499,13 +500,13 @@ timing_ui_setup(TrackerSlam &t)
 static vector<timepoint_ns>
 timing_ui_push(TrackerSlam &t, const vit_pose_t *pose, int64_t ts)
 {
-	timepoint_ns now = os_monotonic_get_ns();
+	const timepoint_ns now = os_monotonic_get_ns();
 	vector<timepoint_ns> tss = {ts, now};
 
 	// Add extra timestamps if the SLAM tracker provides them
 	if (t.timing.enabled) {
 		vit_pose_timing timing;
-		vit_result_t vres = t.vit.pose_get_timing(pose, &timing);
+		const vit_result_t vres = t.vit.pose_get_timing(pose, &timing);
 		if (vres != VIT_SUCCESS) {
 			// Even if the timing is enabled, some of the poses already in the queue won't have it enabled.
 			if (vres != VIT_ERROR_NOT_ENABLED) {
@@ -519,11 +520,11 @@ timing_ui_push(TrackerSlam &t, const vit_pose_t *pose, int64_t ts)
 		tss.insert(tss.begin() + 1, data.begin(), data.end());
 
 		// The two timestamps to compare in the graph
-		timepoint_ns start = tss.at(t.timing.start_ts_idx);
-		timepoint_ns end = tss.at(t.timing.end_ts_idx);
+		const timepoint_ns start = tss.at(t.timing.start_ts_idx);
+		const timepoint_ns end = tss.at(t.timing.end_ts_idx);
 
 		// Push to the UI graph
-		float tss_ms = (end - start) / U_TIME_1MS_IN_NS;
+		const float tss_ms = (end - start) / U_TIME_1MS_IN_NS;
 		t.timing.idx = (t.timing.idx + 1) % UI_TIMING_POSE_COUNT;
 		t.timing.dur_ms[t.timing.idx] = tss_ms;
 		constexpr float a = 1.0f / UI_TIMING_POSE_COUNT; // Exponential moving average
@@ -548,13 +549,14 @@ features_ui_setup(TrackerSlam &t)
 	u_var_add_ro_raw_text(&t, "\nTracker features", "Tracker features");
 
 	// Setup toggle button
-	static const char *msg[2] = {"[OFF] Enable features info", "[ON] Disable features info"};
+	static const char *const msg[2] = {"[OFF] Enable features info", "[ON] Disable features info"};
 	u_var_button_cb cb = [](void *t_ptr) {
 		TrackerSlam *t = (TrackerSlam *)t_ptr;
 		u_var_button &btn = t->features.enable_btn;
-		bool e = !t->features.enabled;
+		const bool e = !t->features.enabled;
 		snprintf(btn.label, sizeof(btn.label), "%s", msg[e]);
-		vit_result_t vres = t->vit.tracker_enable_extension(t->tracker, VIT_TRACKER_EXTENSION_POSE_FEATURES, e);
+		const vit_result_t vres =
+		    t->vit.tracker_enable_extension(t->tracker, VIT_TRACKER_EXTENSION_POSE_FEATURES, e);
 		if (vres != VIT_SUCCESS) {
 			U_LOG_IFL_E(t->log_level, "Failed to set tracker features extension");
 			return;
@@ -569,14 +571,14 @@ features_ui_setup(TrackerSlam &t)
 	// Setup graph
 	u_var_curve_getter getter = [](void *fs_ptr, int i) -> u_var_curve_point {
 		auto *fs = (TrackerSlam::Features::FeatureCounter *)fs_ptr;
-		timepoint_ns now = os_monotonic_get_ns();
+		const timepoint_ns now = os_monotonic_get_ns();
 
-		size_t size = fs->entries.size();
+		const size_t size = fs->entries.size();
 		if (size == 0) {
 			return {0, 0};
 		}
 
-		int last_idx = size - 1;
+		const int last_idx = size - 1;
 		if (i > last_idx) {
 			i = last_idx;
 		}
@@ -615,7 +617,7 @@ features_ui_push(TrackerSlam &t, const vit_pose_t *pose, int64_t ts)
 	vector<int> fcs{};
 	for (uint32_t i = 0; i < t.cam_count; ++i) {
 		vit_pose_features features = {};
-		vit_result_t vres = t.vit.pose_get_features(pose, i, &features);
+		const vit_result_t vres = t.vit.pose_get_features(pose, i, &features);
 		if (vres != VIT_SUCCESS) {
 			// Even if the features are enabled, some of the poses already in the queue won't have it
 			// enabled.
@@ -647,7 +649,7 @@ get_gt_pose_at(const Trajectory &gt, timepoint_ns ts)
 		return XRT_POSE_IDENTITY;
 	}
 
-	Trajectory::const_iterator rit = gt.upper_bound(ts);
+	const Trajectory::const_iterator rit = gt.upper_bound(ts);
 
 	if (rit == gt.begin()) { // Too far in the past, return first gt pose
 		return gt.begin()->second;
@@ -657,12 +659,12 @@ get_gt_pose_at(const Trajectory &gt, timepoint_ns ts)
 		return std::prev(gt.end())->second;
 	}
 
-	Trajectory::const_iterator lit = std::prev(rit);
+	const Trajectory::const_iterator lit = std::prev(rit);
 
 	const auto &[lts, lpose] = *lit;
 	const auto &[rts, rpose] = *rit;
 
-	float t = double(ts - lts) / double(rts - lts);
+	const float t = double(ts - lts) / double(rts - lts);
 	SLAM_DASSERT_(0 <= t && t <= 1);
 
 	xrt_pose res{};
@@ -687,7 +689,7 @@ xr2gt_pose(const xrt_pose &gt_origin, const xrt_pose &xr_pose)
 	//! https://ylatif.github.io/movingsensors/cameraReady/paper07.pdf
 
 	xrt_vec3 pos = xr_pose.position;
-	xrt_quat z180{0, 0, 1, 0};
+	const xrt_quat z180{0, 0, 1, 0};
 	math_quat_rotate_vec3(&z180, &pos, &pos);
 	math_quat_rotate_vec3(&gt_origin.orientation, &pos, &pos);
 	pos += gt_origin.position;
@@ -704,7 +706,7 @@ gt2xr_pose(const xrt_pose &gt_origin, const xrt_pose &gt_pose)
 	xrt_quat gt_origin_orientation_inv = gt_origin.orientation;
 	math_quat_invert(&gt_origin_orientation_inv, &gt_origin_orientation_inv);
 	math_quat_rotate_vec3(&gt_origin_orientation_inv, &pos, &pos);
-	xrt_quat zn180{0, 0, -1, 0};
+	const xrt_quat zn180{0, 0, -1, 0};
 	math_quat_rotate_vec3(&zn180, &pos, &pos);
 
 	return {XRT_QUAT_IDENTITY, pos};
@@ -732,10 +734,10 @@ gt_ui_push(TrackerSlam &t, timepoint_ns ts, xrt_pose tracked_pose)
 		return;
 	}
 
-	xrt_pose gt_pose = get_gt_pose_at(*t.gt.trajectory, ts);
-	xrt_pose xr_pose = xr2gt_pose(t.gt.origin, tracked_pose);
+	const xrt_pose gt_pose = get_gt_pose_at(*t.gt.trajectory, ts);
+	const xrt_pose xr_pose = xr2gt_pose(t.gt.origin, tracked_pose);
 
-	float len_mm = m_vec3_len(xr_pose.position - gt_pose.position) * 1000;
+	const float len_mm = m_vec3_len(xr_pose.position - gt_pose.position) * 1000;
 	t.gt.diff_idx = (t.gt.diff_idx + 1) % UI_GTDIFF_POSE_COUNT;
 	t.gt.diffs_mm[t.gt.diff_idx] = len_mm;
 	constexpr float a = 1.0f / UI_GTDIFF_POSE_COUNT; // Exponential moving average
@@ -773,17 +775,17 @@ flush_poses(TrackerSlam &t)
 			return false;
 		}
 
-		int64_t nts = data.timestamp;
+		const int64_t nts = data.timestamp;
 
-		xrt_vec3 npos{data.px, data.py, data.pz};
-		xrt_quat nrot{data.ox, data.oy, data.oz, data.ow};
-		xrt_vec3 nvel{data.vx, data.vy, data.vz};
+		const xrt_vec3 npos{data.px, data.py, data.pz};
+		const xrt_quat nrot{data.ox, data.oy, data.oz, data.ow};
+		const xrt_vec3 nvel{data.vx, data.vy, data.vz};
 
 		// Last relation
 		auto latest = t.slam_rels.getLatest().value_or(math::RelationHistoryEntry{});
-		xrt_quat lrot = latest.relation.pose.orientation;
+		const xrt_quat lrot = latest.relation.pose.orientation;
 
-		double dt = time_ns_to_s(nts - latest.timestamp);
+		const double dt = time_ns_to_s(nts - latest.timestamp);
 
 		SLAM_TRACE("Dequeued SLAM pose ts=%ld p=[%f,%f,%f] r=[%f,%f,%f,%f]", //
 		           nts, data.px, data.py, data.pz, data.ox, data.oy, data.oz, data.ow);
@@ -810,7 +812,7 @@ flush_poses(TrackerSlam &t)
 		t.slam_times_writer->push(tss);
 
 		if (t.features.enabled) {
-			vector feat_count = features_ui_push(t, pose, nts);
+			const vector feat_count = features_ui_push(t, pose, nts);
 			t.slam_features_writer->push({nts, feat_count});
 		}
 
@@ -826,12 +828,12 @@ predict_pose(TrackerSlam &t, timepoint_ns when_ns, struct xrt_space_relation *ou
 {
 	XRT_TRACE_MARKER();
 
-	bool valid_pred_type = t.pred_type >= SLAM_PRED_NONE && t.pred_type < SLAM_PRED_COUNT;
+	const bool valid_pred_type = t.pred_type >= SLAM_PRED_NONE && t.pred_type < SLAM_PRED_COUNT;
 	SLAM_DASSERT(valid_pred_type, "Invalid prediction type (%d)", t.pred_type);
 
 	// Get last relation computed purely from SLAM data
 	auto latest = t.slam_rels.getLatest();
-	bool empty = !latest.has_value();
+	const bool empty = !latest.has_value();
 
 	// Stop if there is no previous relation to use for prediction
 	if (empty) {
@@ -893,14 +895,14 @@ predict_pose(TrackerSlam &t, timepoint_ns when_ns, struct xrt_space_relation *ou
 		xrt_vec3 world_accel{};
 		math_quat_rotate_vec3(&rel.pose.orientation, &avg_accel, &world_accel);
 		world_accel += t.gravity_correction;
-		double slam_to_imu_dt = time_ns_to_s(t.last_imu_ts - rel_ts);
+		const double slam_to_imu_dt = time_ns_to_s(t.last_imu_ts - rel_ts);
 		rel.linear_velocity += world_accel * slam_to_imu_dt;
 	}
 
 	os_mutex_unlock(&t.lock_ff);
 
 	// Do the prediction based on the updated relation
-	double slam_to_now_dt = time_ns_to_s(when_ns - rel_ts);
+	const double slam_to_now_dt = time_ns_to_s(when_ns - rel_ts);
 	xrt_space_relation predicted_relation{};
 	m_predict_relation(&rel, slam_to_now_dt, &predicted_relation);
 
@@ -915,13 +917,13 @@ filter_pose(TrackerSlam &t, timepoint_ns when_ns, struct xrt_space_relation *out
 
 	if (t.filter.use_moving_average_filter) {
 		if (out_relation->relation_flags & XRT_SPACE_RELATION_POSITION_VALID_BIT) {
-			xrt_vec3 pos = out_relation->pose.position;
+			const xrt_vec3 pos = out_relation->pose.position;
 			m_ff_vec3_f32_push(t.filter.pos_ff, &pos, when_ns);
 		}
 
 		if (out_relation->relation_flags & XRT_SPACE_RELATION_ORIENTATION_VALID_BIT) {
 			// Don't save w component as we can retrieve it knowing these are (almost) unit quaternions
-			xrt_vec3 rot = {
+			const xrt_vec3 rot = {
 			    out_relation->pose.orientation.x,
 			    out_relation->pose.orientation.y,
 			    out_relation->pose.orientation.z,
@@ -930,14 +932,15 @@ filter_pose(TrackerSlam &t, timepoint_ns when_ns, struct xrt_space_relation *out
 		}
 
 		// Get averages in time window
-		timepoint_ns window = t.filter.window * U_TIME_1MS_IN_NS;
+		const timepoint_ns window = t.filter.window * U_TIME_1MS_IN_NS;
 		xrt_vec3 avg_pos;
 		m_ff_vec3_f32_filter(t.filter.pos_ff, when_ns - window, when_ns, &avg_pos);
 		xrt_vec3 avg_rot; // Naive but good enough rotation average
 		m_ff_vec3_f32_filter(t.filter.rot_ff, when_ns - window, when_ns, &avg_rot);
 
 		// Considering the naive averaging this W is a bit wrong, but it feels reasonably well
-		float avg_rot_w = sqrtf(1 - (avg_rot.x * avg_rot.x + avg_rot.y * avg_rot.y + avg_rot.z * avg_rot.z));
+		const float avg_rot_w =
+		    sqrtf(1 - (avg_rot.x * avg_rot.x + avg_rot.y * avg_rot.y + avg_rot.z * avg_rot.z));
 		out_relation->pose.orientation = xrt_quat{avg_rot.x, avg_rot.y, avg_rot.z, avg_rot_w};
 		out_relation->pose.position = avg_pos;
 
@@ -986,9 +989,9 @@ setup_ui(TrackerSlam &t)
 	u_var_add_bool(&t, &t.submit, "Submit data to SLAM");
 
 	u_var_button_cb reset_state_cb = [](void *t_ptr) {
-		TrackerSlam &t = *(TrackerSlam *)t_ptr;
+		const TrackerSlam &t = *(TrackerSlam *)t_ptr;
 
-		vit_result_t vres = t.vit.tracker_reset(t.tracker);
+		const vit_result_t vres = t.vit.tracker_reset(t.tracker);
 		if (vres != VIT_SUCCESS) {
 			SLAM_WARN("Failed to reset VIT tracker");
 		}
@@ -1100,7 +1103,7 @@ add_camera_calibration(const TrackerSlam &t, const t_slam_camera_calibration *ca
 	for (size_t i = 0; i < ARRAY_SIZE(params.transform); ++i)
 		params.transform[i] = T.v[i];
 
-	vit_result_t vres = t.vit.tracker_add_camera_calibration(t.tracker, &params);
+	const vit_result_t vres = t.vit.tracker_add_camera_calibration(t.tracker, &params);
 	if (vres != VIT_SUCCESS) {
 		SLAM_ERROR("Failed to add camera calibration for camera %u", cam_index);
 	}
@@ -1127,7 +1130,7 @@ add_imu_calibration(const TrackerSlam &t, const t_slam_imu_calibration *imu_cali
 	memcpy(params.gyro.bias_std, gyro.bias_std, sizeof(double) * 3);
 	memcpy(params.gyro.noise_std, gyro.noise_std, sizeof(double) * 3);
 
-	vit_result_t vres = t.vit.tracker_add_imu_calibration(t.tracker, &params);
+	const vit_result_t vres = t.vit.tracker_add_imu_calibration(t.tracker, &params);
 	if (vres != VIT_SUCCESS) {
 		SLAM_ERROR("Failed to add imu calibration");
 	}
@@ -1220,7 +1223,7 @@ t_slam_gt_sink_push(struct xrt_pose_sink *sink, xrt_pose_sample *sample)
 		XRT_TRACE_MARKER();                                                                                    \
                                                                                                                        \
 		auto &t = *container_of(sink, TrackerSlam, mask_sinks[idx]);                                           \
-		unique_lock lock(t.last_masks_mutex);                                                                  \
+		const unique_lock lock(t.last_masks_mutex);                                                            \
 		t.last_masks[idx] = *device_masks;                                                                     \
 	}
 
@@ -1236,11 +1239,11 @@ t_slam_receive_imu(struct xrt_imu_sink *sink, struct xrt_imu_sample *s)
 
 	auto &t = *container_of(sink, TrackerSlam, imu_sink);
 
-	timepoint_ns ts = s->timestamp_ns;
-	xrt_vec3_f64 a = s->accel_m_s2;
-	xrt_vec3_f64 w = s->gyro_rad_secs;
+	const timepoint_ns ts = s->timestamp_ns;
+	const xrt_vec3_f64 a = s->accel_m_s2;
+	const xrt_vec3_f64 w = s->gyro_rad_secs;
 
-	timepoint_ns now = (timepoint_ns)os_monotonic_get_ns();
+	const timepoint_ns now = (timepoint_ns)os_monotonic_get_ns();
 	SLAM_TRACE("[%ld] imu t=%ld  a=[%f,%f,%f] w=[%f,%f,%f]", now, ts, a.x, a.y, a.z, w.x, w.y, w.z);
 	// Check monotonically increasing timestamps
 	if (ts <= t.last_imu_ts) {
@@ -1267,8 +1270,8 @@ t_slam_receive_imu(struct xrt_imu_sink *sink, struct xrt_imu_sample *s)
 
 	xrt_sink_push_imu(t.euroc_recorder->imus[IMU_SINK_IDX], s);
 
-	struct xrt_vec3 gyro = {(float)w.x, (float)w.y, (float)w.z};
-	struct xrt_vec3 accel = {(float)a.x, (float)a.y, (float)a.z};
+	const struct xrt_vec3 gyro = {(float)w.x, (float)w.y, (float)w.z};
+	const struct xrt_vec3 accel = {(float)a.x, (float)a.y, (float)a.z};
 	os_mutex_lock(&t.lock_ff);
 	m_ff_vec3_f32_push(t.gyro_ff, &gyro, ts);
 	m_ff_vec3_f32_push(t.accel_ff, &accel, ts);
@@ -1296,7 +1299,7 @@ receive_frame(TrackerSlam &t, struct xrt_frame *frame, uint32_t cam_index)
 
 	// Check monotonically increasing timestamps
 	timepoint_ns &last_ts = t.last_cam_ts[cam_index];
-	timepoint_ns ts = (int64_t)frame->timestamp;
+	const timepoint_ns ts = (int64_t)frame->timestamp;
 	SLAM_TRACE("[%" PRId64 "] cam%d frame t=%" PRId64, os_monotonic_get_ns(), cam_index, ts);
 	if (last_ts >= ts) {
 		SLAM_WARN("Frame (%" PRId64 ") is older than last (%" PRId64 ") by %" PRId64 " ns", ts, last_ts,
@@ -1324,7 +1327,7 @@ receive_frame(TrackerSlam &t, struct xrt_frame *frame, uint32_t cam_index)
 
 	std::array<struct xrt_device_masks_sample, XRT_TRACKING_MAX_MASK_SINKS> mask_samples;
 	{
-		unique_lock masks_lock(t.last_masks_mutex);
+		const unique_lock masks_lock(t.last_masks_mutex);
 		// Copy only what we need
 		for (uint32_t sink = 0; sink < XRT_TRACKING_MAX_MASK_SINKS; sink++) {
 			mask_samples[sink].views[cam_index] = t.last_masks[sink].views[cam_index];
@@ -1383,7 +1386,7 @@ t_slam_node_break_apart(struct xrt_frame_node *node)
 		t_openvr_tracker_stop(t.ovr_tracker);
 	}
 
-	vit_result_t vres = t.vit.tracker_stop(t.tracker);
+	const vit_result_t vres = t.vit.tracker_stop(t.tracker);
 	if (vres != VIT_SUCCESS) {
 		SLAM_ERROR("Failed to stop VIT tracker");
 		return;
@@ -1427,7 +1430,7 @@ extern "C" int
 t_slam_start(struct xrt_tracked_slam *xts)
 {
 	auto &t = *container_of(xts, TrackerSlam, base);
-	vit_result_t vres = t.vit.tracker_start(t.tracker);
+	const vit_result_t vres = t.vit.tracker_start(t.tracker);
 	if (vres != VIT_SUCCESS) {
 		SLAM_ERROR("Failed to start VIT tracker");
 		return -1;
@@ -1467,7 +1470,7 @@ t_slam_create(struct xrt_frame_context *xfctx,
 		config = &default_config;
 	}
 
-	enum u_logging_level log_level = config->log_level;
+	const enum u_logging_level log_level = config->log_level;
 
 	std::unique_ptr<TrackerSlam> t_ptr = std::make_unique<TrackerSlam>();
 	TrackerSlam &t = *t_ptr;
@@ -1483,7 +1486,7 @@ t_slam_create(struct xrt_frame_context *xfctx,
 
 	// Check the user has provided a SLAM_CONFIG file
 	const char *config_file = config->slam_config;
-	bool some_calib = config->slam_calib != nullptr;
+	const bool some_calib = config->slam_calib != nullptr;
 	if (!config_file && !some_calib) {
 		SLAM_WARN("Unable to determine sensor calibration, did you forget to set SLAM_CONFIG?");
 		return -1;
@@ -1561,8 +1564,8 @@ t_slam_create(struct xrt_frame_context *xfctx,
 	t.gt.trajectory = new Trajectory{};
 
 	// Setup CSV files
-	bool write_csvs = config->write_csvs;
-	string dir = config->csv_path;
+	const bool write_csvs = config->write_csvs;
+	const string dir = config->csv_path;
 	t.slam_times_writer = new TimingWriter(dir, "timing.csv", write_csvs, t.timing.columns);
 	t.slam_features_writer = new FeaturesWriter(dir, "features.csv", write_csvs, t.cam_count);
 	t.slam_traj_writer = new TrajectoryWriter(dir, "tracking.csv", write_csvs);

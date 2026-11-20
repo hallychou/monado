@@ -26,7 +26,7 @@ vp2_config_parse(const char *config_data, size_t config_size, vp2_config *out_co
 	// Zero-init to be in a good state
 	memset(out_config, 0, sizeof(*out_config));
 
-	JSONNode root{std::string{config_data, config_size}};
+	const JSONNode root{std::string{config_data, config_size}};
 	if (root.isInvalid()) {
 		U_LOG_E("Failed to parse JSON config data.");
 		return false;

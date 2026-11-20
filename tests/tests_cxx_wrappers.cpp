@@ -42,7 +42,7 @@ TEST_CASE("unique_xrt_device")
 		CHECK_FALSE(destroyed);
 
 		// use the generic unique_ptr
-		xrt::unique_xrt_device generic(&(specific.release()->base));
+		const xrt::unique_xrt_device generic(&(specific.release()->base));
 		CHECK_FALSE(destroyed);
 	}
 	// make sure it went away

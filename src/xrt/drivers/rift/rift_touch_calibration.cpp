@@ -30,13 +30,13 @@ rift_touch_calibration_parse(const char *calibration_data,
 	memset(out_calibration, 0, sizeof(*out_calibration));
 
 	try {
-		JSONNode root{std::string{calibration_data, calibration_size}};
+		const JSONNode root{std::string{calibration_data, calibration_size}};
 		if (root.isInvalid()) {
 			U_LOG_E("Failed to parse JSON config data.");
 			return false;
 		}
 
-		auto tracked_object = root["TrackedObject"];
+		const auto tracked_object = root["TrackedObject"];
 
 		if (tracked_object["JsonVersion"].asInt() != 2) {
 			U_LOG_E("Unsupported JSON version %d", tracked_object["JsonVersion"].asInt());
@@ -62,14 +62,14 @@ rift_touch_calibration_parse(const char *calibration_data,
 		out_calibration->middle_range[2] = static_cast<uint16_t>(tracked_object["MiddleMaxRange"].asInt());
 		out_calibration->middle_flipped = tracked_object["MiddleFlipped"].asBool();
 
-		auto cap_sense_min = tracked_object["CapSenseMin"];
-		auto cap_sense_touch = tracked_object["CapSenseTouch"];
+		const auto cap_sense_min = tracked_object["CapSenseMin"];
+		const auto cap_sense_touch = tracked_object["CapSenseTouch"];
 		for (int i = 0; i < 8; i++) {
 			out_calibration->cap_sense_min[i] = static_cast<uint16_t>(cap_sense_min[i].asInt());
 			out_calibration->cap_sense_touch[i] = static_cast<uint16_t>(cap_sense_touch[i].asInt());
 		}
 
-		auto gyro_calibration_array = tracked_object["GyroCalibration"];
+		const auto gyro_calibration_array = tracked_object["GyroCalibration"];
 		for (int i = 0; i < 9; i++) {
 			out_calibration->gyro_calibration[i / 3][i % 3] = gyro_calibration_array[i].asDouble();
 		}
@@ -77,7 +77,7 @@ rift_touch_calibration_parse(const char *calibration_data,
 		out_calibration->gyro_offset.y = gyro_calibration_array[9 + 1].asDouble();
 		out_calibration->gyro_offset.z = gyro_calibration_array[9 + 2].asDouble();
 
-		auto accel_calibration_array = tracked_object["AccCalibration"];
+		const auto accel_calibration_array = tracked_object["AccCalibration"];
 		for (int i = 0; i < 9; i++) {
 			out_calibration->accel_calibration[i / 3][i % 3] = accel_calibration_array[i].asDouble();
 		}
@@ -85,18 +85,18 @@ rift_touch_calibration_parse(const char *calibration_data,
 		out_calibration->accel_offset.y = accel_calibration_array[9 + 1].asDouble();
 		out_calibration->accel_offset.z = accel_calibration_array[9 + 2].asDouble();
 
-		auto imu_position_array = tracked_object["ImuPosition"];
+		const auto imu_position_array = tracked_object["ImuPosition"];
 		out_calibration->imu_position.x = imu_position_array[0].asDouble();
 		out_calibration->imu_position.y = imu_position_array[1].asDouble();
 		out_calibration->imu_position.z = imu_position_array[2].asDouble();
 
-		auto leds = tracked_object["ModelPoints"];
+		const auto leds = tracked_object["ModelPoints"];
 		out_calibration->num_leds = leds.asObject().size();
 		out_calibration->leds =
 		    U_TYPED_ARRAY_CALLOC(struct rift_touch_controller_led, out_calibration->num_leds);
 
 		for (size_t i = 0; i < out_calibration->num_leds; i++) {
-			auto led_object = leds["Point" + std::to_string(i)];
+			const auto led_object = leds["Point" + std::to_string(i)];
 
 			auto &led = out_calibration->leds[i];
 

@@ -231,8 +231,8 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 	const char *eye_name = left ? "left" : "right";
 
 	// Parse version
-	std::string version_string = node["version"].asString();
-	size_t dot_index = version_string.find('.');
+	const std::string version_string = node["version"].asString();
+	const size_t dot_index = version_string.find('.');
 	if (dot_index == std::string::npos || dot_index == 0 || dot_index == version_string.length() - 1) {
 		U_LOG_E("Invalid version string '%s' in '%s' eye.", version_string.c_str(), eye_name);
 		return false;
@@ -258,9 +258,9 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 		return true;
 	}
 
-	bool needs_halved_fx_fy = eye.version.minor == 5;
+	const bool needs_halved_fx_fy = eye.version.minor == 5;
 
-	bool is_tgn_dvt_1_1 = node["hmd_model_name"].asString() == "tgn_C10_2.88";
+	const bool is_tgn_dvt_1_1 = node["hmd_model_name"].asString() == "tgn_C10_2.88";
 
 	// @todo - handle TGN DVT 1.1 special case
 	// - set left center to 90,0
@@ -291,7 +291,7 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 		return false;
 	}
 
-	JSONNode coeffs = node["distortion_coeff"][eye_name];
+	const JSONNode coeffs = node["distortion_coeff"][eye_name];
 	if (coeffs.isInvalid()) {
 		U_LOG_E("Missing 'distortion_coeff' section in '%s' eye.", eye_name);
 		return false;
@@ -342,7 +342,7 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 	}
 
 	if (has_distortion_coeff_modify) {
-		JSONNode coeffs_modify = node["distortion_coeff_modify"][eye_name];
+		const JSONNode coeffs_modify = node["distortion_coeff_modify"][eye_name];
 		if (coeffs_modify.isInvalid()) {
 			U_LOG_E("Missing 'distortion_coeff_modify' section in '%s' eye.", eye_name);
 			return false;
@@ -357,7 +357,7 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 	}
 
 	// Enlarge ratio
-	JSONNode enlarge_ration_node = node["enlarge_ratio"];
+	const JSONNode enlarge_ration_node = node["enlarge_ratio"];
 	// Parsing nonsense, unknown which version made this change, somewhere between 1.5 and 1.10
 	if (enlarge_ration_node.isDouble()) {
 		eye.enlarge_ratio = enlarge_ration_node.asDouble();
@@ -384,7 +384,7 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 	for (int i = 0; i < 2; i++) {
 		const char *name = (i == 0) ? "intrinsics" : "intrinsics2";
 
-		JSONNode intrinsics = node[name][eye_name];
+		const JSONNode intrinsics = node[name][eye_name];
 		if (intrinsics.isInvalid() || !intrinsics.isArray()) {
 			U_LOG_E("Missing '%s' section in '%s' eye.", name, eye_name);
 			return false;
@@ -393,7 +393,7 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 		struct xrt_matrix_3x3 &mat = eye.intrinsics[i];
 
 		for (int row = 0; row < 3; row++) {
-			JSONNode row_node = intrinsics[row];
+			const JSONNode row_node = intrinsics[row];
 			if (row_node.isInvalid() || !row_node.isArray()) {
 				U_LOG_E("Missing row %d in '%s' section in '%s' eye.", row, name, eye_name);
 				return false;
@@ -428,9 +428,9 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 
 	// In version 8, we need to do some special loading logic for fx and fy, for some reason.
 	if (eye.version.minor == 8) {
-		float unk_transform = (left ? 14882.253 : 14861.041) / eye.scale;
+		const float unk_transform = (left ? 14882.253 : 14861.041) / eye.scale;
 
-		float new_focal = unk_transform / 21.14999961853027 / (eye.resolution.x / 2.0);
+		const float new_focal = unk_transform / 21.14999961853027 / (eye.resolution.x / 2.0);
 
 		eye.intrinsics[0].v[0] = new_focal;
 		eye.intrinsics[0].v[4] = new_focal;
@@ -462,10 +462,10 @@ htc_eye_compute_warp_parameters(htc_eye_distortion &eye, xrt_vec2_i32 &resolutio
 {
 	const struct xrt_vec2 panel_center = {.x = resolution.x / 2.0f, .y = resolution.y / 2.0f};
 
-	float cx = panel_center.x + eye.center.x;
-	float cy = panel_center.y + eye.center.y;
+	const float cx = panel_center.x + eye.center.x;
+	const float cy = panel_center.y + eye.center.y;
 
-	float r = eye.normalized_radius / (eye.scale_ratio * eye.scale);
+	const float r = eye.normalized_radius / (eye.scale_ratio * eye.scale);
 
 	eye.warp.post = {
 	    r, 0, cx, //
@@ -490,14 +490,14 @@ htc_grow_remap(htc_eye_distortion &dist, int eye, xrt_vec2 *inout_uv)
 {
 	assert(eye < 2);
 
-	xrt_matrix_3x3 &intrinsics = dist.intrinsics[0];
+	const xrt_matrix_3x3 &intrinsics = dist.intrinsics[0];
 
-	float fx = intrinsics.v[0];
-	float fy = intrinsics.v[4];
-	float cx = intrinsics.v[2];
-	float cy = intrinsics.v[5];
+	const float fx = intrinsics.v[0];
+	const float fy = intrinsics.v[4];
+	const float cx = intrinsics.v[2];
+	const float cy = intrinsics.v[5];
 
-	float first_grow = dist.grow_for_undistort[0];
+	const float first_grow = dist.grow_for_undistort[0];
 
 	float grow1;
 	float grow2;
@@ -508,19 +508,19 @@ htc_grow_remap(htc_eye_distortion &dist, int eye, xrt_vec2 *inout_uv)
 		grow1 = dist.grow_for_undistort[1];
 		grow2 = dist.grow_for_undistort[0];
 	}
-	float grow3 = dist.grow_for_undistort[2];
-	float grow4 = dist.grow_for_undistort[3];
+	const float grow3 = dist.grow_for_undistort[2];
+	const float grow4 = dist.grow_for_undistort[3];
 
 	// TODO: actually figure out what this is doing instead of just following the original code whole-sale
 	// spooky magic, yes a real human wrote these variable names you can trust me
-	float first_grow_plus_one = first_grow + 1.0;
-	float v14 = (grow2 + 1.0) * (-1.0 - cx);
-	float inverse_cy = 1.0 - cy;
-	float v16 = (grow4 + 1.0) * (-1.0 - cy);
-	float v17 = ((first_grow + 1.0) * (-1.0 - cy)) / fy;
-	float v18 = ((first_grow + 1.0) * (-1.0 - cx)) / fx;
-	float x_normalized = (inout_uv->x - 0.5) * 2.0;
-	float y_normalized = (inout_uv->y - 0.5) * 2.0;
+	const float first_grow_plus_one = first_grow + 1.0;
+	const float v14 = (grow2 + 1.0) * (-1.0 - cx);
+	const float inverse_cy = 1.0 - cy;
+	const float v16 = (grow4 + 1.0) * (-1.0 - cy);
+	const float v17 = ((first_grow + 1.0) * (-1.0 - cy)) / fy;
+	const float v18 = ((first_grow + 1.0) * (-1.0 - cx)) / fx;
+	const float x_normalized = (inout_uv->x - 0.5) * 2.0;
+	const float y_normalized = (inout_uv->y - 0.5) * 2.0;
 
 	inout_uv->x = ((((((v18 + ((first_grow_plus_one * (1.0 - cx)) / fx)) /
 	                   (((first_grow_plus_one * (1.0 - cx)) / fx) - v18)) +
@@ -558,9 +558,9 @@ apply_pre_warp(htc_eye_distortion &dist, float x, float y, float &out_x, float &
 static void
 apply_traditional(htc_eye_distortion &dist, int channel, int parameters, float x, float y, float &out_x, float &out_y)
 {
-	double r2 = x * x + y * y;
+	const double r2 = x * x + y * y;
 
-	double *k = dist.coeffecients[channel].k;
+	const double *k = dist.coeffecients[channel].k;
 
 	// double radial_distortion = ((r6 * k[3]) + (r4 * k[2]) + (r2 * k[1]) + k[0]);
 	double radial_distortion = k[0];
@@ -577,10 +577,10 @@ apply_traditional(htc_eye_distortion &dist, int channel, int parameters, float x
 static void
 apply_tangential(htc_eye_distortion &dist, int channel, float &x, float &y)
 {
-	double r2 = x * x + y * y;
+	const double r2 = x * x + y * y;
 
-	double p1 = dist.coeffecients[channel].p[0];
-	double p2 = dist.coeffecients[channel].p[1];
+	const double p1 = dist.coeffecients[channel].p[0];
+	const double p2 = dist.coeffecients[channel].p[1];
 
 	x += (p2 * (2.0 * x * x + r2) + 2.0 * p1 * x * y);
 	y += (p1 * (2.0 * y * y + r2) + 2.0 * p2 * x * y);
@@ -589,10 +589,10 @@ apply_tangential(htc_eye_distortion &dist, int channel, float &x, float &y)
 static void
 apply_prism(htc_eye_distortion &dist, int channel, float &x, float &y)
 {
-	double r2 = x * x + y * y;
+	const double r2 = x * x + y * y;
 
-	double s1 = dist.coeffecients[channel].s[0];
-	double s2 = dist.coeffecients[channel].s[1];
+	const double s1 = dist.coeffecients[channel].s[0];
+	const double s2 = dist.coeffecients[channel].s[1];
 
 	x += r2 * s1;
 	x += r2 * s2;
@@ -663,28 +663,28 @@ htc_strengthen_high_order(htc_eye_distortion &dist, int channel, xrt_vec2 *inout
 	float x, y;
 	apply_pre_warp(dist, inout_pixels->x, inout_pixels->y, x, y);
 
-	double r2 = x * x + y * y;
-	double r = sqrt(r2);
-	double r4 = r2 * r2;
-	double r6 = r4 * r2;
-	double r8 = r6 * r2;
-	double r10 = r8 * r2;
+	const double r2 = x * x + y * y;
+	const double r = sqrt(r2);
+	const double r4 = r2 * r2;
+	const double r6 = r4 * r2;
+	const double r8 = r6 * r2;
+	const double r10 = r8 * r2;
 
-	double *k = dist.coeffecients[channel].k;
+	const double *k = dist.coeffecients[channel].k;
 
-	double p1 = dist.coeffecients[channel].p[0];
-	double p2 = dist.coeffecients[channel].p[1];
-	double p3 = dist.coeffecients[channel].p[2];
-	double p4 = dist.coeffecients[channel].p[3];
-	double p5 = dist.coeffecients[channel].p[4];
-	double p6 = dist.coeffecients[channel].p[5];
+	const double p1 = dist.coeffecients[channel].p[0];
+	const double p2 = dist.coeffecients[channel].p[1];
+	const double p3 = dist.coeffecients[channel].p[2];
+	const double p4 = dist.coeffecients[channel].p[3];
+	const double p5 = dist.coeffecients[channel].p[4];
+	const double p6 = dist.coeffecients[channel].p[5];
 
-	double s1 = dist.coeffecients[channel].s[0];
-	double s2 = dist.coeffecients[channel].s[1];
-	double s3 = dist.coeffecients[channel].s[2];
-	double s4 = dist.coeffecients[channel].s[3];
+	const double s1 = dist.coeffecients[channel].s[0];
+	const double s2 = dist.coeffecients[channel].s[1];
+	const double s3 = dist.coeffecients[channel].s[2];
+	const double s4 = dist.coeffecients[channel].s[3];
 
-	double radial_series =
+	const double radial_series =
 	    ((((((((((((r * k[1]) + k[0]) + ((r * r) * k[2])) + (((r * r) * r) * k[3])) + ((r2 * r2) * k[4])) +
 	           (((r2 * r2) * r) * k[5])) +
 	          (r6 * k[6])) +
@@ -697,27 +697,27 @@ htc_strengthen_high_order(htc_eye_distortion &dist, int channel, xrt_vec2 *inout
 
 	// @todo add the "max radius" here and return "false"
 
-	double xsq3 = (x * 3.0) * x;
-	double xsq4_ysq = (((x * 4.0) * x) * y) * y;
-	double xsq2 = (x + x) * x;
-	double y_2x = y * (x + x);
-	double polyXY = ((xsq2 * x) * y) + ((y * y_2x) * y);
-	double y_2x_r4 = y_2x * r4;
-	double x2 = x * x;
-	double y2 = y * y;
+	const double xsq3 = (x * 3.0) * x;
+	const double xsq4_ysq = (((x * 4.0) * x) * y) * y;
+	const double xsq2 = (x + x) * x;
+	const double y_2x = y * (x + x);
+	const double polyXY = ((xsq2 * x) * y) + ((y * y_2x) * y);
+	const double y_2x_r4 = y_2x * r4;
+	const double x2 = x * x;
+	const double y2 = y * y;
 
-	double x_tangential =
+	const double x_tangential =
 	    ((((((((xsq3 * x2) + xsq4_ysq) + (y2 * y2)) * p2) + ((xsq3 + y2) * p1)) + (((xsq2 * r4) + r6) * p3)) +
 	      (y_2x * p4)) +
 	     (p5 * polyXY)) +
 	    (p6 * y_2x_r4);
-	double y_tangential =
+	const double y_tangential =
 	    (((((((p1 + p1) * x) * y) + (p2 * polyXY)) + (p3 * y_2x_r4)) + ((((y * 3.0) * y) + x2) * p4)) +
 	     ((((x2 * x2) + xsq4_ysq) + (y2 * (y2 * 3.0))) * p5)) +
 	    (((((y + y) * y) * r4) + r6) * p6);
 
-	double pre_warp_final_u = (((radial_series * x) + x_tangential) + (r2 * s1)) + (r4 * s2);
-	double pre_warp_final_v = (((y * radial_series) + y_tangential) + (r2 * s3)) + (r4 * s4);
+	const double pre_warp_final_u = (((radial_series * x) + x_tangential) + (r2 * s1)) + (r4 * s2);
+	const double pre_warp_final_v = (((y * radial_series) + y_tangential) + (r2 * s3)) + (r4 * s4);
 
 	apply_post_warp(dist, pre_warp_final_u, pre_warp_final_v, inout_pixels->x, inout_pixels->y);
 
@@ -732,9 +732,9 @@ htc_distort_internal(htc_config *config, int eye, int channel, const xrt_vec2 *i
 
 	htc_eye_distortion &dist = config->lens_correction.eyes[eye];
 
-	xrt_vec2_i32 &resolution = config->lens_correction.resolution;
+	const xrt_vec2_i32 &resolution = config->lens_correction.resolution;
 
-	float enlarge_ratio = dist.enlarge_ratio;
+	const float enlarge_ratio = dist.enlarge_ratio;
 
 	xrt_vec2 distorted;
 	htc_to_lens_pixels(config, eye, in, &distorted);
@@ -756,7 +756,7 @@ htc_distort_internal(htc_config *config, int eye, int channel, const xrt_vec2 *i
 	default: return false;
 	}
 
-	xrt_vec2 normalized_centers = {
+	const xrt_vec2 normalized_centers = {
 	    (dist.center.x / resolution.x) + 0.5f,
 	    (dist.center.y / resolution.y) + 0.5f,
 	};
@@ -780,7 +780,7 @@ htc_distort_internal(htc_config *config, int eye, int channel, const xrt_vec2 *i
 enum htc_distortion_model
 htc_string_to_distortion_model(const char *model_str)
 {
-	std::string str(model_str);
+	const std::string str(model_str);
 
 	htc_distortion_model model = HTC_DISTORTION_MODEL_INVALID;
 
@@ -823,14 +823,14 @@ htc_config_parse(const char *config_data, size_t config_size, struct htc_config 
 	// Zero-init to be in a good state
 	memset(out_config, 0, sizeof(*out_config));
 
-	JSONNode root{std::string{config_data, config_size}};
+	const JSONNode root{std::string{config_data, config_size}};
 	if (root.isInvalid()) {
 		U_LOG_E("Failed to parse JSON config data.");
 		return false;
 	}
 
 	{ // Parse device
-		JSONNode device = root["device"];
+		const JSONNode device = root["device"];
 		if (device.isInvalid()) {
 			U_LOG_E("Missing 'device' section in config.");
 			return false;
@@ -841,7 +841,7 @@ htc_config_parse(const char *config_data, size_t config_size, struct htc_config 
 	}
 
 	{ // Parse lens correction
-		JSONNode inhouse_lens_correction = root["inhouse_lens_correction"];
+		const JSONNode inhouse_lens_correction = root["inhouse_lens_correction"];
 
 		if (inhouse_lens_correction.isInvalid()) {
 			U_LOG_E("Missing 'inhouse_lens_correction' section in config.");
@@ -875,7 +875,7 @@ htc_config_parse(const char *config_data, size_t config_size, struct htc_config 
 			return false;
 		}
 
-		htc_eye_distortion &left_eye = out_config->lens_correction.eyes[0];
+		const htc_eye_distortion &left_eye = out_config->lens_correction.eyes[0];
 
 		// Calculate the lens correction resolution based on the physical display resolution and scale ratio
 		out_config->lens_correction.resolution.x = (int32_t)(left_eye.resolution.x / left_eye.scale_ratio);
@@ -914,9 +914,9 @@ htc_config_compute_distortion(struct htc_config *config,
 void
 htc_config_get_fov(htc_config *config, int eye, xrt_fov *out_fov)
 {
-	htc_eye_distortion &dist = config->lens_correction.eyes[eye];
+	const htc_eye_distortion &dist = config->lens_correction.eyes[eye];
 
-	xrt_matrix_3x3 &intrinsics = dist.intrinsics[0];
+	const xrt_matrix_3x3 &intrinsics = dist.intrinsics[0];
 
 	float grow[4];
 	htc_get_grow_for_undistort(*config, eye, grow);

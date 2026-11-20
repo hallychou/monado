@@ -103,13 +103,13 @@ quaternionJetToSO3Jacobian(const Quaternion<ceres::Jet<double, N>> &q_jet, int p
 
 	q.normalize();
 
-	Quaterniond q_inv = q.conjugate();
+	const Quaterniond q_inv = q.conjugate();
 
 	Matrix3d J;
 
 	for (int j = 0; j < 3; j++) {
-		Quaterniond dq(q_jet.w().v[parameter_offset + j], q_jet.x().v[parameter_offset + j],
-		               q_jet.y().v[parameter_offset + j], q_jet.z().v[parameter_offset + j]);
+		const Quaterniond dq(q_jet.w().v[parameter_offset + j], q_jet.x().v[parameter_offset + j],
+		                     q_jet.y().v[parameter_offset + j], q_jet.z().v[parameter_offset + j]);
 
 		Quaterniond local = q_inv * dq;
 
@@ -215,7 +215,7 @@ static void
 robustComputeSqrtAndPinvSqrt(const MatrixXd &a, MatrixXd &out_j, MatrixXd &out_j_pinv_t)
 {
 	// lhs SVD: a = J^T * J = E * S * E^T
-	Eigen::SelfAdjointEigenSolver<MatrixXd> saes(a);
+	const Eigen::SelfAdjointEigenSolver<MatrixXd> saes(a);
 
 	const auto &eigenvectors = saes.eigenvectors();
 	const auto &eigenvalues = saes.eigenvalues();
@@ -362,13 +362,13 @@ computeTangentCovariances(ceres::Problem &problem,
 
 	std::vector<double *> all_blocks;
 	problem.GetParameterBlocks(&all_blocks);
-	for (double *block : all_blocks) {
+	for (const double *block : all_blocks) {
 		if (requested.count(block) != 0 || problem.IsParameterBlockConstant(block)) {
 			continue;
 		}
 
 		num_columns += problem.ParameterBlockTangentSize(block);
-		options.parameter_blocks.push_back(block);
+		options.parameter_blocks.push_back(const_cast<double *>(block));
 	}
 
 	ceres::CRSMatrix jacobian_crs;
@@ -390,7 +390,7 @@ computeTangentCovariances(ceres::Problem &problem,
 	const Eigen::SparseMatrix<double> JtJ_sparse = J.transpose() * J;
 	const MatrixXd JtJ = MatrixXd(JtJ_sparse);
 
-	Eigen::SelfAdjointEigenSolver<MatrixXd> saes(JtJ);
+	const Eigen::SelfAdjointEigenSolver<MatrixXd> saes(JtJ);
 	if (saes.info() != Eigen::Success) {
 		return false;
 	}
@@ -432,7 +432,7 @@ covariancePositionRadius(const PoseCovarianceMatrix &covariance, xrt_vec3 &out_r
 	const Eigen::Matrix3d &pos_covariance = covariance.block<3, 3>(
 	    static_cast<int>(PoseCovarianceIndex::PositionX), static_cast<int>(PoseCovarianceIndex::PositionX));
 
-	Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(pos_covariance);
+	const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(pos_covariance);
 
 	if (solver.info() != Eigen::Success) {
 		// @todo handle failure better, if possible
@@ -449,10 +449,10 @@ covariancePositionRadius(const PoseCovarianceMatrix &covariance, xrt_vec3 &out_r
 		eigenvectors.col(2) *= -1.0;
 	}
 
-	Eigen::Quaterniond q(eigenvectors);
+	const Eigen::Quaterniond q(eigenvectors);
 	map_quat(out_Q_origin_cov) = q.cast<float>();
 
-	Eigen::Vector3d half_sizes = 3.0 * eigenvalues.cwiseMax(0.0).cwiseSqrt();
+	const Eigen::Vector3d half_sizes = 3.0 * eigenvalues.cwiseMax(0.0).cwiseSqrt();
 	map_vec3(out_radii) = half_sizes.cast<float>();
 }
 
@@ -465,11 +465,11 @@ matrixCrsToEigen(const ceres::CRSMatrix &mat_crs, Eigen::MatrixXd &mat)
 
 	// Fill with the sparse matrix
 	for (int Row = 0; Row < mat_crs.num_rows; Row++) {
-		int Start = mat_crs.rows[Row];
-		int End = mat_crs.rows[Row + 1];
+		const int Start = mat_crs.rows[Row];
+		const int End = mat_crs.rows[Row + 1];
 
 		for (int n = Start; n < End; n++) {
-			int Col = mat_crs.cols[n];
+			const int Col = mat_crs.cols[n];
 
 			mat(Row, Col) = mat_crs.values[n];
 		}
@@ -499,7 +499,8 @@ marginalize(
 	const VectorXd b_b = b0.head(num_base_states);
 	const VectorXd b_a = b0.tail(num_remain_states);
 
-	Eigen::CompleteOrthogonalDecomposition<MatrixXd> V_decomp(V);
+	const Eigen::CompleteOrthogonalDecomposition<MatrixXd> V_decomp(V);
+
 	/*
 	 * Use a pseudo-inverse for the marginalization block so that rank-deffecient matrices don't produce invalid
 	 * inverses.
@@ -563,7 +564,7 @@ preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
 	// Interage the first sample in
 	if (first_sample.timestamp_ns > start_time_ns) {
 		// Interpolate the first sample to the start time.
-		double dt = static_cast<double>(first_sample.timestamp_ns - start_time_ns) * 1e-9;
+		const double dt = static_cast<double>(first_sample.timestamp_ns - start_time_ns) * 1e-9;
 
 		integrateSingleSample(first_sample, dt, imu_bias, imu_calibration, Q_start_cur, delta_velocity,
 		                      delta_position, covariance);
@@ -574,7 +575,7 @@ preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
 		const auto &sample = imu_samples[i];
 
 		const auto &next_sample = imu_samples[i + 1];
-		double dt = static_cast<double>(next_sample.timestamp_ns - sample.timestamp_ns) * 1e-9;
+		const double dt = static_cast<double>(next_sample.timestamp_ns - sample.timestamp_ns) * 1e-9;
 
 		integrateSingleSample(next_sample, dt, imu_bias, imu_calibration, Q_start_cur, delta_velocity,
 		                      delta_position, covariance);
@@ -584,7 +585,7 @@ preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
 
 	// Integrate the last sample to end time, if necessary.
 	if (last_sample.timestamp_ns < end_time_ns) {
-		double dt = static_cast<double>(end_time_ns - last_sample.timestamp_ns) * 1e-9;
+		const double dt = static_cast<double>(end_time_ns - last_sample.timestamp_ns) * 1e-9;
 
 		integrateSingleSample(first_sample_after_end_time, dt, imu_bias, imu_calibration, Q_start_cur,
 		                      delta_velocity, delta_position, covariance);
@@ -625,7 +626,7 @@ preintegrate(const std::span<const xrt_imu_sample> &imu_samples,
 	};
 
 	// Sigma = L L^T, so the whitener is L^-1 — a triangular solve, not an inverse.
-	Eigen::LLT<PoseCovarianceMatrix> llt(covariance);
+	const Eigen::LLT<PoseCovarianceMatrix> llt(covariance);
 	if (llt.info() != Eigen::Success) {
 		/*
 		 * Nothing sane to weight with. Matching the camera factor's sentinel, make it contribute almost

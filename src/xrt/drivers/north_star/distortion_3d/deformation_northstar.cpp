@@ -96,9 +96,9 @@ OpticalSystem::RegenerateMesh()
 	// :-D
 	for (outerIter = m_requestedUVs.begin(); outerIter != m_requestedUVs.end(); outerIter++) {
 		for (innerIter = outerIter->second.begin(); innerIter != outerIter->second.end(); innerIter++) {
-			Vector2 result = SolveDisplayUVToRenderUV(Vector2(outerIter->first, innerIter->first),
-			                                          Vector2(innerIter->second.x, innerIter->second.y),
-			                                          m_iniSolverIters);
+			const Vector2 result = SolveDisplayUVToRenderUV(
+			    Vector2(outerIter->first, innerIter->first),
+			    Vector2(innerIter->second.x, innerIter->second.y), m_iniSolverIters);
 			innerIter->second.x = result.x;
 			innerIter->second.y = result.y;
 		}
@@ -110,7 +110,7 @@ OpticalSystem::RenderUVToDisplayUV(const Vector2 &inputUV)
 {
 	Vector3 rayDir;
 	ViewportPointToRayDirection(inputUV, eyePosition, clipToWorld, rayDir);
-	Vector2 curDisplayUV = RenderUVToDisplayUV(rayDir);
+	const Vector2 curDisplayUV = RenderUVToDisplayUV(rayDir);
 	return curDisplayUV;
 }
 
@@ -118,7 +118,7 @@ Vector2
 OpticalSystem::RenderUVToDisplayUV(const Vector3 &inputUV)
 {
 
-	Vector3 sphereSpaceRayOrigin = worldToSphereSpace.MultiplyPoint(eyePosition);
+	const Vector3 sphereSpaceRayOrigin = worldToSphereSpace.MultiplyPoint(eyePosition);
 	Vector3 sphereSpaceRayDirection =
 	    (worldToSphereSpace.MultiplyPoint(eyePosition + inputUV) - sphereSpaceRayOrigin);
 	sphereSpaceRayDirection = sphereSpaceRayDirection / sphereSpaceRayDirection.Magnitude();
@@ -131,7 +131,7 @@ OpticalSystem::RenderUVToDisplayUV(const Vector3 &inputUV)
 		// inputUV.x, inputUV.y);
 		return Vector2::zero();
 	}
-	Vector3 sphereSpaceIntersection = sphereSpaceRayOrigin + (sphereSpaceRayDirection * intersectionTime);
+	const Vector3 sphereSpaceIntersection = sphereSpaceRayOrigin + (sphereSpaceRayDirection * intersectionTime);
 
 	// Ellipsoid  Normals
 	Vector3 sphereSpaceNormal = (Vector3::Zero() - sphereSpaceIntersection) / sphereSpaceIntersection.Magnitude();
@@ -140,11 +140,11 @@ OpticalSystem::RenderUVToDisplayUV(const Vector3 &inputUV)
 	sphereSpaceNormal.z = sphereSpaceNormal.z / powf(ellipseMajorAxis / 2.f, 2.f);
 	sphereSpaceNormal = sphereSpaceNormal / sphereSpaceNormal.Magnitude();
 
-	Vector3 worldSpaceIntersection = sphereToWorldSpace.MultiplyPoint(sphereSpaceIntersection);
+	const Vector3 worldSpaceIntersection = sphereToWorldSpace.MultiplyPoint(sphereSpaceIntersection);
 	Vector3 worldSpaceNormal = sphereToWorldSpace.MultiplyVector(sphereSpaceNormal);
 	worldSpaceNormal = worldSpaceNormal / worldSpaceNormal.Magnitude();
 
-	Ray firstBounce(worldSpaceIntersection, Vector3::Reflect(inputUV, worldSpaceNormal));
+	const Ray firstBounce(worldSpaceIntersection, Vector3::Reflect(inputUV, worldSpaceNormal));
 	intersectionTime = intersectPlane(screenForward, screenPosition, firstBounce.m_Origin, firstBounce.m_Direction);
 
 	if (intersectionTime < 0.f) {
@@ -152,9 +152,9 @@ OpticalSystem::RenderUVToDisplayUV(const Vector3 &inputUV)
 		// inputUV.x, inputUV.y);
 		return Vector2::zero();
 	}
-	Vector3 planeIntersection = firstBounce.GetPoint(intersectionTime);
+	const Vector3 planeIntersection = firstBounce.GetPoint(intersectionTime);
 
-	Vector3 ScreenUVZ = worldToScreenSpace.MultiplyPoint3x4(planeIntersection);
+	const Vector3 ScreenUVZ = worldToScreenSpace.MultiplyPoint3x4(planeIntersection);
 
 	Vector2 ScreenUV;
 	ScreenUV.x = ScreenUVZ.x;
@@ -179,18 +179,16 @@ OpticalSystem::SolveDisplayUVToRenderUV(const Vector2 &inputUV, Vector2 const &i
 	Vector2 curDisplayUV;
 
 	for (int i = 0; i < iterations; i++) {
-		Vector3 rayDir;
-
 		// we can do all three calls below to RenderUVToDisplayUV at the
 		// same time using SIMD or better yet we can vectorize across all
 		// the uvs if we have a list of them
 		curDisplayUV = RenderUVToDisplayUV(curCameraUV);
-		Vector2 displayUVGradX =
+		const Vector2 displayUVGradX =
 		    (RenderUVToDisplayUV(curCameraUV + (Vector2(1, 0) * epsilon)) - curDisplayUV) / epsilon;
-		Vector2 displayUVGradY =
+		const Vector2 displayUVGradY =
 		    (RenderUVToDisplayUV(curCameraUV + (Vector2(0, 1) * epsilon)) - curDisplayUV) / epsilon;
 
-		Vector2 error = curDisplayUV - inputUV;
+		const Vector2 error = curDisplayUV - inputUV;
 		Vector2 step = Vector2::zero();
 
 		if ((!displayUVGradX.x) == 0.f || (!displayUVGradX.y) == 0.f) {
@@ -270,7 +268,7 @@ ns_3d_create_optical_system(struct ns_3d_eye *eye)
 extern "C" void
 ns_3d_free_optical_system(struct ns_optical_system **system)
 {
-	OpticalSystem *cast_sys = (OpticalSystem *)*system;
+	const OpticalSystem *cast_sys = (OpticalSystem *)*system;
 	delete cast_sys;
 	*system = NULL;
 }
@@ -279,8 +277,8 @@ extern "C" void
 ns_3d_display_uv_to_render_uv(struct xrt_vec2 in, struct xrt_vec2 *out, struct ns_3d_eye *eye)
 {
 	OpticalSystem *opticalSystem = (OpticalSystem *)eye->optical_system;
-	Vector2 inUV = Vector2(in.x, 1.f - in.y);
-	Vector2 outUV = opticalSystem->DisplayUVToRenderUVPreviousSeed(inUV);
+	const Vector2 inUV = Vector2(in.x, 1.f - in.y);
+	const Vector2 outUV = opticalSystem->DisplayUVToRenderUVPreviousSeed(inUV);
 	out->x = outUV.x;
 	out->y = outUV.y;
 }

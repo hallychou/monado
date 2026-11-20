@@ -130,7 +130,7 @@ create_hand_tracker(xrt_system_devices *xsysd,
 	*out_xht = nullptr;
 
 	auto hand_tracker = std::make_unique<HandTracker>(xsysd, *info, getDevices, data);
-	xrt_result_t xret = hand_tracker->init();
+	const xrt_result_t xret = hand_tracker->init();
 	if (xret != XRT_SUCCESS) {
 		return xret;
 	}
@@ -170,7 +170,7 @@ HandTracker::init()
 	}
 
 	for (uint32_t i = 0; i < mInfo.requested_source_count; i++) {
-		xrt_input_name input_name = mInfo.requested_sources[i];
+		const xrt_input_name input_name = mInfo.requested_sources[i];
 		if (!is_hand_tracker_input_name(input_name, mInfo.hand)) {
 			return XRT_ERROR_INVALID_ARGUMENT;
 		}
@@ -197,7 +197,7 @@ HandTracker::init()
 	}
 
 	u_pp_sink_stack_only sink;
-	u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);
+	const u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);
 
 	u_pp(dg,
 	     "Created hand tracker:"
@@ -247,12 +247,12 @@ HandTracker::locate(xrt_space_overseer *xso,
 
 		int64_t ignored = 0;
 		value = {};
-		xrt_result_t xret = xrt_device_get_hand_tracking( //
-		    source.xdev,                                  //
-		    source.input_name,                            //
-		    at_timestamp_ns,                              //
-		    &value,                                       //
-		    &ignored);                                    //
+		const xrt_result_t xret = xrt_device_get_hand_tracking( //
+		    source.xdev,                                        //
+		    source.input_name,                                  //
+		    at_timestamp_ns,                                    //
+		    &value,                                             //
+		    &ignored);                                          //
 		if (xret != XRT_SUCCESS) {
 			return xret;
 		}
@@ -271,13 +271,13 @@ HandTracker::locate(xrt_space_overseer *xso,
 	const struct xrt_pose *offset = base_offset != nullptr ? base_offset : &identity;
 
 	struct xrt_space_relation T_base_xdev = XRT_SPACE_RELATION_ZERO;
-	xrt_result_t xret = xrt_space_overseer_locate_device( //
-	    xso,                                              //
-	    base_space,                                       //
-	    offset,                                           //
-	    at_timestamp_ns,                                  //
-	    active_source->xdev,                              //
-	    &T_base_xdev);                                    //
+	const xrt_result_t xret = xrt_space_overseer_locate_device( //
+	    xso,                                                    //
+	    base_space,                                             //
+	    offset,                                                 //
+	    at_timestamp_ns,                                        //
+	    active_source->xdev,                                    //
+	    &T_base_xdev);                                          //
 	if (xret != XRT_SUCCESS) {
 		return xret;
 	}
@@ -305,7 +305,7 @@ HandTracker::locate(xrt_space_overseer *xso,
 	out_location->is_active = true;
 
 	for (uint32_t i = 0; i < XRT_HAND_JOINT_COUNT; i++) {
-		struct xrt_space_relation joint_relation = value.values.hand_joint_set_default[i].relation;
+		const struct xrt_space_relation joint_relation = value.values.hand_joint_set_default[i].relation;
 		struct xrt_space_relation result = XRT_SPACE_RELATION_ZERO;
 		resolve_joint_relation(joint_relation, T_base_hand, result);
 		out_location->hand_joint_set.values.hand_joint_set_default[i].relation = result;
@@ -324,7 +324,7 @@ HandTracker::setOutput(xrt_output_name name, const xrt_output_value *value)
 			continue;
 		}
 
-		xrt_result_t xret = xrt_device_set_output(xdev, name, value);
+		const xrt_result_t xret = xrt_device_set_output(xdev, name, value);
 		if (xret != XRT_SUCCESS) {
 			return xret;
 		}

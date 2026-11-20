@@ -60,7 +60,7 @@ public:
 	void
 	populate_from_calib(t_camera_calibration &calib, const RemapPair &rectification)
 	{
-		CameraCalibrationWrapper wrap(calib);
+		const CameraCalibrationWrapper wrap(calib);
 		intrinsics = wrap.intrinsics_mat;
 		distortion = wrap.distortion_mat.clone();
 		distortion_model = wrap.distortion_model;
@@ -206,7 +206,7 @@ template <typename ValueType, typename FunctionType> struct FindLowestScore
 	void
 	handle_candidate(ValueType val)
 	{
-		float score = score_functor(val);
+		const float score = score_functor(val);
 		if (!got_one || score < best_score) {
 			best = val;
 			best_score = score;
@@ -228,8 +228,8 @@ make_lowest_score_finder(FunctionType scoreFunctor)
 static cv::Point3f
 world_point_from_blobs(const cv::Point2f &left, const cv::Point2f &right, const cv::Matx44d &disparity_to_depth)
 {
-	float disp = left.x - right.x;
-	cv::Vec4d xydw(left.x, left.y, disp, 1.0f);
+	const float disp = left.x - right.x;
+	const cv::Vec4d xydw(left.x, left.y, disp, 1.0f);
 
 	// Transform
 	cv::Vec4d h_world = disparity_to_depth * xydw;
@@ -280,9 +280,9 @@ process(TrackerPSMV &t, struct xrt_frame *xf)
 	t.view[0].keypoints.clear();
 	t.view[1].keypoints.clear();
 
-	int cols = xf->width / 2;
-	int rows = xf->height;
-	int stride = xf->stride;
+	const int cols = xf->width / 2;
+	const int rows = xf->height;
+	const int stride = xf->stride;
 
 	cv::Mat l_grey(rows, cols, CV_8UC1, xf->data, stride);
 	cv::Mat r_grey(rows, cols, CV_8UC1, xf->data + cols, stride);
@@ -306,7 +306,7 @@ process(TrackerPSMV &t, struct xrt_frame *xf)
 		    [&](const cv::Point2f &r_blob) { return l_blob.x - r_blob.x; });
 
 		for (const cv::KeyPoint &r_keypoint : t.view[1].keypoints) {
-			cv::Point2f r_blob = r_keypoint.pt;
+			const cv::Point2f r_blob = r_keypoint.pt;
 			// find closest point on same-ish scanline
 			if ((l_blob.y < r_blob.y + 3) && (l_blob.y > r_blob.y - 3)) {
 				nearest_blob.handle_candidate(r_blob);
@@ -315,7 +315,7 @@ process(TrackerPSMV &t, struct xrt_frame *xf)
 		//! @todo do we need to avoid claiming the same counterpart
 		//! several times?
 		if (nearest_blob.got_one) {
-			cv::Point3f pt = world_point_from_blobs(l_blob, nearest_blob.best, disparity_to_depth);
+			const cv::Point3f pt = world_point_from_blobs(l_blob, nearest_blob.best, disparity_to_depth);
 			nearest_world.handle_candidate(pt);
 		}
 	}
@@ -609,11 +609,12 @@ t_psmv_create(struct xrt_frame_context *xfctx,
 		break;
 	}
 
-	StereoRectificationMaps rectify(data);
+	const StereoRectificationMaps rectify(data);
 	t.view[0].populate_from_calib(data->view[0], rectify.view[0].rectify);
 	t.view[1].populate_from_calib(data->view[1], rectify.view[1].rectify);
 	t.disparity_to_depth = rectify.disparity_to_depth_mat;
-	StereoCameraCalibrationWrapper wrapped(data);
+
+	const StereoCameraCalibrationWrapper wrapped(data);
 	t.r_cam_rotation = wrapped.camera_rotation_mat;
 	t.r_cam_translation = wrapped.camera_translation_mat;
 	t.calibrated = true;

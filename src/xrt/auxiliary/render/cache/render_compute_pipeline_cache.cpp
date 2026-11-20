@@ -90,7 +90,7 @@ ComputePipelineCache<Key>::get(struct vk_bundle *vk, const Key &key, VkPipeline 
 		return VK_SUCCESS;
 	}
 
-	VkSpecializationInfo spec_info = {
+	const VkSpecializationInfo spec_info = {
 	    .mapEntryCount = static_cast<uint32_t>(ShaderSpecializationMap<Key>::kEntries.size()),
 	    .pMapEntries = ShaderSpecializationMap<Key>::kEntries.data(),
 	    .dataSize = sizeof(Key),
@@ -98,13 +98,13 @@ ComputePipelineCache<Key>::get(struct vk_bundle *vk, const Key &key, VkPipeline 
 	};
 
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	VkResult ret = vk_create_compute_pipeline( //
-	    vk,                                    //
-	    mCache,                                //
-	    mShader,                               //
-	    mLayout,                               //
-	    &spec_info,                            //
-	    &pipeline);                            //
+	const VkResult ret = vk_create_compute_pipeline( //
+	    vk,                                          //
+	    mCache,                                      //
+	    mShader,                                     //
+	    mLayout,                                     //
+	    &spec_info,                                  //
+	    &pipeline);                                  //
 	VK_CHK_AND_RET(ret, "vk_create_compute_pipeline");
 
 	if (!mName.empty()) {
@@ -122,7 +122,7 @@ ComputePipelineCache<Key>::prewarm(struct vk_bundle *vk, std::span<const Key> ke
 {
 	for (const Key &key : keys) {
 		VkPipeline ignored = VK_NULL_HANDLE;
-		VkResult ret = get(vk, key, ignored);
+		const VkResult ret = get(vk, key, ignored);
 		if (ret != VK_SUCCESS) {
 			return ret;
 		}

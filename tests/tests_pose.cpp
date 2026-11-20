@@ -42,16 +42,16 @@ TEST_CASE("Pose invert works")
 TEST_CASE("Pose interpolation works")
 {
 	// A random pose
-	struct xrt_vec3 pos_a = {1, 2, 3};
+	const struct xrt_vec3 pos_a = {1, 2, 3};
 	struct xrt_quat ori_a = {1, 2, 3, 4};
 	math_quat_normalize(&ori_a);
-	struct xrt_pose a = {ori_a, pos_a};
+	const struct xrt_pose a = {ori_a, pos_a};
 
 	// The inverse of that pose
-	struct xrt_vec3 pos_b = pos_a * -1;
+	const struct xrt_vec3 pos_b = pos_a * -1;
 	struct xrt_quat ori_b = {};
 	math_quat_invert(&ori_a, &ori_b);
-	struct xrt_pose b = {ori_b, pos_b};
+	const struct xrt_pose b = {ori_b, pos_b};
 
 	// The interpolation at 0.5 should be the identity
 	struct xrt_pose res = {};

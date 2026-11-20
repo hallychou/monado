@@ -38,7 +38,7 @@ t_convert_fill_table(struct t_convert_table *t)
 extern "C" void
 t_convert_make_y8u8v8_to_r8g8b8(struct t_convert_table *t)
 {
-	size_t size = 256 * 256 * 256;
+	const size_t size = 256 * 256 * 256;
 
 	t_convert_fill_table(t);
 	t_convert_in_place_y8u8v8_to_r8g8b8(size, 1, 0, t);
@@ -47,7 +47,7 @@ t_convert_make_y8u8v8_to_r8g8b8(struct t_convert_table *t)
 extern "C" void
 t_convert_make_y8u8v8_to_h8s8v8(struct t_convert_table *t)
 {
-	size_t size = 256 * 256 * 256;
+	const size_t size = 256 * 256 * 256;
 
 	t_convert_fill_table(t);
 	t_convert_in_place_y8u8v8_to_h8s8v8(size, 1, 0, &t->v);
@@ -56,7 +56,7 @@ t_convert_make_y8u8v8_to_h8s8v8(struct t_convert_table *t)
 extern "C" void
 t_convert_make_h8s8v8_to_r8g8b8(struct t_convert_table *t)
 {
-	size_t size = 256 * 256 * 256;
+	const size_t size = 256 * 256 * 256;
 
 	t_convert_fill_table(t);
 	t_convert_in_place_h8s8v8_to_r8g8b8(size, 1, 0, &t->v);

@@ -237,7 +237,7 @@ client_gl_compositor_context_begin(struct xrt_compositor *xc, enum client_gl_con
 
 	os_mutex_lock(&cgc->context_mutex);
 
-	xrt_result_t xret = cgc->context_begin_locked(xc, reason);
+	const xrt_result_t xret = cgc->context_begin_locked(xc, reason);
 	if (xret != XRT_SUCCESS) {
 		os_mutex_unlock(&cgc->context_mutex);
 	}
