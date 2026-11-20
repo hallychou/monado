@@ -8,12 +8,14 @@
  */
 
 #include "math/m_mathinclude.h"
+#include "math/m_api.h"
 
 #include "u_misc.h"
 #include "u_visibility_mask.h"
 #include "u_logging.h"
 
 
+#include <float.h>
 #include <string.h>
 
 static const struct xrt_vec2 vertices_hidden[] = {
@@ -70,6 +72,7 @@ u_visibility_mask_get_default(enum xrt_visibility_mask_type type,
 	}
 
 
+	mask->type = type;
 	mask->index_count = nindices;
 	mask->vertex_count = nvertices;
 
@@ -105,8 +108,8 @@ u_visibility_mask_get_default(enum xrt_visibility_mask_type type,
 	const float tan_half_width = (tan_right - tan_left);
 	const float tan_half_height = (tan_up - tan_down);
 
-	const float tan_offset_x = ((tan_right + tan_left) - tan_half_width) / 2;
-	const float tan_offset_y = (-(tan_up + tan_down) - tan_half_height) / 2;
+	const float tan_offset_x = tan_left;
+	const float tan_offset_y = tan_down;
 
 	struct xrt_vec2 *dst = xrt_visibility_mask_get_vertices(mask);
 	for (uint32_t i = 0; i < nvertices; i++) {
@@ -121,6 +124,31 @@ u_visibility_mask_get_default(enum xrt_visibility_mask_type type,
 
 out:
 	*out_mask = mask; // Always NULL or allocated data.
+}
+
+void
+u_visibility_mask_rotate(struct xrt_visibility_mask *mask, const struct xrt_quat *orientation)
+{
+	if (mask == NULL) {
+		return;
+	}
+
+	struct xrt_vec2 *vertices = xrt_visibility_mask_get_vertices(mask);
+	for (uint32_t i = 0; i < mask->vertex_count; i++) {
+		// Same as the FoV corners in m_optics.c for parallel views
+		const struct xrt_vec3 ray = {vertices[i].x, vertices[i].y, -1.0f};
+		struct xrt_vec3 rotated;
+		math_quat_rotate_vec3(orientation, &ray, &rotated);
+
+		// Don't divide by zero if a vertex is rotated to or behind the eye.
+		float distance = -rotated.z;
+		if (distance < FLT_EPSILON) {
+			distance = FLT_EPSILON;
+		}
+
+		vertices[i].x = rotated.x / distance;
+		vertices[i].y = rotated.y / distance;
+	}
 }
 
 void
