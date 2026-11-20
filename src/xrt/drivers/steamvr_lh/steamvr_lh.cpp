@@ -1092,7 +1092,7 @@ Context::handle_external_read_property(xrt_device *device, vr::PropertyRead_t &p
 	if(external_properties.count(device) == 0) {
 		external_properties.emplace(device, std::unordered_map<vr::ETrackedDeviceProperty, Property>());
 	}
-	std::unordered_map<vr::ETrackedDeviceProperty, Property> device_properties = external_properties.at(device);
+	std::unordered_map<vr::ETrackedDeviceProperty, Property> &device_properties = external_properties[device];
 
 	switch (prop.prop) {
 		case vr::ETrackedDeviceProperty::Prop_DeviceClass_Int32:
