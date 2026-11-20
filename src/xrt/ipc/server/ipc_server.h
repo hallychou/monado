@@ -435,15 +435,14 @@ struct ipc_server
 	uint64_t exit_when_idle_delay_ns;
 
 	/*!
-	 * Global start of time timestamp. XrTime that is returned to apps
-	 * start from this timestamps (with an per app offset applied). In order
-	 * to ensure that all timestamps for events and other data that is
-	 * tracked by the runtime within the valid range of XrTime it is offset
-	 * to be 42 minutes in the past from start of the runtime.
+	 * Global start of time timestamp, the epoch of XrTime returned to apps.
+	 * Offset 42 minutes into the past from the start of the runtime, so
+	 * timestamps of events and other tracked data stay within the valid
+	 * range of XrTime.
 	 *
-	 * Used to get all the client's xrt_instance::startup_timestamp, to be
-	 * close to each other but not exactly the same, which is then used to
-	 * be the base of that app's XrTime start of time.
+	 * Used as every client's xrt_instance::startup_timestamp, the OpenXR
+	 * spec requires the same epoch for all simultaneous applications, see
+	 * the "Time" section of the "Fundamentals" chapter (fundamentals-time).
 	 */
 	int64_t start_of_time_timestamp_ns;
 
