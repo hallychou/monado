@@ -599,10 +599,10 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 		if(space.relation_flags & (XRT_SPACE_RELATION_ORIENTATION_VALID_BIT)) {
 			xrt_matrix_3x3 rot = {};
 			math_matrix_3x3_from_quat(&space.pose.orientation, &rot);
-			pTrackedDevicePoseArray[i].mDeviceToAbsoluteTracking = {{ // openvr uses a right-handed system +y is up +x is to the right -z is forward cordinates
-				{ rot.v[0],  rot.v[3], -rot.v[6],  space.pose.position.x},
-				{ rot.v[1],  rot.v[4], -rot.v[7],  space.pose.position.y},
-				{-rot.v[2], -rot.v[5],  rot.v[8], -space.pose.position.z},
+			pTrackedDevicePoseArray[i].mDeviceToAbsoluteTracking = {{
+				{ rot.v[0], rot.v[1], rot.v[2], space.pose.position.x },
+				{ rot.v[3], rot.v[4], rot.v[5], space.pose.position.y },
+				{ rot.v[6], rot.v[7], rot.v[8], space.pose.position.z },
 			}};
 			if(space.relation_flags & XRT_SPACE_RELATION_POSITION_VALID_BIT) {
 				pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Running_OK;
@@ -637,7 +637,7 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 				case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER:
 				case XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER:
 				case XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER:
-					set_pose(i, XRT_INPUT_GENERIC_PALM_POSE, device);
+					set_pose(i, XRT_INPUT_TOUCH_GRIP_POSE, device);
 					break;
 				case XRT_DEVICE_TYPE_GENERIC_TRACKER:
 					set_pose(i, XRT_INPUT_GENERIC_TRACKER_POSE, device);
