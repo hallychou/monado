@@ -1078,7 +1078,6 @@ Context::get_device(vr::TrackedDeviceIndex_t index) {
 		return device;
 	}
 
-	CTX_WARN("No device found for index %u", index);
 	return nullptr;
 }
 
@@ -1104,7 +1103,7 @@ Context::prop_container_to_device(vr::PropertyContainerHandle_t handle)
 		return nullptr;
 	}
 
-	xrt_device *device = get_device(handle);
+	xrt_device *device = get_device(handle - 1);
 	if (device != nullptr) {
 		return device;
 	}
