@@ -278,7 +278,11 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 	// Publish the device before activating it: the driver writes its properties and creates its
 	// input components from within Activate, and those callbacks have to be able to find it.
 	auto *hmd = new HmdDevice(DeviceBuilder{this->shared_from_this(), driver, serial, this->chaperone_info_path});
-	size_t device_idx = add_device(hmd, true);
+	size_t device_idx = 0;
+	{
+		std::lock_guard lk(this->devices_mut);
+		device_idx = add_device(hmd, true);
+	}
 
 #define VERIFY(expr, msg)                                                                                              \
 	if (!(expr)) {                                                                                                 \
@@ -361,7 +365,11 @@ Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *dr
 	// properties and creates its input components from within Activate, and those callbacks have to
 	// be able to find it.
 	ControllerDevice *device = new ControllerDevice(DeviceBuilder{this->shared_from_this(), driver, serial, this->chaperone_info_path});
-	size_t device_idx = add_device(device, true);
+	size_t device_idx = 0;
+	{
+		std::lock_guard lk(this->devices_mut);
+		device_idx = add_device(device, true);
+	}
 
 	// Never call into the driver with `devices_mut` held: it takes its own locks here, and calls back into
 	// us (WritePropertyBatch, TrackedDevicePoseUpdated, ...) from its own threads while holding them.
@@ -473,6 +481,8 @@ Context::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t
 {
 	assert(sizeof(newPose) == unPoseStructSize);
 
+	std::lock_guard lk(this->devices_mut);
+
 	xrt_device *device = get_device(unWhichDevice);
 
 	if (!device) {
@@ -480,7 +490,7 @@ Context::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t
 		return;
 	}
 
-	if(this->internal_devices.count(device) == 0) {
+	if(!is_internal_device(device)) {
 		CTX_WARN("TrackedDevicePoseUpdated called for device with index %u that is not owned by this context", unWhichDevice);
 		return;
 	}
@@ -575,6 +585,7 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
                                   vr::TrackedDevicePose_t *pTrackedDevicePoseArray,
                                   uint32_t unTrackedDevicePoseArrayCount)
 {
+	std::lock_guard lk(this->devices_mut);
 
 	const int64_t time = os_monotonic_get_ns();
 
@@ -681,7 +692,7 @@ Context::create_component_common(vr::PropertyContainerHandle_t container,
 
 	std::lock_guard lk(this->devices_mut);
 	Device *device = static_cast<Device *>(prop_container_to_device(container));
-	if (!device || this->internal_devices.count(device) == 0) {
+	if (!device || !is_internal_device(device)) {
 		return vr::VRInputError_InvalidHandle;
 	}
 
@@ -744,7 +755,7 @@ Context::CreateScalarComponent(vr::PropertyContainerHandle_t ulContainer,
 		std::lock_guard lk(this->devices_mut);
 
 		Device *device = static_cast<Device *>(prop_container_to_device(ulContainer));
-		if (!device || this->internal_devices.count(device) == 0) {
+		if (!device || !is_internal_device(device)) {
 			return vr::VRInputError_InvalidHandle;
 		}
 
@@ -834,7 +845,7 @@ Context::CreateHapticComponent(vr::PropertyContainerHandle_t ulContainer,
 
 	std::lock_guard lk(this->devices_mut);
 	Device *device = static_cast<Device *>(prop_container_to_device(ulContainer));
-	if (!device || this->internal_devices.count(device) == 0) {
+	if (!device || !is_internal_device(device)) {
 		return vr::VRInputError_InvalidHandle;
 	}
 
@@ -878,7 +889,7 @@ Context::CreateSkeletonComponent(vr::PropertyContainerHandle_t ulContainer,
 	std::lock_guard lk(this->devices_mut);
 
 	ControllerDevice *device = static_cast<ControllerDevice *>(prop_container_to_device(ulContainer));
-	if (!device || this->internal_devices.count(device) == 0) {
+	if (!device || !is_internal_device(device)) {
 		return vr::VRInputError_InvalidHandle;
 	}
 	path.remove_prefix(skeleton_pfx.size());
@@ -976,7 +987,7 @@ Context::ReadPropertyBatch(vr::PropertyContainerHandle_t ulContainerHandle,
 	if (!pBatch)
 		return vr::TrackedProp_InvalidOperation; // not verified vs steamvr
 
-	if(this->internal_devices.count(device) == 0) {
+	if(!is_internal_device(device)) {
 		return handle_external_read_properties(device, pBatch, unBatchEntryCount);
 	}
 	return static_cast<Device *>(device)->handle_read_properties(pBatch, unBatchEntryCount);
@@ -990,7 +1001,7 @@ Context::WritePropertyBatch(vr::PropertyContainerHandle_t ulContainerHandle,
 	std::lock_guard lk(this->devices_mut);
 
 	Device *device = static_cast<Device *>(prop_container_to_device(ulContainerHandle));
-	if (!device || this->internal_devices.count(device) == 0) {
+	if (!device || !is_internal_device(device)) {
 		return vr::TrackedProp_InvalidContainer;
 	}
 	if (!pBatch)
@@ -1006,8 +1017,6 @@ Context::GetPropErrorNameFromEnum(vr::ETrackedPropertyError error)
 
 vr::TrackedDeviceIndex_t
 Context::add_device(xrt_device * device, bool is_internal) {
-	std::lock_guard lk(this->devices_mut);
-
 	devices.push_back(device);
 	registered_devices.insert(device);
 	if (is_internal) {
@@ -1044,7 +1053,6 @@ Context::add_device(xrt_device * device, bool is_internal) {
 xrt_device *
 Context::get_device(vr::TrackedDeviceIndex_t index) {
 	if(index == vr::k_unTrackedDeviceIndex_Hmd) {
-		std::lock_guard lk(this->devices_mut);
 		xrt_device * device = this->xsysd->static_roles.head;
 		if(devices[0] != device) {
 			if(devices[0] != nullptr) {
@@ -1062,39 +1070,25 @@ Context::get_device(vr::TrackedDeviceIndex_t index) {
 		return devices[index];
 	}
 
-	xrt_device *new_device = nullptr;
-	{
-		std::lock_guard lk(this->devices_mut);
-		for (uint32_t i = 0; i < this->xsysd->static_xdev_count; ++i) {
-			xrt_device *device = this->xsysd->static_xdevs[i];
-			if(device->device_type == XRT_DEVICE_TYPE_HMD) continue;
-			if(registered_devices.count(device)) continue;
-			new_device = device;
-			break;
-		}
+	for (uint32_t i = 0; i < this->xsysd->static_xdev_count; ++i) {
+		xrt_device *device = this->xsysd->static_xdevs[i];
+		if(device->device_type == XRT_DEVICE_TYPE_HMD) continue;
+		if(registered_devices.count(device)) continue;
+		add_device(device, false);
+		return device;
 	}
 
-	if(new_device == nullptr) {
-		CTX_WARN("No device found for index %u", index);
-		return nullptr;
-	}
-
-	add_device(new_device, false);
-
-	return new_device;
+	CTX_WARN("No device found for index %u", index);
+	return nullptr;
 }
 
 bool
 Context::is_internal_device(xrt_device *device) {
-	std::lock_guard lk(this->devices_mut);
-
 	return internal_devices.count(device) > 0;
 }
 
 vr::TrackedDeviceIndex_t
 Context::get_device_index(xrt_device * device) {
-	std::lock_guard lk(this->devices_mut);
-
 	for (size_t i = 0; i < devices.size(); ++i) {
 		if (devices[i] == device) {
 			return i;
@@ -1219,6 +1213,8 @@ Context::handle_external_read_property(xrt_device *device, vr::PropertyRead_t &p
 vr::PropertyContainerHandle_t
 Context::TrackedDeviceToPropertyContainer(vr::TrackedDeviceIndex_t nDevice)
 {
+	std::lock_guard lk(this->devices_mut);
+
 	xrt_device *device = get_device(nDevice);
 	if(device == nullptr) {
 		CTX_WARN("Invalid device index %u for property container lookup", nDevice);
