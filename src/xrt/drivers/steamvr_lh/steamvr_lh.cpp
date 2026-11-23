@@ -599,19 +599,31 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 		if(xrt_device_get_tracked_pose(device, name, time, &space) != XRT_SUCCESS) {
 			U_LOG_IFL_W(log_level, "Failed to get pose for device %d %s (%s)", i, device->str, device->serial);
 			pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Uninitialized;
-			pTrackedDevicePoseArray[i].bPoseIsValid = false;
-			pTrackedDevicePoseArray[i].bDeviceIsConnected = false;
-			return;
 		}
-		xrt_matrix_3x3 rot = {};
-		math_matrix_3x3_from_quat(&space.pose.orientation, &rot);
-		pTrackedDevicePoseArray[i].mDeviceToAbsoluteTracking = {{
-		    {rot.v[0], rot.v[3], rot.v[6], space.pose.position.x},
-		    {rot.v[1], rot.v[4], rot.v[7], space.pose.position.y},
-		    {rot.v[2], rot.v[5], rot.v[8], space.pose.position.z},
-		}};
-		pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Running_OK;
-		pTrackedDevicePoseArray[i].bPoseIsValid = true;
+		if(space.relation_flags & (XRT_SPACE_RELATION_ORIENTATION_VALID_BIT)) {
+			xrt_matrix_3x3 rot = {};
+			math_matrix_3x3_from_quat(&space.pose.orientation, &rot);
+			pTrackedDevicePoseArray[i].mDeviceToAbsoluteTracking = {{ // openvr uses a right-handed system +y is up +x is to the right -z is forward cordinates
+				{ rot.v[0],  rot.v[3], -rot.v[6],  space.pose.position.x},
+				{ rot.v[1],  rot.v[4], -rot.v[7],  space.pose.position.y},
+				{-rot.v[2], -rot.v[5],  rot.v[8], -space.pose.position.z},
+			}};
+			if(space.relation_flags & XRT_SPACE_RELATION_POSITION_VALID_BIT) {
+				pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Running_OK;
+			} else {
+				pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Fallback_RotationOnly;
+			}
+			pTrackedDevicePoseArray[i].bPoseIsValid = true;
+		} else {
+			pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Running_OutOfRange;
+			pTrackedDevicePoseArray[i].bPoseIsValid = false;
+		}
+		if(space.relation_flags & XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT) {
+			pTrackedDevicePoseArray[i].vVelocity = {space.linear_velocity.x, space.linear_velocity.y, space.linear_velocity.z};
+		}
+		if(space.relation_flags & XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT) {
+			pTrackedDevicePoseArray[i].vAngularVelocity = {space.angular_velocity.x, space.angular_velocity.y, space.angular_velocity.z};
+		}
 		pTrackedDevicePoseArray[i].bDeviceIsConnected = true;
 
 		// U_LOG_IFL_T(log_level, "Pose for device %d %s (%s): pos=(%.2f, %.2f, %.2f) rot=(%.2f, %.2f, %.2f, %.2f)", i, device->str, device->serial,
