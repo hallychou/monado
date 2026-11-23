@@ -1141,14 +1141,24 @@ Context::handle_external_read_properties(xrt_device *device, vr::PropertyRead_t 
 vr::ETrackedPropertyError
 Context::handle_external_read_property(xrt_device *device, vr::PropertyRead_t &prop)
 {
-	// helper template to set a property value and its size in the buffer, and return success
-	auto set_property_value = [&](auto value, vr::PropertyTypeTag_t tag) {
-		prop.unTag = tag;
+	auto set_property_int32 = [&](int32_t value) {
+		prop.unTag = vr::k_unInt32PropertyTag;
 		prop.unRequiredBufferSize = sizeof(value);
-		if (prop.pvBuffer == nullptr || prop.unBufferSize < sizeof(value)) {
+		if (prop.pvBuffer == nullptr || prop.unBufferSize < prop.unRequiredBufferSize) {
 			prop.eError = vr::ETrackedPropertyError::TrackedProp_BufferTooSmall;
 		} else {
 			std::memcpy(prop.pvBuffer, &value, sizeof(value));
+			prop.eError = vr::ETrackedPropertyError::TrackedProp_Success;
+		}
+	};
+
+	auto set_property_string = [&](const char *value) {
+		prop.unTag = vr::k_unStringPropertyTag;
+		prop.unRequiredBufferSize = strlen(value) + 1;
+		if (prop.pvBuffer == nullptr || prop.unBufferSize < prop.unRequiredBufferSize) {
+			prop.eError = vr::ETrackedPropertyError::TrackedProp_BufferTooSmall;
+		} else {
+			std::memcpy(prop.pvBuffer, value, prop.unRequiredBufferSize);
 			prop.eError = vr::ETrackedPropertyError::TrackedProp_Success;
 		}
 	};
@@ -1174,13 +1184,12 @@ Context::handle_external_read_property(xrt_device *device, vr::PropertyRead_t &p
 						value = vr::ETrackedDeviceClass::TrackedDeviceClass_Invalid;
 				}
 				CTX_DEBUG("Device %s: External property Prop_DeviceClass_Int32 is %d", device->str, value);
-				set_property_value(value, vr::k_unInt32PropertyTag);
+				set_property_int32(value);
 			}
 			break;
 		case vr::ETrackedDeviceProperty::Prop_SerialNumber_String: {
-				std::string serial = device->serial;
-				CTX_DEBUG("Device %s: External property Prop_SerialNumber_String is %s", device->str, serial.c_str());
-				set_property_value(serial.c_str(), vr::k_unStringPropertyTag);
+				CTX_DEBUG("Device %s: External property Prop_SerialNumber_String is %s", device->str, device->serial);
+				set_property_string(device->serial);
 			}
 			break;
 		case vr::ETrackedDeviceProperty::Prop_ControllerRoleHint_Int32: {
@@ -1199,10 +1208,11 @@ Context::handle_external_read_property(xrt_device *device, vr::PropertyRead_t &p
 						value = vr::ETrackedControllerRole::TrackedControllerRole_Invalid;
 				}
 				CTX_DEBUG("Device %s: External property Prop_ControllerRoleHint_Int32 is %d", device->str, value);
-				set_property_value(value, vr::k_unInt32PropertyTag);
+				set_property_int32(value);
 			}
 			break;
 		case 10987: // VendorSpecific_Standable_987
+			prop.eError = vr::ETrackedPropertyError::TrackedProp_UnknownProperty;
 			break;
 		default:
 			CTX_WARN("Unsupported property type %u for external device %s (%s)", prop.prop, device->str, device->serial);
