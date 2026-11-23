@@ -1130,8 +1130,9 @@ ControllerDevice::get_tracked_pose(xrt_input_name name, uint64_t at_timestamp_ns
 	m_relation_chain_resolve(&relchain, out_relation);
 
 	struct xrt_pose *p = &out_relation->pose;
-	DEV_DEBUG("controller %u: GET_POSITION (%f %f %f) GET_ORIENTATION (%f, %f, %f, %f)", name, p->position.x,
-	          p->position.y, p->position.z, p->orientation.x, p->orientation.y, p->orientation.z, p->orientation.w);
+
+	// DEV_DEBUG("controller %u: GET_POSITION (%f %f %f) GET_ORIENTATION (%f, %f, %f, %f)", this->id, p->position.x,
+	//           p->position.y, p->position.z, p->orientation.x, p->orientation.y, p->orientation.z, p->orientation.w);
 
 	return XRT_SUCCESS;
 }
