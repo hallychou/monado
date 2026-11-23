@@ -166,10 +166,26 @@ Context::create(const std::string &driver_path,
 	std::shared_ptr<Context> c =
 	    std::make_shared<Context>(driver_path, driver_name, user_settings_path, chaperone_info_path, steamvr_install, driver_name_to_directory, xsysd, debug_get_log_option_lh_log());
 	c->provider = provider;
+
 	std::string tracking_name = "openvr " + driver_name + " driver tracking origin";
 	std::strncpy(c->name, tracking_name.c_str(), XRT_TRACKING_NAME_LEN);
 	c->type = XRT_TRACKING_TYPE_LIGHTHOUSE;
 	c->initial_offset = XRT_POSE_IDENTITY;
+
+	if(xsysd->static_roles.head) {
+		xrt_device * device = xsysd->static_roles.head;
+		c->devices[0] = device;
+		c->registered_devices.insert(device);
+		U_LOG_IFL_I(c->log_level, "Added head device %s (%s) to devices[0]", device->str, device->serial);
+	}
+
+	for (uint32_t i = 0; i < xsysd->static_xdev_count; ++i) {
+		xrt_device *device = xsysd->static_xdevs[i];
+		if(device->device_type == XRT_DEVICE_TYPE_HMD) continue;
+		if(c->registered_devices.count(device)) continue;
+		c->add_device(device, false);
+	}
+
 	vr::EVRInitError err = provider->Init(c.get());
 	if (err != vr::VRInitError_None) {
 		U_LOG_IFL_E(c->log_level, "OpenVR driver initialization failed: error %u", err);
@@ -1000,7 +1016,7 @@ Context::add_device(xrt_device * device, bool is_internal) {
 		if(device->device_type == XRT_DEVICE_TYPE_HMD) {
 			if (hmd != nullptr) {
 				CTX_WARN("Attempted to add a second HMD device - this is unsupported");
-			} {
+			} else {
 				hmd = static_cast<HmdDevice *>(device);
 			}
 		}else {
@@ -1015,7 +1031,7 @@ Context::add_device(xrt_device * device, bool is_internal) {
 			if (controller_idx == MAX_CONTROLLERS) {
 				CTX_WARN("Attempted to activate more than %zu controllers - this is unsupported",
 							MAX_CONTROLLERS);
-			}else {
+			} else {
 				controller[controller_idx] = static_cast<ControllerDevice *>(device);
 			}
 		}
@@ -1027,9 +1043,8 @@ Context::add_device(xrt_device * device, bool is_internal) {
 
 xrt_device *
 Context::get_device(vr::TrackedDeviceIndex_t index) {
-	std::lock_guard lk(this->devices_mut);
-
 	if(index == vr::k_unTrackedDeviceIndex_Hmd) {
+		std::lock_guard lk(this->devices_mut);
 		xrt_device * device = this->xsysd->static_roles.head;
 		if(devices[0] != device) {
 			if(devices[0] != nullptr) {
@@ -1047,15 +1062,26 @@ Context::get_device(vr::TrackedDeviceIndex_t index) {
 		return devices[index];
 	}
 
-	for (uint32_t i = 0; i < this->xsysd->static_xdev_count; ++i) {
-		xrt_device *device = this->xsysd->static_xdevs[i];
-		if(device->device_type == XRT_DEVICE_TYPE_HMD) continue;
-		if(registered_devices.count(device)) continue;
-		add_device(device, false);
-		return device;
+	xrt_device *new_device = nullptr;
+	{
+		std::lock_guard lk(this->devices_mut);
+		for (uint32_t i = 0; i < this->xsysd->static_xdev_count; ++i) {
+			xrt_device *device = this->xsysd->static_xdevs[i];
+			if(device->device_type == XRT_DEVICE_TYPE_HMD) continue;
+			if(registered_devices.count(device)) continue;
+			new_device = device;
+			break;
+		}
 	}
 
-	return nullptr;
+	if(new_device == nullptr) {
+		CTX_WARN("No device found for index %u", index);
+		return nullptr;
+	}
+
+	add_device(new_device, false);
+
+	return new_device;
 }
 
 bool
