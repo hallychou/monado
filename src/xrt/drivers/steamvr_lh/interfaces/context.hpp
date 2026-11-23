@@ -99,8 +99,6 @@ private:
 	std::unordered_set<xrt_device *> registered_devices = {};
 	std::unordered_set<xrt_device *> internal_devices = {};
 
-	std::unordered_map<xrt_device *, std::unordered_map<vr::ETrackedDeviceProperty, Property>> external_properties;
-
 	vr::EVRInputError
 	create_component_common(vr::PropertyContainerHandle_t container,
 	                        const char *name,

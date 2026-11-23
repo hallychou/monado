@@ -1141,47 +1141,65 @@ Context::handle_external_read_properties(xrt_device *device, vr::PropertyRead_t 
 vr::ETrackedPropertyError
 Context::handle_external_read_property(xrt_device *device, vr::PropertyRead_t &prop)
 {
-	// CTX_DEBUG("Device %s: Reading external property %d", device->str, prop.prop);
+	// helper template to set a property value and its size in the buffer, and return success
+	auto set_property_value = [&](auto value, vr::PropertyTypeTag_t tag) {
+		prop.unTag = tag;
+		prop.unRequiredBufferSize = sizeof(value);
+		if (prop.pvBuffer == nullptr || prop.unBufferSize < sizeof(value)) {
+			prop.eError = vr::ETrackedPropertyError::TrackedProp_BufferTooSmall;
+		} else {
+			std::memcpy(prop.pvBuffer, &value, sizeof(value));
+			prop.eError = vr::ETrackedPropertyError::TrackedProp_Success;
+		}
+	};
 
-	if(external_properties.count(device) == 0) {
-		external_properties.emplace(device, std::unordered_map<vr::ETrackedDeviceProperty, Property>());
-	}
-	std::unordered_map<vr::ETrackedDeviceProperty, Property> &device_properties = external_properties[device];
 
 	switch (prop.prop) {
-		case vr::ETrackedDeviceProperty::Prop_DeviceClass_Int32:
-			if(device_properties.count(prop.prop) == 0) {
-				vr::ETrackedDeviceClass value = vr::ETrackedDeviceClass::TrackedDeviceClass_Invalid;
-				if(device->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER) {
-					value = vr::ETrackedDeviceClass::TrackedDeviceClass_Controller;
-				} else if(device->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER) {
-					value = vr::ETrackedDeviceClass::TrackedDeviceClass_Controller;
-				} else if(device->device_type == XRT_DEVICE_TYPE_GENERIC_TRACKER) {
-					value = vr::ETrackedDeviceClass::TrackedDeviceClass_GenericTracker;
-				} else if(device->device_type == XRT_DEVICE_TYPE_HMD) {
-					value = vr::ETrackedDeviceClass::TrackedDeviceClass_HMD;
+		case vr::ETrackedDeviceProperty::Prop_DeviceClass_Int32: {
+				vr::ETrackedDeviceClass value;
+				switch(device->device_type) {
+					case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER:
+					case XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER:
+					case XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER:
+					case XRT_DEVICE_TYPE_GAMEPAD:
+						value = vr::ETrackedDeviceClass::TrackedDeviceClass_Controller;
+						break;
+					case XRT_DEVICE_TYPE_GENERIC_TRACKER:
+						value = vr::ETrackedDeviceClass::TrackedDeviceClass_GenericTracker;
+						break;
+					case XRT_DEVICE_TYPE_HMD:
+						value = vr::ETrackedDeviceClass::TrackedDeviceClass_HMD;
+						break;
+					default:
+						value = vr::ETrackedDeviceClass::TrackedDeviceClass_Invalid;
 				}
 				CTX_DEBUG("Device %s: External property Prop_DeviceClass_Int32 is %d", device->str, value);
-				device_properties.emplace(prop.prop, Property(vr::k_unInt32PropertyTag, &value, (uint32_t)sizeof(int32_t)));
+				set_property_value(value, vr::k_unInt32PropertyTag);
 			}
 			break;
-		case vr::ETrackedDeviceProperty::Prop_SerialNumber_String:
-			if(device_properties.count(prop.prop) == 0) {
+		case vr::ETrackedDeviceProperty::Prop_SerialNumber_String: {
 				std::string serial = device->serial;
 				CTX_DEBUG("Device %s: External property Prop_SerialNumber_String is %s", device->str, serial.c_str());
-				device_properties.emplace(prop.prop, Property(vr::k_unStringPropertyTag, (void *)serial.c_str(), (uint32_t)(serial.size() + 1)));
+				set_property_value(serial.c_str(), vr::k_unStringPropertyTag);
 			}
 			break;
-		case vr::ETrackedDeviceProperty::Prop_ControllerRoleHint_Int32:
-			if(device_properties.count(prop.prop) == 0) {
-				vr::ETrackedControllerRole value = vr::ETrackedControllerRole::TrackedControllerRole_Invalid;
-				if (device->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER) {
-					value = vr::ETrackedControllerRole::TrackedControllerRole_LeftHand;
-				} else if (device->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER) {
-					value = vr::ETrackedControllerRole::TrackedControllerRole_RightHand;
+		case vr::ETrackedDeviceProperty::Prop_ControllerRoleHint_Int32: {
+				vr::ETrackedControllerRole value;
+				switch(device->device_type) {
+					case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER:
+						value = vr::ETrackedControllerRole::TrackedControllerRole_LeftHand;
+						break;
+					case XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER:
+						value = vr::ETrackedControllerRole::TrackedControllerRole_RightHand;
+						break;
+					case XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER:
+						value = vr::ETrackedControllerRole::TrackedControllerRole_OptOut;
+						break;
+					default:
+						value = vr::ETrackedControllerRole::TrackedControllerRole_Invalid;
 				}
 				CTX_DEBUG("Device %s: External property Prop_ControllerRoleHint_Int32 is %d", device->str, value);
-				device_properties.emplace(prop.prop, Property(vr::k_unInt32PropertyTag, &value, (uint32_t)sizeof(int32_t)));
+				set_property_value(value, vr::k_unInt32PropertyTag);
 			}
 			break;
 		case 10987: // VendorSpecific_Standable_987
@@ -1189,20 +1207,6 @@ Context::handle_external_read_property(xrt_device *device, vr::PropertyRead_t &p
 		default:
 			CTX_WARN("Unsupported property type %u for external device %s (%s)", prop.prop, device->str, device->serial);
 			prop.eError = vr::ETrackedPropertyError::TrackedProp_UnknownProperty;
-	}
-
-	if(device_properties.count(prop.prop)) {
-		Property property = device_properties.at(prop.prop);
-		prop.unTag = property.tag;
-		prop.unRequiredBufferSize = property.buffer.size();
-		if (prop.pvBuffer == nullptr || prop.unBufferSize < property.buffer.size()) {
-			prop.eError = vr::ETrackedPropertyError::TrackedProp_BufferTooSmall;
-			return prop.eError;
-		}
-		std::memcpy(prop.pvBuffer, property.buffer.data(), property.buffer.size());
-		prop.eError = vr::ETrackedPropertyError::TrackedProp_Success;
-	} else {
-		prop.eError = vr::ETrackedPropertyError::TrackedProp_UnknownProperty;
 	}
 
 	return prop.eError;
