@@ -400,7 +400,6 @@ HmdDevice::HmdDevice(const DeviceBuilder &builder) : Device(builder)
 {
 	this->name = XRT_DEVICE_GENERIC_HMD;
 	this->device_type = XRT_DEVICE_TYPE_HMD;
-	this->container_handle = 0;
 
 	this->supported.compositor_info = true;
 
@@ -417,10 +416,9 @@ HmdDevice::HmdDevice(const DeviceBuilder &builder) : Device(builder)
 #undef SETUP_MEMBER_FUNC
 }
 
-ControllerDevice::ControllerDevice(vr::PropertyContainerHandle_t handle, const DeviceBuilder &builder) : Device(builder)
+ControllerDevice::ControllerDevice(const DeviceBuilder &builder) : Device(builder)
 {
 	this->device_type = XRT_DEVICE_TYPE_UNKNOWN;
-	this->container_handle = handle;
 
 	this->xrt_device::get_hand_tracking =
 	    &device_bouncer<ControllerDevice, &ControllerDevice::get_hand_tracking, xrt_result_t>;
@@ -1146,7 +1144,7 @@ ControllerDevice::set_output(xrt_output_name name, const xrt_output_value *value
 	if (vib.amplitude == 0.0)
 		return XRT_SUCCESS;
 	vr::VREvent_HapticVibration_t event;
-	event.containerHandle = container_handle + 1;
+	event.containerHandle = ctx->device_to_prop_container(this);
 	event.componentHandle = haptic_handle;
 	event.fDurationSeconds = (float)vib.duration_ns / 1e9f;
 	// 0.0f in OpenXR means let the driver determine a frequency, but

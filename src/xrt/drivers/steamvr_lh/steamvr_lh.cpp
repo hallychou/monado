@@ -259,17 +259,10 @@ Context::GetDriverHandle()
 bool
 Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 {
+	// Publish the device before activating it: the driver writes its properties and creates its
+	// input components from within Activate, and those callbacks have to be able to find it.
 	auto *hmd = new HmdDevice(DeviceBuilder{this->shared_from_this(), driver, serial, this->chaperone_info_path});
-
-	{
-		// Publish the device before activating it: the driver writes its properties and creates its
-		// input components from within Activate, and those callbacks have to be able to find it.
-		std::lock_guard lk(this->devices_mut);
-		this->hmd = hmd;
-		devices[0] = hmd;
-		registered_devices.insert(hmd);
-		internal_devices.insert(hmd);
-	}
+	size_t device_idx = add_device(hmd, true);
 
 #define VERIFY(expr, msg)                                                                                              \
 	if (!(expr)) {                                                                                                 \
@@ -283,7 +276,7 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 	}
 	// Never call into the driver with `devices_mut` held: it takes its own locks here, and calls back into
 	// us (WritePropertyBatch, TrackedDevicePoseUpdated, ...) from its own threads while holding them.
-	vr::EVRInitError err = driver->Activate(0);
+	vr::EVRInitError err = driver->Activate(device_idx);
 	VERIFY(err == vr::VRInitError_None, std::to_string(err).c_str());
 
 	auto *display = static_cast<vr::IVRDisplayComponent *>(driver->GetComponent(vr::IVRDisplayComponent_Version));
@@ -348,39 +341,11 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 bool
 Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 {
-	size_t controller_idx = 0;
-	size_t device_idx = 0;
-	ControllerDevice *device = nullptr;
-
-	{
-		std::lock_guard lk(this->devices_mut);
-
-		// Find the first available slot for a new controller
-		for (; controller_idx < MAX_CONTROLLERS; ++controller_idx) {
-			if (!controller[controller_idx])
-				break;
-		}
-
-		// Check if we've exceeded the maximum number of controllers
-		if (controller_idx == MAX_CONTROLLERS) {
-			CTX_WARN("Attempted to activate more than %zu controllers - this is unsupported",
-			         MAX_CONTROLLERS);
-			return false;
-		}
-
-		// Create the new controller and claim its slot before activating it: the driver writes its
-		// properties and creates its input components from within Activate, and those callbacks have to
-		// be able to find it.
-		get_devices(); // Ensure devices vector is up to date
-		device_idx = devices.size();
-		CTX_DEBUG("Creating controller device %s at index %zu (controller slot %zu)", serial, device_idx, controller_idx);
-		device = new ControllerDevice(
-		    device_idx, DeviceBuilder{this->shared_from_this(), driver, serial, this->chaperone_info_path});
-		controller[controller_idx] = device;
-		devices.push_back(device);
-		registered_devices.insert(device);
-		internal_devices.insert(device);
-	}
+	// Create the new controller and claim its slot before activating it: the driver writes its
+	// properties and creates its input components from within Activate, and those callbacks have to
+	// be able to find it.
+	ControllerDevice *device = new ControllerDevice(DeviceBuilder{this->shared_from_this(), driver, serial, this->chaperone_info_path});
+	size_t device_idx = add_device(device, true);
 
 	// Never call into the driver with `devices_mut` held: it takes its own locks here, and calls back into
 	// us (WritePropertyBatch, TrackedDevicePoseUpdated, ...) from its own threads while holding them.
@@ -492,15 +457,19 @@ Context::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t
 {
 	assert(sizeof(newPose) == unPoseStructSize);
 
-	std::lock_guard lk(this->devices_mut);
+	xrt_device *device = get_device(unWhichDevice);
 
-	Device *device = static_cast<Device *>(get_devices()[unWhichDevice]);
-	if (!device || this->internal_devices.count(device) == 0) {
+	if (!device) {
 		CTX_WARN("TrackedDevicePoseUpdated called for unknown device index %u", unWhichDevice);
 		return;
 	}
 
-	device->update_pose(newPose);
+	if(this->internal_devices.count(device) == 0) {
+		CTX_WARN("TrackedDevicePoseUpdated called for device with index %u that is not owned by this context", unWhichDevice);
+		return;
+	}
+
+	static_cast<Device *>(device)->update_pose(newPose);
 }
 
 void
@@ -632,33 +601,25 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 		//            space.pose.orientation.w);
 	};
 
-	std::vector<xrt_device *> devices = get_devices();
-
-	for (size_t i = 0; i < devices.size() && i < unTrackedDevicePoseArrayCount; ++i) {
-		if(devices[i] == nullptr) {
-			pTrackedDevicePoseArray[i].eTrackingResult = vr::TrackingResult_Uninitialized;
-			pTrackedDevicePoseArray[i].bPoseIsValid = false;
-			pTrackedDevicePoseArray[i].bDeviceIsConnected = false;
-			U_LOG_IFL_W(log_level, "Device at index %zu is null", i);
-			continue;
-		}
-		if(devices[i]->device_type == XRT_DEVICE_TYPE_HMD) {
-			// CTX_DEBUG("Setting pose for device %d %s (%s) as HMD", i, devices[i]->str, devices[i]->serial);
-			set_pose(i, XRT_INPUT_GENERIC_HEAD_POSE, devices[i]);
-		} else if(devices[i]->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
-			devices[i]->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER || 
-			devices[i]->device_type == XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER) {
-			// CTX_DEBUG("Setting pose for device %d %s (%s) as controller", i, devices[i]->str, devices[i]->serial);
-			set_pose(i, XRT_INPUT_GENERIC_PALM_POSE, devices[i]);
-		} else if(devices[i]->device_type == XRT_DEVICE_TYPE_UNKNOWN) {
-			// CTX_DEBUG("Setting pose for device %d %s (%s) as local space pose", i, devices[i]->str, devices[i]->serial);
-			set_pose(i, XRT_INPUT_GENERIC_LOCAL_SPACE_POSE, devices[i]);
-		} else if(devices[i]->device_type == XRT_DEVICE_TYPE_GENERIC_TRACKER) {
-			// CTX_DEBUG("Setting pose for device %d %s (%s) as generic tracker", i, devices[i]->str, devices[i]->serial);
-			set_pose(i, XRT_INPUT_GENERIC_TRACKER_POSE, devices[i]);
-		} else {
-			// CTX_WARN("Device at index %zu has unknown device type %d, skipping pose update", i, devices[i]->device_type);
-			continue;
+	for (size_t i = 0; i < unTrackedDevicePoseArrayCount; ++i) {
+		xrt_device * device = get_device(i);
+		if(device != nullptr) {
+			switch(device->device_type) {
+				case XRT_DEVICE_TYPE_HMD:
+					set_pose(i, XRT_INPUT_GENERIC_HEAD_POSE, device);
+					break;
+				case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER:
+				case XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER:
+				case XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER:
+					set_pose(i, XRT_INPUT_GENERIC_PALM_POSE, device);
+					break;
+				case XRT_DEVICE_TYPE_GENERIC_TRACKER:
+					set_pose(i, XRT_INPUT_GENERIC_TRACKER_POSE, device);
+					break;
+				default:
+					set_pose(i, XRT_INPUT_GENERIC_LOCAL_SPACE_POSE, device);
+					break;
+			}
 		}
 	}
 }
@@ -1027,13 +988,49 @@ Context::GetPropErrorNameFromEnum(vr::ETrackedPropertyError error)
 	return nullptr;
 }
 
+vr::TrackedDeviceIndex_t
+Context::add_device(xrt_device * device, bool is_internal) {
+	std::lock_guard lk(this->devices_mut);
 
+	devices.push_back(device);
+	registered_devices.insert(device);
+	if (is_internal) {
+		internal_devices.insert(device);
 
-std::vector<xrt_device *>
-Context::get_devices()
-{
-	if(this->xsysd->static_roles.head != nullptr) {
-		xrt_device *device = this->xsysd->static_roles.head;
+		if(device->device_type == XRT_DEVICE_TYPE_HMD) {
+			if (hmd != nullptr) {
+				CTX_WARN("Attempted to add a second HMD device - this is unsupported");
+			} {
+				hmd = static_cast<HmdDevice *>(device);
+			}
+		}else {
+			size_t controller_idx = 0;
+			// Find the first available slot for a new controller
+			for (; controller_idx < MAX_CONTROLLERS; ++controller_idx) {
+				if (!controller[controller_idx])
+					break;
+			}
+
+			// Check if we've exceeded the maximum number of controllers
+			if (controller_idx == MAX_CONTROLLERS) {
+				CTX_WARN("Attempted to activate more than %zu controllers - this is unsupported",
+							MAX_CONTROLLERS);
+			}else {
+				controller[controller_idx] = static_cast<ControllerDevice *>(device);
+			}
+		}
+	}
+
+	CTX_INFO("Added device %s (%s) [%s] to devices[%zu]", device->str, device->serial, is_internal ? "internal" : "external", devices.size() - 1);
+	return devices.size() - 1;
+}
+
+xrt_device *
+Context::get_device(vr::TrackedDeviceIndex_t index) {
+	std::lock_guard lk(this->devices_mut);
+
+	if(index == vr::k_unTrackedDeviceIndex_Hmd) {
+		xrt_device * device = this->xsysd->static_roles.head;
 		if(devices[0] != device) {
 			if(devices[0] != nullptr) {
 				registered_devices.erase(devices[0]);
@@ -1043,32 +1040,72 @@ Context::get_devices()
 			registered_devices.insert(device);
 			CTX_INFO("Added head device %s (%s) to devices[0]", device->str, device->serial);
 		}
+		return device;
+	}
+
+	if(index < devices.size() && devices[index] != nullptr) {
+		return devices[index];
 	}
 
 	for (uint32_t i = 0; i < this->xsysd->static_xdev_count; ++i) {
-		if(this->xsysd->static_xdevs[i]->device_type == XRT_DEVICE_TYPE_HMD) continue;
 		xrt_device *device = this->xsysd->static_xdevs[i];
+		if(device->device_type == XRT_DEVICE_TYPE_HMD) continue;
 		if(registered_devices.count(device)) continue;
-		devices.push_back(device);
-		registered_devices.insert(device);
-		CTX_INFO("Added device %s (%s) to devices[%zu]", device->str, device->serial, devices.size() - 1);
+		add_device(device, false);
+		return device;
 	}
 
-	return devices;
+	return nullptr;
+}
+
+bool
+Context::is_internal_device(xrt_device *device) {
+	std::lock_guard lk(this->devices_mut);
+
+	return internal_devices.count(device) > 0;
+}
+
+vr::TrackedDeviceIndex_t
+Context::get_device_index(xrt_device * device) {
+	std::lock_guard lk(this->devices_mut);
+
+	for (size_t i = 0; i < devices.size(); ++i) {
+		if (devices[i] == device) {
+			return i;
+		}
+	}
+	return vr::k_unTrackedDeviceIndexInvalid;
 }
 
 xrt_device *
 Context::prop_container_to_device(vr::PropertyContainerHandle_t handle)
 {
-	std::vector<xrt_device *> devices = get_devices();
+	if (handle == vr::k_ulInvalidPropertyContainer) {
+		return nullptr;
+	}
 
-	if (handle != vr::k_ulInvalidPropertyContainer && handle <= MAX_CONTROLLERS && devices.size() >= handle) {
-		return devices[handle - 1];
+	xrt_device *device = get_device(handle);
+	if (device != nullptr) {
+		return device;
 	}
 
 	CTX_WARN("Invalid property container handle %u for device lookup", handle);
 
 	return nullptr;
+}
+
+vr::PropertyContainerHandle_t
+Context::device_to_prop_container(xrt_device *device)
+{
+	vr::TrackedDeviceIndex_t index = get_device_index(device);
+
+	if(index != vr::k_unTrackedDeviceIndexInvalid) {
+		return index + 1;
+	}
+
+	CTX_WARN("Device %s (%s) not found in devices for property container lookup", device->str, device->serial);
+
+	return vr::k_ulInvalidPropertyContainer;
 }
 
 vr::ETrackedPropertyError
@@ -1156,18 +1193,12 @@ Context::handle_external_read_property(xrt_device *device, vr::PropertyRead_t &p
 vr::PropertyContainerHandle_t
 Context::TrackedDeviceToPropertyContainer(vr::TrackedDeviceIndex_t nDevice)
 {
-	std::vector<xrt_device *> devices = get_devices();
-	if (nDevice <= MAX_CONTROLLERS && devices.size() > nDevice) {
-		if(devices[nDevice] == nullptr) {
-			CTX_WARN("Device at index %u is null", nDevice);
-			return vr::k_ulInvalidPropertyContainer;
-		}
-		return nDevice + 1;
+	xrt_device *device = get_device(nDevice);
+	if(device == nullptr) {
+		CTX_WARN("Invalid device index %u for property container lookup", nDevice);
+		return vr::k_ulInvalidPropertyContainer;
 	}
-
-	CTX_WARN("Invalid device index %u for property container lookup", nDevice);
-
-	return vr::k_ulInvalidPropertyContainer;
+	return device_to_prop_container(device);
 }
 
 void

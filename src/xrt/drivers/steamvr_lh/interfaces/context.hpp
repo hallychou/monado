@@ -44,6 +44,7 @@ public:
 struct xrt_input;
 class Device;
 class ControllerDevice;
+class HmdDevice;
 class Context final : public xrt_tracking_origin,
                       public vr::IVRDriverContext,
                       public vr::IVRServerDriverHost,
@@ -97,16 +98,6 @@ private:
 	std::vector<xrt_device *> devices = { nullptr }; // devices[0] is reserved for the head device
 	std::unordered_set<xrt_device *> registered_devices = {};
 	std::unordered_set<xrt_device *> internal_devices = {};
-	std::vector<xrt_device *> get_devices();
-
-	xrt_device *
-	prop_container_to_device(vr::PropertyContainerHandle_t handle);
-
-	vr::ETrackedPropertyError
-	handle_external_read_properties(xrt_device *device, vr::PropertyRead_t *batch, uint32_t count);
-
-	vr::ETrackedPropertyError
-	handle_external_read_property(xrt_device *device, vr::PropertyRead_t &prop);
 
 	std::unordered_map<xrt_device *, std::unordered_map<vr::ETrackedDeviceProperty, Property>> external_properties;
 
@@ -144,6 +135,23 @@ public:
 
 	void
 	extend_discover();
+
+	xrt_device * get_device(vr::TrackedDeviceIndex_t index);
+	vr::TrackedDeviceIndex_t get_device_index(xrt_device * device);
+	vr::TrackedDeviceIndex_t add_device(xrt_device * device, bool is_internal = true);
+	bool is_internal_device(xrt_device * device);
+
+	xrt_device *
+	prop_container_to_device(vr::PropertyContainerHandle_t handle);
+
+	vr::PropertyContainerHandle_t
+	device_to_prop_container(xrt_device *device);
+
+	vr::ETrackedPropertyError
+	handle_external_read_properties(xrt_device *device, vr::PropertyRead_t *batch, uint32_t count);
+
+	vr::ETrackedPropertyError
+	handle_external_read_property(xrt_device *device, vr::PropertyRead_t &prop);
 
 private:
 	std::condition_variable discover_cv;

@@ -106,7 +106,6 @@ public:
 protected:
 	Device(const DeviceBuilder &builder);
 	std::shared_ptr<Context> ctx;
-	vr::PropertyContainerHandle_t container_handle{0};
 	std::unordered_map<vr::ETrackedDeviceProperty, Property> properties;
 	std::unordered_map<std::string_view, xrt_input *> inputs_map;
 	std::vector<xrt_input> inputs_vec;
@@ -258,7 +257,7 @@ private:
 class ControllerDevice : public Device
 {
 public:
-	ControllerDevice(vr::PropertyContainerHandle_t container_handle, const DeviceBuilder &builder);
+	ControllerDevice(const DeviceBuilder &builder);
 
 	xrt_result_t
 	set_output(xrt_output_name name, const xrt_output_value *value);
