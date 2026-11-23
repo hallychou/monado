@@ -620,7 +620,6 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 		if(space.relation_flags & XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT) {
 			pTrackedDevicePoseArray[i].vAngularVelocity = {space.angular_velocity.x, space.angular_velocity.y, space.angular_velocity.z};
 		}
-		pTrackedDevicePoseArray[i].bDeviceIsConnected = true;
 
 		// U_LOG_IFL_T(log_level, "Pose for device %d %s (%s): pos=(%.2f, %.2f, %.2f) rot=(%.2f, %.2f, %.2f, %.2f)", i, device->str, device->serial,
 		//            space.pose.position.x, space.pose.position.y, space.pose.position.z,
@@ -644,9 +643,9 @@ Context::GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,
 					set_pose(i, XRT_INPUT_GENERIC_TRACKER_POSE, device);
 					break;
 				default:
-					set_pose(i, XRT_INPUT_GENERIC_LOCAL_SPACE_POSE, device);
 					break;
 			}
+			pTrackedDevicePoseArray[i].bDeviceIsConnected = true;
 		}
 	}
 }
