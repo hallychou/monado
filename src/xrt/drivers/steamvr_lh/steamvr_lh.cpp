@@ -172,17 +172,9 @@ Context::create(const std::string &driver_path,
 	c->type = XRT_TRACKING_TYPE_LIGHTHOUSE;
 	c->initial_offset = XRT_POSE_IDENTITY;
 
-	if(xsysd->static_roles.head) {
-		xrt_device * device = xsysd->static_roles.head;
-		c->devices[0] = device;
-		c->registered_devices.insert(device);
-		U_LOG_IFL_I(c->log_level, "Added head device %s (%s) to devices[0]", device->str, device->serial);
-	}
-
 	for (uint32_t i = 0; i < xsysd->static_xdev_count; ++i) {
 		xrt_device *device = xsysd->static_xdevs[i];
-		if(device->device_type == XRT_DEVICE_TYPE_HMD) continue;
-		if(c->registered_devices.count(device)) continue;
+		if(device->device_type == XRT_DEVICE_TYPE_HMD && device != xsysd->static_roles.head) continue;
 		c->add_device(device, false);
 	}
 
@@ -1016,9 +1008,20 @@ Context::GetPropErrorNameFromEnum(vr::ETrackedPropertyError error)
 
 vr::TrackedDeviceIndex_t
 Context::add_device(xrt_device * device, bool is_internal) {
-	devices.push_back(device);
+	vr::TrackedDeviceIndex_t index = vr::k_unTrackedDeviceIndexInvalid;
+
+	if(device->device_type == XRT_DEVICE_TYPE_HMD) {
+		if(get_device(0) != nullptr) {
+			CTX_WARN("Attempted to add a second HMD device - this is unsupported");
+			return vr::k_unTrackedDeviceIndexInvalid;
+		}
+		devices[0] = device;
+		index = 0; // HMD is always at index 0
+	} else {
+		devices.push_back(device);
+		index = devices.size() - 1;
+	}
 	registered_devices.insert(device);
-	vr::TrackedDeviceIndex_t index = devices.size() - 1;
 	if (is_internal) {
 		internal_devices.insert(device);
 
@@ -1027,7 +1030,6 @@ Context::add_device(xrt_device * device, bool is_internal) {
 				CTX_WARN("Attempted to add a second HMD device - this is unsupported");
 			} else {
 				hmd = static_cast<HmdDevice *>(device);
-				index = 0; // HMD is always at index 0
 			}
 		}else {
 			size_t controller_idx = 0;
@@ -1055,7 +1057,7 @@ xrt_device *
 Context::get_device(vr::TrackedDeviceIndex_t index) {
 	if(index == vr::k_unTrackedDeviceIndex_Hmd) {
 		xrt_device * device = this->xsysd->static_roles.head;
-		if(devices[0] != device) {
+		if(device && devices[0] != device) {
 			if(devices[0] != nullptr) {
 				registered_devices.erase(devices[0]);
 				CTX_INFO("Removed head device %s (%s) from devices[0]", devices[0]->str, devices[0]->serial);
@@ -1064,7 +1066,6 @@ Context::get_device(vr::TrackedDeviceIndex_t index) {
 			registered_devices.insert(device);
 			CTX_INFO("Added head device %s (%s) to devices[0]", device->str, device->serial);
 		}
-		return device;
 	}
 
 	if(index < devices.size() && devices[index] != nullptr) {
@@ -1364,8 +1365,6 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 
 	// go through the driver directories and create a Context for each one, and add it to the drivers vector
 
-	std::vector<std::shared_ptr<Context>> driver_contexts = {};
-
 	// a map of driver name to driver directory
 	std::map<std::string, std::filesystem::path> driver_name_to_directory = {};
 	std::vector<std::string> enabled_drivers = {};
@@ -1410,6 +1409,8 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 	pimax_p2_device *pdev = nullptr;
 	pimax_p2_init(&pdev);
 #endif
+
+	std::vector<std::shared_ptr<Context>> driver_contexts = {};
 
 	for (const auto &driver_name : enabled_drivers) {
 		auto driver_dir = driver_name_to_directory[driver_name];
@@ -1468,20 +1469,6 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 
 		U_LOG_IFL_I(level, "Device search time complete for driver %s.", driver_name.c_str());
 
-		driver_contexts.push_back(ctx);
-	}
-
-	if (driver_contexts.size() == 0) {
-		U_LOG_IFL_W(level, "No drivers found!");
-		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
-	}
-
-	U_LOG_IFL_I(level, "Loaded and initialized %zu drivers: ", driver_contexts.size());
-	for (const auto &ctx : driver_contexts) {
-		U_LOG_IFL_I(level, " - %s", ctx->driver_name.c_str());
-	}
-
-	for (auto &ctx : driver_contexts) {
 		std::lock_guard lk(ctx->devices_mut);
 		ctx->in_setup = false;
 
@@ -1508,6 +1495,18 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsys
 				xsysd->static_xdevs[xsysd->static_xdev_count++] = ctx->controller[i];
 			}
 		}
+
+		driver_contexts.push_back(ctx);
+	}
+
+	if (driver_contexts.size() == 0) {
+		U_LOG_IFL_W(level, "No drivers found!");
+		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
+	}
+
+	U_LOG_IFL_I(level, "Loaded and initialized %zu drivers: ", driver_contexts.size());
+	for (const auto &ctx : driver_contexts) {
+		U_LOG_IFL_I(level, " - %s", ctx->driver_name.c_str());
 	}
 
 	if (xsysd->static_xdev_count == 0) {
