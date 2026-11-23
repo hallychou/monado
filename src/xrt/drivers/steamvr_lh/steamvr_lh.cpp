@@ -1018,6 +1018,7 @@ vr::TrackedDeviceIndex_t
 Context::add_device(xrt_device * device, bool is_internal) {
 	devices.push_back(device);
 	registered_devices.insert(device);
+	vr::TrackedDeviceIndex_t index = devices.size() - 1;
 	if (is_internal) {
 		internal_devices.insert(device);
 
@@ -1026,6 +1027,7 @@ Context::add_device(xrt_device * device, bool is_internal) {
 				CTX_WARN("Attempted to add a second HMD device - this is unsupported");
 			} else {
 				hmd = static_cast<HmdDevice *>(device);
+				index = 0; // HMD is always at index 0
 			}
 		}else {
 			size_t controller_idx = 0;
@@ -1045,8 +1047,8 @@ Context::add_device(xrt_device * device, bool is_internal) {
 		}
 	}
 
-	CTX_INFO("Added device %s (%s) [%s] to devices[%zu]", device->str, device->serial, is_internal ? "internal" : "external", devices.size() - 1);
-	return devices.size() - 1;
+	CTX_INFO("Added device %s (%s) [%s] to devices[%zu]", device->str, device->serial, is_internal ? "internal" : "external", index);
+	return index;
 }
 
 xrt_device *
