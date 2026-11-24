@@ -46,28 +46,19 @@ struct DeviceBuilder
 	ContextPtr ctx;
 	vr::ITrackedDeviceServerDriver *driver;
 	const char *serial;
-	const std::string &steam_install;
+	const std::string &chaperone_info_path;
 
 	DeviceBuilder(const ContextPtr &p_ctx,
 	              vr::ITrackedDeviceServerDriver *p_driver,
 	              const char *p_serial,
-	              const std::string &p_stream_install)
-	    : ctx{p_ctx}, driver{p_driver}, serial{p_serial}, steam_install{p_stream_install}
+	              const std::string &p_chaperone_info_path)
+	    : ctx{p_ctx}, driver{p_driver}, serial{p_serial}, chaperone_info_path{p_chaperone_info_path}
 	{}
 
 	// no copies!
 	DeviceBuilder(const DeviceBuilder &) = delete;
 	DeviceBuilder
 	operator=(const DeviceBuilder &) = delete;
-};
-
-class Property
-{
-public:
-	Property(vr::PropertyTypeTag_t tag, void *buffer, uint32_t bufferSize);
-
-	vr::PropertyTypeTag_t tag;
-	std::vector<uint8_t> buffer;
 };
 
 class Device : public xrt_device
@@ -115,7 +106,6 @@ public:
 protected:
 	Device(const DeviceBuilder &builder);
 	std::shared_ptr<Context> ctx;
-	vr::PropertyContainerHandle_t container_handle{0};
 	std::unordered_map<vr::ETrackedDeviceProperty, Property> properties;
 	std::unordered_map<std::string_view, xrt_input *> inputs_map;
 	std::vector<xrt_input> inputs_vec;
@@ -267,7 +257,7 @@ private:
 class ControllerDevice : public Device
 {
 public:
-	ControllerDevice(vr::PropertyContainerHandle_t container_handle, const DeviceBuilder &builder);
+	ControllerDevice(const DeviceBuilder &builder);
 
 	xrt_result_t
 	set_output(xrt_output_name name, const xrt_output_value *value);

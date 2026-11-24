@@ -1265,6 +1265,9 @@ enum xrt_input_name
 	XRT_INPUT_PSSENSE_THUMBSTICK_TOUCH                          = XRT_INPUT_NAME(0x0316, BOOLEAN),
 	XRT_INPUT_PSSENSE_GRIP_POSE                                 = XRT_INPUT_NAME(0x0317, POSE),
 	XRT_INPUT_PSSENSE_AIM_POSE                                  = XRT_INPUT_NAME(0x0318, POSE),
+	XRT_INPUT_PSSENSE_PS_TOUCH                                  = XRT_INPUT_NAME(0x0319, BOOLEAN),
+	XRT_INPUT_PSSENSE_SHARE_TOUCH                               = XRT_INPUT_NAME(0x0320, BOOLEAN),
+	XRT_INPUT_PSSENSE_OPTIONS_TOUCH                             = XRT_INPUT_NAME(0x0321, BOOLEAN),
 
 	// XR_EXT_hand_interaction
 	XRT_INPUT_HAND_PINCH_POSE                                   = XRT_INPUT_NAME(0x0401, POSE),

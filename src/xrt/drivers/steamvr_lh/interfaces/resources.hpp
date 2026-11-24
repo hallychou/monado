@@ -11,15 +11,18 @@
 
 #include "openvr_driver.h"
 #include "util/u_logging.h"
+#include <map>
+#include <filesystem>
 
 class Resources : public vr::IVRResources
 {
 	const u_logging_level log_level;
 	const std::string steamvr_install;
+	const std::map<std::string, std::filesystem::path> &driver_name_to_directory;
 
 public:
-	Resources(u_logging_level l, const std::string &steamvr_install)
-	    : log_level(l), steamvr_install(steamvr_install){};
+	Resources(u_logging_level l, const std::string &steamvr_install, const std::map<std::string, std::filesystem::path> &driver_name_to_directory)
+	    : log_level(l), steamvr_install(steamvr_install), driver_name_to_directory(driver_name_to_directory){};
 	// ------------------------------------
 	// Shared Resource Methods
 	// ------------------------------------

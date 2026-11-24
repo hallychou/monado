@@ -65,6 +65,7 @@ DEBUG_GET_ONCE_LOG_OPTION(svr_log, "STEAMVR_LH_LOG", U_LOGGING_INFO)
  */
 
 DEBUG_GET_ONCE_BOOL_OPTION(steamvr_enable, "STEAMVR_LH_ENABLE", false)
+DEBUG_GET_ONCE_BOOL_OPTION(steamvr_force, "STEAMVR_LH_FORCE", false)
 
 static const char *driver_list[] = {
     "steamvr_lh",
@@ -94,13 +95,25 @@ steamvr_estimate_system(struct xrt_builder *xb,
 	// Currently no built in support for hand tracking.
 	bool have_hand_tracking = false;
 
+	U_LOG_IFL_D(debug_get_log_option_svr_log(), "SteamVR enabled: %d, forced: %d", debug_get_bool_option_steamvr_enable(),
+	             debug_get_bool_option_steamvr_force());
+
 	if (debug_get_bool_option_steamvr_enable()) {
-		return vive_builder_estimate( //
-		    xp,                       // xp
-		    true,                     // have_6dof
-		    have_hand_tracking,       // have_hand_tracking
-		    &svrb->is_valve_index,    // out_have_valve_index
-		    estimate);                // out_estimate
+		if (debug_get_bool_option_steamvr_force()) {
+			estimate->certain.head = true;
+			estimate->maybe.dof6 = true;
+			estimate->maybe.left = true;
+			estimate->maybe.right = true;
+			U_LOG_IFL_D(debug_get_log_option_svr_log(), "SteamVR forced head without device probing, returning success");
+			return XRT_SUCCESS;
+		} else {
+			return vive_builder_estimate( //
+				xp,                       // xp
+				true,                     // have_6dof
+				have_hand_tracking,       // have_hand_tracking
+				&svrb->is_valve_index,    // out_have_valve_index
+				estimate);                // out_estimate
+		}
 	} else {
 		return XRT_SUCCESS;
 	}

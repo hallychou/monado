@@ -25,13 +25,37 @@ DEBUG_GET_ONCE_BOOL_OPTION(lh_standby_on_exit, "LH_STANDBY_ON_EXIT", false)
 
 using xrt::auxiliary::util::json::JSONNode;
 
-Settings::Settings(const std::string &steam_install, const std::string &steamvr_install, Context *context)
-    : steamvr_settings(JSONNode::loadFromFile(steam_install + "/config/steamvr.vrsettings")),
+Settings::Settings(const std::string &driver_path, const std::string &user_settings_path, Context *context)
+    : steamvr_settings(JSONNode::loadFromFile(user_settings_path)),
       driver_defaults(
-          JSONNode::loadFromFile(steamvr_install + "/drivers/lighthouse/resources/settings/default.vrsettings")),
+          JSONNode::loadFromFile(driver_path + "/resources/settings/default.vrsettings")),
       context{context}
 {
 	analog_gain = debug_get_float_option_lh_default_brightness();
+}
+
+std::optional<JSONNode> Settings::get_settings_value(std::string section, std::string key)
+{
+	auto get_setting = [section, key](const JSONNode &root) -> std::optional<JSONNode> {
+		if(!root.isValid() || !root.isObject())
+			return std::nullopt;
+		
+		if (root.hasKey(section) == false)
+			return std::nullopt;
+
+		JSONNode section_node = root[section];
+
+		if (!section_node.isObject() || section_node.hasKey(key) == false)
+			return std::nullopt;
+
+		return std::optional(section_node[key]);
+	};
+
+	std::optional value = get_setting(steamvr_settings);
+	if (!value.has_value())
+		value = get_setting(driver_defaults);
+
+	return value;
 }
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
@@ -68,21 +92,52 @@ Settings::SetString(const char *pchSection,
 bool
 Settings::GetBool(const char *pchSection, const char *pchSettingsKey, vr::EVRSettingsError *peError)
 {
+	if (peError)
+		*peError = vr::VRSettingsError_None;
+		
+	U_LOG_IFL_D(context->log_level, "Getting bool setting: %s.%s", pchSection, pchSettingsKey);
+
 	if (pchSection == std::string_view{vr::k_pch_Power_Section} && pchSettingsKey == "powerOffOnExit"sv)
 		return debug_get_bool_option_lh_standby_on_exit();
 
-	return false;
+	std::optional value = get_settings_value(pchSection, pchSettingsKey);
+
+	if (!value.has_value() || !value->isBool()) {
+		if (peError)
+			*peError = vr::VRSettingsError_UnsetSettingHasNoDefault;
+		return false;
+	}
+
+	return value.value().asBool();
 }
 
 int32_t
 Settings::GetInt32(const char *pchSection, const char *pchSettingsKey, vr::EVRSettingsError *peError)
 {
-	return 0;
+	if (peError)
+		*peError = vr::VRSettingsError_None;
+		
+	U_LOG_IFL_D(context->log_level, "Getting int32 setting: %s.%s", pchSection, pchSettingsKey);
+
+	std::optional value = get_settings_value(pchSection, pchSettingsKey);
+
+	if (!value.has_value() || !value->isInt()) {
+		if (peError)
+			*peError = vr::VRSettingsError_UnsetSettingHasNoDefault;
+		return 0;
+	}
+
+	return value.value().asInt();
 }
 
 float
 Settings::GetFloat(const char *pchSection, const char *pchSettingsKey, vr::EVRSettingsError *peError)
 {
+	if (peError)
+		*peError = vr::VRSettingsError_None;
+
+	U_LOG_IFL_D(context->log_level, "Getting float setting: %s.%s", pchSection, pchSettingsKey);
+
 	if (!strcmp(pchSection, vr::k_pch_SteamVR_Section)) {
 		if (!strcmp(pchSettingsKey, "analogGain")) {
 			return analog_gain;
@@ -92,7 +147,16 @@ Settings::GetFloat(const char *pchSection, const char *pchSettingsKey, vr::EVRSe
 			return 0.f;
 		}
 	}
-	return 0.0;
+
+	std::optional value = get_settings_value(pchSection, pchSettingsKey);
+
+	if (!value.has_value() || !value->isDouble()) {
+		if (peError)
+			*peError = vr::VRSettingsError_UnsetSettingHasNoDefault;
+		return 0.f;
+	}
+
+	return value.value().asDouble();
 }
 
 // Driver requires a few string settings to initialize properly
@@ -106,27 +170,20 @@ Settings::GetString(const char *pchSection,
 	if (peError)
 		*peError = vr::VRSettingsError_None;
 
-	auto get_string = [pchSection, pchSettingsKey](const JSONNode &root) -> std::optional<std::string> {
-		JSONNode section = root[pchSection];
-		if (!section.isValid())
-			return std::nullopt;
+	U_LOG_IFL_D(context->log_level, "Getting string setting: %s.%s", pchSection, pchSettingsKey);
 
-		JSONNode value = section[pchSettingsKey];
-		if (!value.isValid() || !value.isString())
-			return std::nullopt;
+	std::optional value = get_settings_value(pchSection, pchSettingsKey);
 
-		return std::optional(value.asString());
-	};
-
-	std::optional value = get_string(driver_defaults);
-	if (!value.has_value())
-		value = get_string(steamvr_settings);
-
-	if (value.has_value()) {
-		if (unValueLen > value->size())
-			std::strncpy(pchValue, value->c_str(), value->size() + 1);
-	} else if (peError)
-		*peError = vr::VRSettingsError_ReadFailed;
+	if (!value.has_value() || !value->isString()) {
+		if (peError)
+			*peError = vr::VRSettingsError_UnsetSettingHasNoDefault;
+		return;
+	}
+	
+	auto string_value = value->asString();
+	if (unValueLen > string_value.size()) {
+		std::strncpy(pchValue, string_value.c_str(), string_value.size() + 1);
+	}
 }
 
 void

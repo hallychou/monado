@@ -42,21 +42,45 @@ Resources::GetResourceFullPath(const char *pchResourceName,
 			return 0;
 		}
 		const std::string driver = resource.substr(1, idx - 1);
-		std::string path = steamvr_install + "/drivers/" + driver + "/resources/";
-		if (pchResourceTypeDirectory)
-			path += pchResourceTypeDirectory + std::string("/");
+		// find the driver directory in the map
+		auto it = driver_name_to_directory.find(driver);
+		if (it == driver_name_to_directory.end()) {
+			RES_ERR("driver not found: %s", driver.c_str());
+			return 0;
+		}
+		std::filesystem::path path = it->second / "resources";
+
+		U_LOG_IFL_D(log_level, "Found driver %s resources at %s", driver.c_str(), path.c_str());
+
+		if (pchResourceTypeDirectory != nullptr && std::strlen(pchResourceTypeDirectory) > 0)
+			path /= std::filesystem::path(pchResourceTypeDirectory);
+
+		U_LOG_IFL_D(log_level, "Adding resource type directory: %s", path.c_str());
 
 		// for some reason sometimes it gives the paths like {driver}resource.file instead of
 		// {driver}/resource.file
-		path += resource.substr(idx + 1);
+		std::filesystem::path resource_path(resource.substr(idx + 1));
+		if (resource_path.is_absolute()) {
+			path += resource_path;
+		} else {
+			path /= resource_path;
+		}
+
+		U_LOG_IFL_D(log_level, "Adding resource name: %s", path.c_str());
+
 		return return_str(path);
 	}
+
+	U_LOG_IFL_D(log_level, "Loading resource %s from shared resources with type %s", resource.c_str(), pchResourceTypeDirectory ? pchResourceTypeDirectory : "null");
 
 	// loading from shared folder?
 	std::string path = steamvr_install + "/resources/";
 	path += pchResourceTypeDirectory;
 	path += "/";
 	path += pchResourceName;
+
+	U_LOG_IFL_D(log_level, "Returning shared resource at %s", path.c_str());
+
 	return return_str(path);
 }
 // NOLINTEND(bugprone-easily-swappable-parameters)

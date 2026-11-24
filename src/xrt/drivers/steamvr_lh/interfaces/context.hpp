@@ -11,6 +11,7 @@
 
 #include <condition_variable>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <optional>
 #include <chrono>
@@ -29,10 +30,21 @@
 #include "paths.hpp"
 
 #include "xrt/xrt_tracking.h"
+#include <filesystem>
+
+class Property
+{
+public:
+	Property(vr::PropertyTypeTag_t tag, void *buffer, uint32_t bufferSize);
+
+	vr::PropertyTypeTag_t tag;
+	std::vector<uint8_t> buffer;
+};
 
 struct xrt_input;
 class Device;
 class ControllerDevice;
+class HmdDevice;
 class Context final : public xrt_tracking_origin,
                       public vr::IVRDriverContext,
                       public vr::IVRServerDriverHost,
@@ -83,8 +95,9 @@ private:
 	std::mutex event_queue_mut;
 	std::condition_variable event_popped;
 
-	Device *
-	prop_container_to_device(vr::PropertyContainerHandle_t handle);
+	std::vector<xrt_device *> devices = { nullptr }; // devices[0] is reserved for the head device
+	std::unordered_set<xrt_device *> registered_devices = {};
+	std::unordered_set<xrt_device *> internal_devices = {};
 
 	vr::EVRInputError
 	create_component_common(vr::PropertyContainerHandle_t container,
@@ -99,10 +112,10 @@ private:
 
 	bool
 	setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *driver);
-	std::vector<vr::IServerTrackedDeviceProvider *> providers;
+	vr::IServerTrackedDeviceProvider *provider{nullptr};
 
 public:
-	Context(const std::string &steam_install, const std::string &steamvr_install, u_logging_level level);
+	Context(const std::string &driver_path, const std::string &driver_name, const std::string &user_settings_path, const std::string &chaperone_info_path, const std::string &steamvr_install, const std::map<std::string, std::filesystem::path> &driver_name_to_directory, xrt_system_devices * xsysd, u_logging_level level);
 
 	// These are owned by Monado, context is destroyed when these are destroyed
 	std::mutex devices_mut{};
@@ -111,12 +124,32 @@ public:
 
 	bool in_setup{true};
 	const u_logging_level log_level;
+	const std::string driver_name;
+	const std::string chaperone_info_path;
+	xrt_system_devices *xsysd;
 
 	void
 	wait_for_discover();
 
 	void
 	extend_discover();
+
+	xrt_device * get_device(vr::TrackedDeviceIndex_t index);
+	vr::TrackedDeviceIndex_t get_device_index(xrt_device * device);
+	vr::TrackedDeviceIndex_t add_device(xrt_device * device, bool is_internal = true);
+	bool is_internal_device(xrt_device * device);
+
+	xrt_device *
+	prop_container_to_device(vr::PropertyContainerHandle_t handle);
+
+	vr::PropertyContainerHandle_t
+	device_to_prop_container(xrt_device *device);
+
+	vr::ETrackedPropertyError
+	handle_external_read_properties(xrt_device *device, vr::PropertyRead_t *batch, uint32_t count);
+
+	vr::ETrackedPropertyError
+	handle_external_read_property(xrt_device *device, vr::PropertyRead_t &prop);
 
 private:
 	std::condition_variable discover_cv;
@@ -134,9 +167,14 @@ public:
 	~Context();
 
 	[[nodiscard]] static std::shared_ptr<Context>
-	create(const std::string &steam_install,
-	       const std::string &steamvr_install,
-	       std::vector<vr::IServerTrackedDeviceProvider *> providers);
+	create(const std::string &driver_path,
+                const std::string &driver_name,
+                const std::string &user_settings_path,
+				const std::string &chaperone_info_path,
+				const std::string &steamvr_install,
+				const std::map<std::string, std::filesystem::path> &driver_name_to_directory,
+                vr::IServerTrackedDeviceProvider * provider,
+				xrt_system_devices * xsysd);
 
 	size_t
 	add_haptic_event(vr::VREvent_HapticVibration_t event, size_t old_event_index);

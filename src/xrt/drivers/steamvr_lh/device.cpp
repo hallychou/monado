@@ -157,6 +157,108 @@ const std::unordered_map<std::string_view, InputClass> controller_classes{
             },
         },
     },
+	{
+        "playstation_vr2_sense_controller",
+		InputClass{
+		    XRT_DEVICE_PSSENSE,
+		    {
+				XRT_INPUT_PSSENSE_GRIP_POSE,
+				XRT_INPUT_PSSENSE_AIM_POSE,
+				XRT_INPUT_GENERIC_PALM_POSE,
+				XRT_INPUT_GENERIC_GRIP_SURFACE_POSE,
+				XRT_INPUT_HAND_PINCH_POSE,
+				XRT_INPUT_HAND_POKE_POSE,
+		    },
+		    {
+				{"/input/square/click", XRT_INPUT_PSSENSE_SQUARE_CLICK},
+		        {"/input/square/touch", XRT_INPUT_PSSENSE_SQUARE_TOUCH},
+		        {"/input/triangle/click", XRT_INPUT_PSSENSE_TRIANGLE_CLICK},
+		        {"/input/triangle/touch", XRT_INPUT_PSSENSE_TRIANGLE_TOUCH},
+				{"/input/create/click", XRT_INPUT_PSSENSE_SHARE_CLICK},
+				{"/input/create/touch", XRT_INPUT_PSSENSE_SHARE_TOUCH},
+		        {"/input/l2/touch", XRT_INPUT_PSSENSE_TRIGGER_TOUCH},
+				{"/input/l2/value", XRT_INPUT_PSSENSE_TRIGGER_VALUE},
+				{"/input/l2_sensor/value", XRT_INPUT_PSSENSE_TRIGGER_PROXIMITY_FLOAT},
+		        {"/input/l1/touch", XRT_INPUT_PSSENSE_SQUEEZE_TOUCH},
+				{"/input/l1/value", XRT_INPUT_PSSENSE_SQUEEZE_CLICK},
+				{"/input/l1_sensor/value", XRT_INPUT_PSSENSE_SQUEEZE_PROXIMITY_FLOAT},
+		        {"/input/left_stick/click", XRT_INPUT_PSSENSE_THUMBSTICK_CLICK},
+		        {"/input/left_stick/touch", XRT_INPUT_PSSENSE_THUMBSTICK_TOUCH},
+		        {"/input/left_stick", XRT_INPUT_PSSENSE_THUMBSTICK},
+		        {"/input/left_ps/click", XRT_INPUT_PSSENSE_PS_CLICK},
+				{"/input/left_ps/touch", XRT_INPUT_PSSENSE_PS_TOUCH},
+				
+				{"/input/cross/click", XRT_INPUT_PSSENSE_CROSS_CLICK},
+		        {"/input/cross/touch", XRT_INPUT_PSSENSE_CROSS_TOUCH},
+		        {"/input/circle/click", XRT_INPUT_PSSENSE_CIRCLE_CLICK},
+		        {"/input/circle/touch", XRT_INPUT_PSSENSE_CIRCLE_TOUCH},
+				{"/input/options/click", XRT_INPUT_PSSENSE_OPTIONS_CLICK},
+				{"/input/options/touch", XRT_INPUT_PSSENSE_OPTIONS_TOUCH},
+		        {"/input/r2/touch", XRT_INPUT_PSSENSE_TRIGGER_TOUCH},
+				{"/input/r2/value", XRT_INPUT_PSSENSE_TRIGGER_VALUE},
+				{"/input/r2_sensor/value", XRT_INPUT_PSSENSE_TRIGGER_PROXIMITY_FLOAT},
+		        {"/input/r1/touch", XRT_INPUT_PSSENSE_SQUEEZE_TOUCH},
+				{"/input/r1/value", XRT_INPUT_PSSENSE_SQUEEZE_CLICK},
+				{"/input/r1_sensor/value", XRT_INPUT_PSSENSE_SQUEEZE_PROXIMITY_FLOAT},
+		        {"/input/right_stick/click", XRT_INPUT_PSSENSE_THUMBSTICK_CLICK},
+				{"/input/right_stick/touch", XRT_INPUT_PSSENSE_THUMBSTICK_TOUCH},
+				{"/input/right_stick", XRT_INPUT_PSSENSE_THUMBSTICK},
+		        {"/input/right_ps/click", XRT_INPUT_PSSENSE_PS_CLICK},
+				{"/input/right_ps/touch", XRT_INPUT_PSSENSE_PS_TOUCH},
+		    },
+		},
+    },
+    {
+        "mixedreality_hpcontroller",
+		InputClass{
+		    XRT_DEVICE_HP_REVERB_G2_CONTROLLER,
+		    {
+				XRT_INPUT_G2_CONTROLLER_GRIP_POSE,
+				XRT_INPUT_G2_CONTROLLER_AIM_POSE,
+				XRT_INPUT_GENERIC_PALM_POSE,
+				XRT_INPUT_GENERIC_GRIP_SURFACE_POSE,
+				XRT_INPUT_HAND_PINCH_POSE,
+				XRT_INPUT_HAND_POKE_POSE,
+		    },
+		    {
+		        {"/input/x/click", XRT_INPUT_G2_CONTROLLER_X_CLICK},
+		        {"/input/y/click", XRT_INPUT_G2_CONTROLLER_Y_CLICK},
+		        {"/input/a/click", XRT_INPUT_G2_CONTROLLER_A_CLICK},
+		        {"/input/b/click", XRT_INPUT_G2_CONTROLLER_B_CLICK},
+				{"/input/application_menu/click", XRT_INPUT_G2_CONTROLLER_MENU_CLICK},
+				{"/input/grip/value", XRT_INPUT_G2_CONTROLLER_SQUEEZE_VALUE},
+				{"/input/trigger/value", XRT_INPUT_G2_CONTROLLER_TRIGGER_VALUE},
+				{"/input/joystick", XRT_INPUT_G2_CONTROLLER_THUMBSTICK},
+		        {"/input/joystick/click", XRT_INPUT_G2_CONTROLLER_THUMBSTICK_CLICK},
+				{"/input/system/click", XRT_INPUT_G2_CONTROLLER_HOME_CLICK},
+		    },
+		},
+    },
+	{
+		"gamepad",
+		InputClass{
+			XRT_DEVICE_XBOX_CONTROLLER,
+			{},
+			{
+				{"/input/a/click", XRT_INPUT_XBOX_A_CLICK},
+				{"/input/b/click", XRT_INPUT_XBOX_B_CLICK},
+				{"/input/x/click", XRT_INPUT_XBOX_X_CLICK},
+				{"/input/y/click", XRT_INPUT_XBOX_Y_CLICK},
+				{"/input/dpad_down/click", XRT_INPUT_XBOX_DPAD_DOWN_CLICK},
+				{"/input/dpad_right/click", XRT_INPUT_XBOX_DPAD_RIGHT_CLICK},
+				{"/input/dpad_up/click", XRT_INPUT_XBOX_DPAD_UP_CLICK},
+				{"/input/dpad_left/click", XRT_INPUT_XBOX_DPAD_LEFT_CLICK},
+				{"/input/joystick_left/click", XRT_INPUT_XBOX_THUMBSTICK_LEFT_CLICK},
+				{"/input/joystick_left", XRT_INPUT_XBOX_THUMBSTICK_LEFT},
+				{"/input/joystick_right/click", XRT_INPUT_XBOX_THUMBSTICK_RIGHT_CLICK},
+				{"/input/joystick_right", XRT_INPUT_XBOX_THUMBSTICK_RIGHT},
+				{"/input/trigger_left/value", XRT_INPUT_XBOX_LEFT_TRIGGER_VALUE},
+				{"/input/trigger_right/value", XRT_INPUT_XBOX_RIGHT_TRIGGER_VALUE},
+				{"/input/shoulder_left/click", XRT_INPUT_XBOX_SHOULDER_LEFT_CLICK},
+				{"/input/shoulder_right/click", XRT_INPUT_XBOX_SHOULDER_RIGHT_CLICK},
+			},
+		},
+	},
     {
         "flipvr_controller_vc1b",
         InputClass{
@@ -298,7 +400,6 @@ HmdDevice::HmdDevice(const DeviceBuilder &builder) : Device(builder)
 {
 	this->name = XRT_DEVICE_GENERIC_HMD;
 	this->device_type = XRT_DEVICE_TYPE_HMD;
-	this->container_handle = 0;
 
 	this->supported.compositor_info = true;
 
@@ -315,10 +416,9 @@ HmdDevice::HmdDevice(const DeviceBuilder &builder) : Device(builder)
 #undef SETUP_MEMBER_FUNC
 }
 
-ControllerDevice::ControllerDevice(vr::PropertyContainerHandle_t handle, const DeviceBuilder &builder) : Device(builder)
+ControllerDevice::ControllerDevice(const DeviceBuilder &builder) : Device(builder)
 {
 	this->device_type = XRT_DEVICE_TYPE_UNKNOWN;
-	this->container_handle = handle;
 
 	this->xrt_device::get_hand_tracking =
 	    &device_bouncer<ControllerDevice, &ControllerDevice::get_hand_tracking, xrt_result_t>;
@@ -330,6 +430,25 @@ ControllerDevice::ControllerDevice(vr::PropertyContainerHandle_t handle, const D
 
 	this->inputs_map["/skeleton/hand/left"] = &hand_tracking_inputs[XRT_HAND_LEFT];
 	this->inputs_map["/skeleton/hand/right"] = &hand_tracking_inputs[XRT_HAND_RIGHT];
+
+	std::string profile_name = "";
+	std::string serial{this->serial};
+	if(serial == "playstation_vr2_sense_controller_left") {
+		profile_name = "playstation_vr2_sense_controller";
+		this->name = XRT_DEVICE_PSSENSE;
+		this->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
+		snprintf(this->str, XRT_DEVICE_NAME_LEN, "SIE PS VR2 Sense Controller Left");
+	} else if(serial == "playstation_vr2_sense_controller_right") {
+		profile_name = "playstation_vr2_sense_controller";
+		this->name = XRT_DEVICE_PSSENSE;
+		this->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
+		snprintf(this->str, XRT_DEVICE_NAME_LEN, "SIE PS VR2 Sense Controller Right");
+	}
+	auto it = controller_classes.find(profile_name);
+	if (it != controller_classes.end()) {
+		DEV_INFO("Found input class for controller profile %s", profile_name.c_str());
+		set_input_class(&it->second);
+	}
 }
 
 Device::~Device()
@@ -342,8 +461,7 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 	u_device_id_assign(this);
 
 	m_relation_history_create(&relation_hist);
-	std::strncpy(this->serial, builder.serial, XRT_DEVICE_NAME_LEN - 1);
-	this->serial[XRT_DEVICE_NAME_LEN - 1] = 0;
+	snprintf(this->serial, XRT_DEVICE_NAME_LEN, "%s", builder.serial);
 	this->tracking_origin = ctx.get();
 	this->supported.orientation_tracking = true;
 	this->supported.position_tracking = true;
@@ -398,7 +516,18 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 		delete dev;
 	};
 
-	init_chaperone(builder.steam_install);
+	// Add properties
+	std::string chap_path = builder.chaperone_info_path;
+	this->properties.emplace(vr::ETrackedDeviceProperty::Prop_DriverProvidedChaperonePath_String,
+	                         Property(vr::k_unStringPropertyTag, (void *)chap_path.c_str(),
+	                                  (uint32_t)(chap_path.size() + 1)));
+	
+	// ToDo: dont go one folder up form chaperone_info_path.
+	// builder.chaperone_info_path is a path to a file. get the parent folder and use that as the config path.
+	std::string conf_path = std::filesystem::path(builder.chaperone_info_path).parent_path().string();
+	this->properties.emplace(vr::ETrackedDeviceProperty::Prop_UserConfigPath_String, Property(vr::k_unStringPropertyTag, (void *)conf_path.c_str(), (uint32_t)(conf_path.size() + 1)));
+
+	init_chaperone(builder.chaperone_info_path);
 }
 
 // NOTE: No operations that would force inputs_vec or finger_inputs_vec to reallocate (such as insertion)
@@ -408,7 +537,9 @@ void
 Device::set_input_class(const InputClass *input_class)
 {
 	// this should only be called once, or after clearing the inputs (see HmdDevice::set_hmd_class)
-	assert(inputs_vec.empty());
+	if (!inputs_vec.empty()) {
+		return;
+	}
 	this->input_class = input_class;
 
 	// reserve to ensure our pointers don't get invalidated
@@ -714,6 +845,10 @@ ControllerDevice::set_haptic_handle(vr::VRInputComponentHandle_t handle)
 		name = XRT_OUTPUT_NAME_VIVE_TRACKER_HAPTIC;
 		break;
 	}
+	case XRT_DEVICE_PSSENSE: {
+		name = XRT_OUTPUT_NAME_PSVR2_HAPTIC;
+		break;
+	}
 	default: {
 		DEV_WARN("Unknown device name (%u), haptics will not work", this->name);
 		return;
@@ -995,8 +1130,9 @@ ControllerDevice::get_tracked_pose(xrt_input_name name, uint64_t at_timestamp_ns
 	m_relation_chain_resolve(&relchain, out_relation);
 
 	struct xrt_pose *p = &out_relation->pose;
-	DEV_DEBUG("controller %u: GET_POSITION (%f %f %f) GET_ORIENTATION (%f, %f, %f, %f)", name, p->position.x,
-	          p->position.y, p->position.z, p->orientation.x, p->orientation.y, p->orientation.z, p->orientation.w);
+
+	// DEV_DEBUG("controller %u: GET_POSITION (%f %f %f) GET_ORIENTATION (%f, %f, %f, %f)", this->id, p->position.x,
+	//           p->position.y, p->position.z, p->orientation.x, p->orientation.y, p->orientation.z, p->orientation.w);
 
 	return XRT_SUCCESS;
 }
@@ -1009,7 +1145,7 @@ ControllerDevice::set_output(xrt_output_name name, const xrt_output_value *value
 	if (vib.amplitude == 0.0)
 		return XRT_SUCCESS;
 	vr::VREvent_HapticVibration_t event;
-	event.containerHandle = container_handle;
+	event.containerHandle = ctx->device_to_prop_container(this);
 	event.componentHandle = haptic_handle;
 	event.fDurationSeconds = (float)vib.duration_ns / 1e9f;
 	// 0.0f in OpenXR means let the driver determine a frequency, but
@@ -1177,7 +1313,7 @@ copy_pose(const vr::HmdQuaternion_t &orientation, const double (&position)[3])
 } // namespace
 
 void
-Device::init_chaperone(const std::string &steam_install)
+Device::init_chaperone(const std::string &chaperone_info_path)
 {
 	static bool initialized = false;
 	if (initialized)
@@ -1189,34 +1325,39 @@ Device::init_chaperone(const std::string &steam_install)
 	// We will use the known_universes from the lighthousedb.json to match to a universe from chaperone_info.vrchap
 
 	using xrt::auxiliary::util::json::JSONNode;
-	auto lighthousedb = JSONNode::loadFromFile(steam_install + "/config/lighthouse/lighthousedb.json");
-	if (lighthousedb.isInvalid()) {
-		DEV_ERR("Couldn't load lighthousedb file, playspace center will be off - was Room Setup run?");
-		return;
-	}
-	auto chap_info = JSONNode::loadFromFile(steam_install + "/config/chaperone_info.vrchap");
+
+	std::vector<std::string> known_universes = {};
+	// ToDo: connect to install for lighthouse driver.
+	// auto lighthousedb = JSONNode::loadFromFile(steam_install + "/config/lighthouse/lighthousedb.json");
+	// if (lighthousedb.isInvalid()) {
+	// 	DEV_ERR("Couldn't load lighthousedb file, playspace center will be off - was Room Setup run?");
+	// 	// return;
+	// } else {
+	// 	for (auto &universe : lighthousedb["known_universes"].asArray()) {
+	// 		known_universes.push_back(universe["id"].asString());
+	// 	}
+	// }
+
+	auto chap_info = JSONNode::loadFromFile(chaperone_info_path);
 	if (chap_info.isInvalid()) {
 		DEV_ERR("Couldn't load chaperone info, playspace center will be off - was Room Setup run?");
 		return;
 	}
 
 	JSONNode info = {};
-	bool universe_found = false;
 
-	// XXX: This may be broken if there are multiple known universes - how do we determine which to use then?
-	auto known_universes = lighthousedb["known_universes"].asArray();
-	for (auto &universe : known_universes) {
-		const std::string id = universe["id"].asString();
-		for (const JSONNode &u : chap_info["universes"].asArray()) {
-			if (u["universeID"].asString() == id) {
-				DEV_INFO("Found info for universe %s", id.c_str());
+	JSONNode universes = chap_info["universes"];
+	if (universes.isArray() && !universes.asArray().empty()) {
+		for (const JSONNode &u : universes.asArray()) {
+			const std::string id = u["universeID"].asString();
+			if (std::find(known_universes.begin(), known_universes.end(), id) != known_universes.end()) {
 				info = u;
-				universe_found = true;
 				break;
 			}
 		}
-		if (universe_found) {
-			break;
+		if (info.isInvalid()) {
+			U_LOG_W("Couldn't find known universe in chaperone, falling back to first universe in chaperone info");
+			info = universes.asArray()[0]; // Fallback to the first universe if no match is found
 		}
 	}
 
@@ -1412,6 +1553,7 @@ Device::handle_generic_property_write(const vr::PropertyWrite_t &prop)
 vr::ETrackedPropertyError
 Device::handle_generic_property_read(vr::PropertyRead_t &prop)
 {
+	DEV_DEBUG("Device %s: Reading property %d", this->str, prop.prop);
 	if (properties.count(prop.prop) == 0) {
 		// not verified if this is the correct error
 		return vr::ETrackedPropertyError::TrackedProp_UnknownProperty;
@@ -1435,28 +1577,77 @@ Device::handle_property_write(const vr::PropertyWrite_t &prop)
 		return handle_generic_property_write(prop);
 	}
 
-	switch (prop.prop) {
-	case vr::Prop_ManufacturerName_String: {
-		this->manufacturer = std::string(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
-		if (!this->model.empty()) {
-			std::snprintf(this->str, std::size(this->str), "%s %s", this->manufacturer.c_str(),
-			              this->model.c_str());
+	switch (prop.unTag) {
+		case vr::k_unFloatPropertyTag: {
+			float value = *static_cast<float *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to float %f", prop.prop, value);
+			break;
 		}
-		break;
-	}
-	case vr::Prop_ModelNumber_String: {
-		this->model = std::string(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
-		if (!this->manufacturer.empty()) {
-			std::snprintf(this->str, std::size(this->str), "%s %s", this->manufacturer.c_str(),
-			              this->model.c_str());
+		case vr::k_unInt32PropertyTag: {
+			int32_t value = *static_cast<int32_t *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to int32 %d", prop.prop, value);
+			break;
 		}
-		break;
+		case vr::k_unUint64PropertyTag: {
+			uint64_t value = *static_cast<uint64_t *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to uint64 %lu", prop.prop, value);
+			break;
+		}
+		case vr::k_unBoolPropertyTag: {
+			bool value = *static_cast<bool *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to bool %s", prop.prop, value ? "true" : "false");
+			break;
+		}
+		case vr::k_unStringPropertyTag: {
+			std::string value(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
+
+			switch (prop.prop) {
+				case vr::Prop_ManufacturerName_String: {
+					DEV_DEBUG("Property ManufacturerName set to string %s", value.c_str());
+					this->manufacturer = value;
+					if (!this->model.empty()) {
+						std::snprintf(this->str, std::size(this->str), "%s %s", this->manufacturer.c_str(),
+									this->model.c_str());
+					} else {
+						std::snprintf(this->str, std::size(this->str), "%s", this->manufacturer.c_str());
+					}
+					break;
+				}
+				case vr::Prop_ModelNumber_String: {
+					DEV_DEBUG("Property ModelNumber set to string %s", value.c_str());
+					this->model = value;
+					if (!this->manufacturer.empty()) {
+						std::snprintf(this->str, std::size(this->str), "%s %s", this->manufacturer.c_str(),
+									this->model.c_str());
+					} else {
+						std::snprintf(this->str, std::size(this->str), "%s", this->model.c_str());
+					}
+					break;
+				}
+				default: {
+					DEV_DEBUG("Property %d set to string %s", prop.prop, value.c_str());
+					break;
+				}
+			}
+
+			break;
+		}
+		case vr::k_unErrorPropertyTag: {
+			vr::ETrackedPropertyError value = *static_cast<vr::ETrackedPropertyError *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to error %d", prop.prop, value);
+			break;
+		}
+		case vr::k_unDoublePropertyTag: {
+			double value = *static_cast<double *>(prop.pvBuffer);
+			DEV_DEBUG("Property %d set to double %f", prop.prop, value);
+			break;
+		}
+		default: {
+			DEV_DEBUG("Unhandled property tag: %d", prop.unTag);
+			break;
+		}
 	}
-	default: {
-		DEV_DEBUG("Unhandled property: %i", prop.prop);
-		break;
-	}
-	}
+
 	return handle_generic_property_write(prop);
 }
 
@@ -1670,6 +1861,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		if (input_class == controller_classes.end()) {
 			DEV_ERR("Could not find input class for controller profile %s", std::string(profile).c_str());
 		} else {
+			DEV_INFO("Found input class for controller profile %s", std::string(profile).c_str());
 			this->name = input_class->second.name;
 			set_input_class(&input_class->second);
 		}
@@ -1687,7 +1879,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 			this->manufacturer = name.substr(0, name.find_first_of(' '));
 			fixedProp.pvBuffer = (char *)fixedProp.pvBuffer + this->manufacturer.size() +
 			                     (this->manufacturer.size() != name.size());
-			fixedProp.unBufferSize = name.end() - (char *)fixedProp.pvBuffer;
+			fixedProp.unBufferSize = prop.unBufferSize - ((char *)fixedProp.pvBuffer - (char *)prop.pvBuffer);
 		}
 		return Device::handle_property_write(fixedProp);
 	}
