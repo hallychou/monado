@@ -275,6 +275,11 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 		std::lock_guard lk(this->devices_mut);
 		device_idx = add_device(hmd, true);
 	}
+	if (device_idx == vr::k_unTrackedDeviceIndexInvalid) {
+		CTX_ERR("Activating HMD failed: could not add device");
+		delete hmd;
+		return false;
+	}
 
 #define VERIFY(expr, msg)                                                                                              \
 	if (!(expr)) {                                                                                                 \
@@ -362,7 +367,11 @@ Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *dr
 		std::lock_guard lk(this->devices_mut);
 		device_idx = add_device(device, true);
 	}
-
+	if (device_idx == vr::k_unTrackedDeviceIndexInvalid) {
+		CTX_ERR("Activating controller failed: could not add device");
+		delete device;
+		return false;
+	}
 	// Never call into the driver with `devices_mut` held: it takes its own locks here, and calls back into
 	// us (WritePropertyBatch, TrackedDevicePoseUpdated, ...) from its own threads while holding them.
 	vr::EVRInitError err = driver->Activate(device_idx);
@@ -1008,10 +1017,12 @@ Context::GetPropErrorNameFromEnum(vr::ETrackedPropertyError error)
 
 vr::TrackedDeviceIndex_t
 Context::add_device(xrt_device * device, bool is_internal) {
-	vr::TrackedDeviceIndex_t index = vr::k_unTrackedDeviceIndexInvalid;
+	if(device->device_type == XRT_DEVICE_TYPE_HMD) get_device(0);
+	vr::TrackedDeviceIndex_t index = get_device_index(device);
+	if(index != vr::k_unTrackedDeviceIndexInvalid) return index;
 
 	if(device->device_type == XRT_DEVICE_TYPE_HMD) {
-		if(get_device(0) != nullptr) {
+		if(devices[0] != nullptr) {
 			CTX_WARN("Attempted to add a second HMD device - this is unsupported");
 			return vr::k_unTrackedDeviceIndexInvalid;
 		}
@@ -1049,7 +1060,7 @@ Context::add_device(xrt_device * device, bool is_internal) {
 		}
 	}
 
-	CTX_INFO("Added device %s (%s) [%s] to devices[%zu]", device->str, device->serial, is_internal ? "internal" : "external", index);
+	CTX_INFO("Added device %s (%s) [%s] to devices[%zu]", device->str, device->serial, is_internal ? driver_name.c_str() : "monado", index);
 	return index;
 }
 
@@ -1076,7 +1087,7 @@ Context::get_device(vr::TrackedDeviceIndex_t index) {
 		xrt_device *device = this->xsysd->static_xdevs[i];
 		if(device->device_type == XRT_DEVICE_TYPE_HMD) continue;
 		if(registered_devices.count(device)) continue;
-		add_device(device, false);
+		if(add_device(device, false) == vr::k_unTrackedDeviceIndexInvalid) continue;
 		return device;
 	}
 
