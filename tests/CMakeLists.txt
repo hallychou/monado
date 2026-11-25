@@ -7,8 +7,10 @@ set(tests
     tests_cxx_wrappers
     tests_deque
     tests_generic_callbacks
+    tests_glue_blob_sink
     tests_glue_device
     tests_glue_frameserver
+    tests_glue_imu_sink
     tests_glue_traits
     tests_history_buf
     tests_id_ringbuffer
@@ -16,19 +18,19 @@ set(tests
     tests_lowpass_float
     tests_lowpass_integer
     tests_pacing
-    tests_quatexpmap
+    tests_pose
     tests_quat_change_of_basis
     tests_quat_swing_twist
+    tests_quatexpmap
     tests_rational
     tests_relation_chain
     tests_relation_history
     tests_space_overseer
     tests_tracking_origin
     tests_tracking_origin_id
+    tests_vec3_angle
     tests_vector
     tests_worker
-    tests_pose
-    tests_vec3_angle
 	)
 if(XRT_HAVE_D3D11)
 	list(APPEND tests tests_aux_d3d_d3d11 tests_comp_client_d3d11)
@@ -75,7 +77,9 @@ endforeach()
 
 target_link_libraries(tests_cxx_wrappers PRIVATE xrt-interfaces)
 target_link_libraries(tests_glue_device PRIVATE xrt-interfaces aux_glue)
+target_link_libraries(tests_glue_blob_sink PRIVATE xrt-interfaces aux_glue)
 target_link_libraries(tests_glue_frameserver PRIVATE xrt-interfaces aux_glue)
+target_link_libraries(tests_glue_imu_sink PRIVATE xrt-interfaces aux_glue)
 target_link_libraries(tests_glue_traits PRIVATE xrt-interfaces aux_glue)
 target_link_libraries(tests_history_buf PRIVATE aux_math)
 target_link_libraries(tests_lowpass_float PRIVATE aux_math)

@@ -18,15 +18,17 @@ This page covers how they work, how to use them, and their limitations.
 ## Overview
 
 | Wrapper | Header | C interface | Recovery helper |
-|---------|--------|-------------|-----------------|
+| --------- | -------- | ------------- | ----------------- |
 | `@ref DeviceBase` | `glue/g_device.hpp` | `@ref xrt_device` | `fromXDev()` |
 | `@ref HandTrackerBase` | `glue/g_hand_tracker.hpp` | `@ref xrt_hand_tracker` | `fromXHT()` |
 | `@ref FrameServerBase` | `glue/g_frameserver.hpp` | `@ref xrt_fs` | `fromXFS()` |
 | `@ref FrameNodeBase` | `glue/g_frame_node.hpp` | `@ref xrt_frame_node` | `fromFrameNode()` |
+| `@ref BlobSinkBase` | `glue/g_blob_sink.hpp` | `@ref t_blob_sink` | `fromBlobSink()` |
+| `@ref ImuSinkBase` | `glue/g_imu_sink.hpp` | `@ref xrt_imu_sink` | `fromImuSink()` |
 
 All wrappers live in namespace `xrt::util`. The callback wrappers use
 `g_catch_guard.hpp` to log uncaught C++ exceptions and return
-`XRT_ERROR_UNCAUGHT_EXCEPTION` (or nothing, for destroy callbacks).
+`XRT_ERROR_UNCAUGHT_EXCEPTION`, or nothing for callbacks that return `void`.
 
 ## Basic usage pattern
 
@@ -179,13 +181,31 @@ with `fromX*()`, and deletes it. Name it after the wrapped interface, such as
 `destroyHandTracker` or `destroyDevice`, so it does not clash with other
 `destroy` symbols.
 
+Not every C interface has a `destroy` callback. `@ref xrt_imu_sink` has none,
+so `@ref ImuSinkBase` asks for no destroy method, and whoever owns the `T`
+manages its lifetime.
+
 ## Exception safety
 
 The static callback wrappers wrap their bodies in `try` / `catch` using
 `G_CATCH_GUARDS` and `G_CATCH_GUARDS_VOID` from `g_catch_guard.hpp`. An uncaught
-C++ exception is logged and turned into `XRT_ERROR_UNCAUGHT_EXCEPTION`, or simply
-swallowed for the void destroy callbacks. Never rely on an exception crossing the
-C ABI boundary; return an `xrt_result_t` error code for failures you expect.
+C++ exception is logged and turned into `XRT_ERROR_UNCAUGHT_EXCEPTION`. For
+callbacks that return `void`, it is logged and swallowed. That covers destroy
+callbacks, `breakApart()`, and the sink push methods `pushBlobs()` and
+`pushImu()`. Never rely on an exception crossing the C ABI boundary; return an
+`xrt_result_t` error code for failures you expect.
+
+The guard only stops the exception. It does not clean up for you. Anything the method
+acquired before the throw stays acquired unless it is held by RAII. Watch for two cases in
+particular:
+
+- Locks. If the method takes a mutex with a plain lock/unlock pair and then
+  throws, the mutex stays locked and the next caller deadlocks. Use a scoped
+  guard, or do the work that can throw before taking the lock.
+- References handed over by the caller. For example, `pushBlobs()` owns the
+  reference in `@ref t_blob_observation::frame`. If the method throws before it
+  releases that reference, the frame leaks. Release it, or move it into an RAII
+  holder, before anything that can throw.
 
 ## Related reading
 
@@ -193,3 +213,5 @@ C ABI boundary; return an `xrt_result_t` error code for failures you expect.
 - `@ref writing-driver` — implementing `@ref xrt_device` drivers
 - `@ref xrt_iface` — internal C interface definitions
 - `tests/tests_glue_device.cpp` — unit tests for `@ref DeviceBase`
+- `tests/tests_glue_blob_sink.cpp` — unit tests for `@ref BlobSinkBase`
+- `tests/tests_glue_imu_sink.cpp` — unit tests for `@ref ImuSinkBase`

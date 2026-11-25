@@ -345,6 +345,77 @@ Camera::~Camera()
 	u_sink_debug_destroy(&this->fast_processing_thread_data.debug_sink);
 }
 
+void
+Camera::pushBlobs(t_blob_observation &tbo)
+{
+	ConstellationTracker *tracker = this->tracker;
+
+	CT_TRACE(tracker, "Received blob observation at %" PRIi64 " with %u blobs", tbo.timestamp_ns, tbo.num_blobs);
+
+#ifdef XRT_FEATURE_RERUN
+	try {
+		if (tracker->rerun_stream && tbo.frame != nullptr) {
+			auto mosaic = this->mosaic.lock();
+			if (mosaic) {
+				tracker->rerun_stream->logImageFrame(*tracker, mosaic->index, this->index, *tbo.frame);
+			}
+		}
+	} catch (...) {
+		// Make sure the frame gets released if this throws an exception
+		xrt_frame_reference(&tbo.frame, nullptr);
+
+		throw;
+	}
+#endif
+
+	// We own the frame reference, and don't need it past this point.
+	xrt_frame_reference(&tbo.frame, nullptr);
+
+	if (tbo.num_blobs == 0) {
+		CT_TRACE(tracker, "No blobs in observation, skipping processing");
+		return;
+	}
+
+	if (tracker->deterministic) {
+		auto sample = CameraSample(tbo, this);
+
+		// If we're in single-threaded mode, just process the sample immediately on the fast thread
+		if (this->processSampleFast(sample)) {
+			CT_TRACE(tracker,
+			         "Fast processing for camera %p failed in single-threaded mode, doing slow processing",
+			         (void *)this);
+
+			this->processSampleSlow(sample);
+		}
+	} else {
+		// This function can throw, don't do it inside the lock
+		CameraSample sample{tbo, this};
+
+		// Send to the fast thread
+		os_thread_helper_lock(&this->fast_processing_thread);
+		{
+			if (this->fast_processing_thread_data.sample.has_value()) {
+				// Warn that we're dropping a frame
+				CT_WARN(tracker,
+				        "Dropping fast sample %" PRIu64 " at ts %" PRIi64
+				        ". Tracker is likely running slow.",
+				        this->fast_processing_thread_data.sample->id,
+				        this->fast_processing_thread_data.sample->timestamp_ns);
+			}
+
+			this->fast_processing_thread_data.sample = sample;
+			os_thread_helper_signal_locked(&this->fast_processing_thread);
+		}
+		os_thread_helper_unlock(&this->fast_processing_thread);
+	}
+}
+
+void
+Camera::destroyBlobSink(t_blob_sink *tbs)
+{
+	// do nothing, the constellation tracker will clean up the blob sinks when it is destroyed.
+}
+
 std::optional<xrt_pose>
 Camera::getWorldPose(timepoint_ns when_ns)
 {
@@ -1310,14 +1381,7 @@ Device::Device(ConstellationTracker *tracker,
           .per_camera = {},
       })
 {
-	this->imu_sink = {
-	    .push_imu =
-	        [](xrt_imu_sink *ptr, xrt_imu_sample *sample) {
-		        auto self = Device::fromXrtImuSink(ptr);
-		        self->pushImuSample(*sample);
-	        },
-	};
-	params->imu_sink = &this->imu_sink;
+	params->imu_sink = this->getImuSink();
 
 	// Copy the LED model leds into safe memory, since we want to mutate it into OpenCV space
 	this->params.led_model.leds = new t_constellation_tracker_led[this->params.led_model.led_count];
@@ -1354,7 +1418,7 @@ Device::~Device()
 }
 
 void
-Device::pushImuSample(const xrt_imu_sample &sample)
+Device::pushImu(const xrt_imu_sample &sample)
 {
 	this->tracker->rig_calibration->pushImuSample(this->id, sample);
 
@@ -1410,7 +1474,7 @@ ConstellationTracker::ConstellationTracker(t_constellation_tracker_params *param
 		for (size_t j = 0; j < mosaic->cameras.size(); j++) {
 			Camera *camera = mosaic->cameras[j].get();
 
-			params->mosaics[i].cameras[j].blob_sink = &camera->base;
+			params->mosaics[i].cameras[j].blob_sink = camera->getBlobSink();
 		}
 	}
 
@@ -1466,6 +1530,35 @@ ConstellationTracker::~ConstellationTracker()
 	}
 
 	CT_DEBUG(this, "Destroying constellation tracker");
+}
+
+void
+ConstellationTracker::breakApart()
+{
+	this->running = false;
+
+	// Stop all the threads
+	for (auto &mosaic : this->mosaics) {
+		for (auto &camera : mosaic->cameras) {
+			if (camera->slow_processing_thread.initialized) {
+				os_thread_helper_stop_and_wait(&camera->slow_processing_thread);
+			}
+
+			if (camera->fast_processing_thread.initialized) {
+				os_thread_helper_stop_and_wait(&camera->fast_processing_thread);
+			}
+		}
+	}
+}
+
+void
+ConstellationTracker::destroyFrameNode(xrt_frame_node *node)
+{
+	ConstellationTracker *tracker = ConstellationTracker::fromFrameNode(node);
+
+	u_var_remove_root(tracker);
+
+	delete tracker;
 }
 
 bool
@@ -1736,99 +1829,6 @@ constellation_tracker_camera_fast_thread(void *ptr)
 	return NULL;
 }
 
-void
-constellation_tracker_camera_push_blobs(t_blob_sink *tbs, t_blob_observation *tbo)
-{
-	Camera *camera = Camera::Get(tbs);
-	ConstellationTracker *tracker = camera->tracker;
-
-	CT_TRACE(tracker, "Received blob observation at %" PRIi64 " with %u blobs", tbo->timestamp_ns, tbo->num_blobs);
-
-#ifdef XRT_FEATURE_RERUN
-	if (tracker->rerun_stream && tbo->frame != nullptr) {
-		auto mosaic = camera->mosaic.lock();
-		if (mosaic) {
-			tracker->rerun_stream->logImageFrame(*tracker, mosaic->index, camera->index, *tbo->frame);
-		}
-	}
-#endif
-
-	// We own the frame reference, and don't need it past this point.
-	xrt_frame_reference(&tbo->frame, nullptr);
-
-	if (tbo->num_blobs == 0) {
-		CT_TRACE(tracker, "No blobs in observation, skipping processing");
-		return;
-	}
-
-	if (tracker->deterministic) {
-		auto sample = CameraSample(*tbo, camera);
-
-		// If we're in single-threaded mode, just process the sample immediately on the fast thread
-		if (camera->processSampleFast(sample)) {
-			CT_TRACE(tracker,
-			         "Fast processing for camera %p failed in single-threaded mode, doing slow processing",
-			         (void *)camera);
-
-			camera->processSampleSlow(sample);
-		}
-	} else {
-		// Send to the fast thread
-		os_thread_helper_lock(&camera->fast_processing_thread);
-		{
-			if (camera->fast_processing_thread_data.sample.has_value()) {
-				// Warn that we're dropping a frame
-				CT_WARN(tracker,
-				        "Dropping fast sample %" PRIu64 " at ts %" PRIi64
-				        ". Tracker is likely running slow.",
-				        camera->fast_processing_thread_data.sample->id,
-				        camera->fast_processing_thread_data.sample->timestamp_ns);
-			}
-
-			camera->fast_processing_thread_data.sample = CameraSample(*tbo, camera);
-			os_thread_helper_signal_locked(&camera->fast_processing_thread);
-		}
-		os_thread_helper_unlock(&camera->fast_processing_thread);
-	}
-}
-
-void
-constellation_tracker_camera_destroy(t_blob_sink *tbs)
-{
-	// do nothing, the constellation tracker will clean up the blob sinks when it is destroyed.
-}
-
-void
-constellation_tracker_node_break_apart(xrt_frame_node *node)
-{
-	ConstellationTracker *tracker = ConstellationTracker::Get(node);
-
-	tracker->running = false;
-
-	// Stop all the threads
-	for (auto &mosaic : tracker->mosaics) {
-		for (auto &camera : mosaic->cameras) {
-			if (camera->slow_processing_thread.initialized) {
-				os_thread_helper_stop_and_wait(&camera->slow_processing_thread);
-			}
-
-			if (camera->fast_processing_thread.initialized) {
-				os_thread_helper_stop_and_wait(&camera->fast_processing_thread);
-			}
-		}
-	}
-}
-
-void
-constellation_tracker_node_destroy(xrt_frame_node *node)
-{
-	ConstellationTracker *tracker = ConstellationTracker::Get(node);
-
-	u_var_remove_root(tracker);
-
-	delete tracker;
-}
-
 int
 t_constellation_tracker_create(xrt_frame_context *xfctx,
                                t_constellation_tracker_params *params,
@@ -1838,7 +1838,7 @@ t_constellation_tracker_create(xrt_frame_context *xfctx,
 		ConstellationTracker *tracker = new ConstellationTracker(params);
 
 		// Add us to the frame context
-		xrt_frame_context_add(xfctx, &tracker->node);
+		xrt_frame_context_add(xfctx, tracker->getFrameNode());
 
 		*out_tracker = (t_constellation_tracker *)tracker;
 

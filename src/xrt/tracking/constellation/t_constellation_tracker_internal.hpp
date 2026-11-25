@@ -22,6 +22,10 @@
 #include "util/u_frame.h"
 #include "util/u_frame_scribble.h"
 
+#include "glue/g_blob_sink.hpp"
+#include "glue/g_frame_node.hpp"
+#include "glue/g_imu_sink.hpp"
+
 #include "tracking/t_constellation.h"
 
 #include "math/m_api.h"
@@ -62,23 +66,11 @@
  *
  */
 
-extern "C" void
-constellation_tracker_camera_push_blobs(t_blob_sink *tbs, t_blob_observation *tbo);
-
-extern "C" void
-constellation_tracker_camera_destroy(t_blob_sink *tbs);
-
 extern "C" void *
 constellation_tracker_camera_slow_thread(void *ptr);
 
 extern "C" void *
 constellation_tracker_camera_fast_thread(void *ptr);
-
-extern "C" void
-constellation_tracker_node_break_apart(xrt_frame_node *node);
-
-extern "C" void
-constellation_tracker_node_destroy(xrt_frame_node *node);
 
 
 namespace xrt::tracking::constellation {
@@ -205,14 +197,9 @@ public: // Methods
 	setupDebugTracking(void *root);
 };
 
-struct Camera
+struct Camera : util::BlobSinkBase<Camera>
 {
 public: // Fields
-	t_blob_sink base = {
-	    .push_blobs = constellation_tracker_camera_push_blobs,
-	    .destroy = constellation_tracker_camera_destroy,
-	};
-
 	//! The owner tracker, so we can retrieve it from the blob sink callback
 	ConstellationTracker *tracker;
 	std::weak_ptr<CameraMosaic> mosaic;
@@ -262,13 +249,14 @@ public: // Fields
 
 	std::atomic<uint32_t> shallow_searches_failed{0};
 
-public: // Methods (t_constellation_tracker.cpp)
-	static Camera *
-	Get(t_blob_sink *tbs)
-	{
-		return container_of(tbs, Camera, base);
-	}
+public: // Methods (t_blob_sink, t_constellation_tracker.cpp)
+	void
+	pushBlobs(t_blob_observation &observation);
 
+	static void
+	destroyBlobSink(t_blob_sink *sink);
+
+public: // Methods (t_constellation_tracker.cpp)
 	Camera(ConstellationTracker *tracker,
 	       std::weak_ptr<CameraMosaic> mosaic,
 	       const t_constellation_tracker_camera &camera_params,
@@ -277,7 +265,7 @@ public: // Methods (t_constellation_tracker.cpp)
 
 	~Camera();
 
-	// Delete all copy/move ctors, since the pointers for `base` need to be stable
+	// Delete all copy/move ctors, since the pointers we pass out need to be stable
 	Camera(const Camera &) = delete;
 	Camera(Camera &&) = delete;
 	Camera &
@@ -365,12 +353,7 @@ public: // Methods
 	DeviceLastPose(xrt_pose Txr_world_device, xrt_pose Tcv_cam_device, timepoint_ns timestamp_ns);
 };
 
-struct DeviceBase
-{
-	xrt_imu_sink imu_sink;
-};
-
-struct Device : public DeviceBase
+struct Device : public util::ImuSinkBase<Device>
 {
 public: // Fields
 	t_constellation_tracker_device_params params;
@@ -425,33 +408,16 @@ public: // Methods
 	Device &
 	operator=(Device &&) = delete;
 
-	static Device *
-	fromXrtImuSink(xrt_imu_sink *sink)
-	{
-		// Go through DeviceBase* to Device* so that `Device` doesn't have to be a standard layout type and we
-		// can still use `container_of` safely.
-		return static_cast<Device *>(container_of(sink, DeviceBase, imu_sink));
-	}
-
+	//! @note The interface expects non-const but we don't need to mutate it, it's source-compatible
 	void
-	pushImuSample(const xrt_imu_sample &sample);
+	pushImu(const xrt_imu_sample &sample);
 };
 
-// Separate base struct with our interface implementations so that `ConstellationTrackerBase` remains a standard layout
-// type and we can safely use `container_of` on it.
-struct ConstellationTrackerBase
-{
-	xrt_frame_node node = {
-	    .next = nullptr,
-	    .break_apart = constellation_tracker_node_break_apart,
-	    .destroy = constellation_tracker_node_destroy,
-	};
-	xrt_tracking_origin tracking_origin = {};
-};
-
-struct ConstellationTracker : public ConstellationTrackerBase
+struct ConstellationTracker : public util::FrameNodeBase<ConstellationTracker>
 {
 public: // Fields
+	xrt_tracking_origin tracking_origin = {};
+
 	//! Whether the constellation tracker is running
 	bool running = true;
 
@@ -481,13 +447,14 @@ public: // Fields
 	std::unique_ptr<struct RerunContext> rerun_stream{};
 #endif
 
-public: // Methods
-	static ConstellationTracker *
-	Get(xrt_frame_node *node)
-	{
-		return static_cast<ConstellationTracker *>(container_of(node, ConstellationTrackerBase, node));
-	}
+public: // Methods (xrt_frame_node)
+	void
+	breakApart();
 
+	static void
+	destroyFrameNode(xrt_frame_node *node);
+
+public: // Methods
 	static ConstellationTracker *
 	Get(t_constellation_tracker *tracker)
 	{
@@ -498,7 +465,7 @@ public: // Methods
 
 	~ConstellationTracker();
 
-	// Delete all copy/move ctors, since the pointers for `node` need to be stable
+	// Delete all copy/move ctors, since the pointers we return need to be stable
 	ConstellationTracker(const ConstellationTracker &) = delete;
 	ConstellationTracker(ConstellationTracker &&) = delete;
 	ConstellationTracker &

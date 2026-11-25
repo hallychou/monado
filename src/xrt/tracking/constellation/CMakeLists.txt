@@ -54,11 +54,12 @@ target_link_libraries(
 		xrt-external-bigceres
 		xrt-optimized-math
 		tracking-includes
+		aux_glue
+		aux_math
 		aux_os
+		aux_tracking
 		aux_util
 		aux_util_scribble
-		aux_math
-		aux_tracking
 		Eigen3::Eigen
 	)
 
