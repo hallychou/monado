@@ -57,5 +57,26 @@
 			"/user/hand/right/input/secondary": "/user/hand/right/input/circle_mndx",
 			"/user/hand/right/input/secondary/click": "/user/hand/right/input/circle_mndx/click"
 		}
+	},
+	"generic_controller_to_frame_controller": {
+		"source_profile": "/interaction_profiles/khr/generic_controller",
+		"target_profile": "/interaction_profiles/valve/frame_controller_valve",
+		"helpers": [
+			"/helper/controller/identity/output",
+			"/helper/controller/identity/poses",
+			"/helper/controller/identity/squeeze",
+			"/helper/controller/identity/thumbstick",
+			"/helper/controller/identity/trigger"
+		],
+		"bindings": {
+			"/user/hand/left/input/primary": "/user/hand/left/input/dpad_down",
+			"/user/hand/left/input/primary/click": "/user/hand/left/input/dpad_down/click",
+			"/user/hand/left/input/secondary": "/user/hand/left/input/dpad_left",
+			"/user/hand/left/input/secondary/click": "/user/hand/left/input/dpad_left/click",
+			"/user/hand/right/input/primary": "/user/hand/right/input/a",
+			"/user/hand/right/input/primary/click": "/user/hand/right/input/a/click",
+			"/user/hand/right/input/secondary": "/user/hand/right/input/b",
+			"/user/hand/right/input/secondary/click": "/user/hand/right/input/b/click"
+		}
 	}
 }

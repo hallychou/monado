@@ -17,6 +17,19 @@
 			"/user/hand/right/input/select/click": "/user/hand/right/input/trigger/value"
 		}
 	},
+	"simple_to_frame_controller": {
+		"source_profile": "/interaction_profiles/khr/simple_controller",
+		"target_profile": "/interaction_profiles/valve/frame_controller_valve",
+		"helpers": [
+			"/helper/controller/simple/to_controller"
+		],
+		"bindings": {
+			"/user/hand/left/input/menu": "/user/hand/left/input/dpad_down",
+			"/user/hand/left/input/menu/click": "/user/hand/left/input/dpad_down/click",
+			"/user/hand/right/input/menu": "/user/hand/right/input/a",
+			"/user/hand/right/input/menu/click": "/user/hand/right/input/a/click"
+		}
+	},
 	"simple_to_vive_controller": {
 		"source_profile": "/interaction_profiles/khr/simple_controller",
 		"target_profile": "/interaction_profiles/htc/vive_controller",
