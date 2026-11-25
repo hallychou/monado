@@ -124,37 +124,49 @@ resolve_upgrade_binding_point(struct oxr_sink_logger *slog,
 }
 
 static bool
+resolve_rebinding_targets(struct oxr_sink_logger *slog,
+                          const struct oxr_profile_resolver_info *info,
+                          const struct oxr_suggested_binding *suggested_binding,
+                          const struct oxr_binding_profile **out_binding_profile,
+                          const XrPath **out_target_paths,
+                          size_t *out_target_count)
+{
+	assert(info->profile != NULL); // Not used but must hold true.
+
+	*out_binding_profile = info->binding_profile;
+	*out_target_paths = &suggested_binding->path;
+	*out_target_count = 1;
+
+	// If we have a rebinding profile, resolve all of its target paths.
+	if (info->rebinding_profile != NULL) {
+		assert(info->rebinding_target_profile != NULL);
+
+		if (!oxr_rebinding_profile_find_target(info->rebinding_profile, suggested_binding->path,
+		                                       out_target_paths, out_target_count)) {
+			oxr_slog(slog, "\t\t\tRejected! (NO REBINDING TARGET PATH)\n");
+			return false;
+		}
+		if (*out_target_count == 0) {
+			oxr_slog(slog, "\t\t\tRejected! (EMPTY REBINDING TARGET PATHS)\n");
+			return false;
+		}
+		oxr_slog(slog, "\t\t\tRebinding target path\n");
+
+		*out_binding_profile = info->rebinding_target_profile;
+	}
+
+	assert(*out_binding_profile != NULL);
+	return true;
+}
+
+static bool
 resolve_binding_point(struct oxr_sink_logger *slog,
-                      const struct oxr_profile_resolver_info *info,
-                      const struct oxr_suggested_binding *suggested_binding,
+                      const struct oxr_binding_profile *binding_profile,
+                      XrPath target_path,
                       XrActionType action_type,
                       const struct oxr_binding_point **out_point)
 {
 	*out_point = NULL;
-
-	const struct oxr_binding_profile *binding_profile = info->binding_profile;
-
-	assert(info->profile != NULL); // Not used but must hold true.
-	assert(binding_profile != NULL);
-
-	XrPath target_path = suggested_binding->path;
-
-	// If we have a rebinding profile, update the target path to the rebinding target path.
-	if (info->rebinding_profile != NULL) {
-		assert(info->rebinding_target_profile != NULL);
-
-		// Update the target path to the rebinding target path.
-		if (!oxr_rebinding_profile_find_target(info->rebinding_profile, target_path, &target_path)) {
-			oxr_slog(slog, "\t\t\tRejected! (NO REBINDING TARGET PATH)\n");
-			return false;
-		}
-		assert(target_path != XR_NULL_PATH);
-		oxr_slog(slog, "\t\t\tRebinding target path\n");
-
-		// Rebind the binding profile to the rebinding target profile.
-		binding_profile = info->rebinding_target_profile;
-		assert(binding_profile != NULL);
-	}
 
 	const struct oxr_binding_point *binding_point = NULL;
 	if (!oxr_binding_profile_find_binding_point(binding_profile, target_path, &binding_point)) {
@@ -435,28 +447,40 @@ oxr_resolver_populate_input(struct oxr_logger *log,
 		assert(suggested_binding->binding_point->templ != NULL);
 		oxr_slog(slog, "\t\tSuggested: %s\n", suggested_binding->binding_point->templ->path);
 
-		const struct oxr_binding_point *binding_point = NULL;
-		if (!resolve_binding_point(slog, info, suggested_binding, action_type, &binding_point)) {
-			// Has handled the rejection logging in resolve_binding_point.
+		const struct oxr_binding_profile *binding_profile = NULL;
+		const XrPath *target_paths = NULL;
+		size_t target_count = 0;
+		if (!resolve_rebinding_targets(slog, info, suggested_binding, &binding_profile, &target_paths,
+		                               &target_count)) {
+			// Has handled the rejection logging.
 			continue;
 		}
 
-		if (storage.count >= OXR_MAX_BINDINGS_PER_ACTION) {
-			oxr_slog(slog, "\t\t\tRejected! (TOO MANY INPUT BINDINGS)\n");
-			continue;
-		}
+		for (size_t target_i = 0; target_i < target_count; target_i++) {
+			if (storage.count >= OXR_MAX_BINDINGS_PER_ACTION) {
+				oxr_slog(slog, "\t\t\tRejected! (TOO MANY INPUT BINDINGS)\n");
+				continue;
+			}
 
-		append_resolved_input(           //
-		    log,                         //
-		    slog,                        //
-		    io_cache,                    //
-		    profile,                     //
-		    suggested_binding,           //
-		    act_attached->act_ref->name, //
-		    dev,                         //
-		    binding_point,               //
-		    act_attached,                //
-		    &storage);                   //
+			const struct oxr_binding_point *binding_point = NULL;
+			if (!resolve_binding_point(slog, binding_profile, target_paths[target_i], action_type,
+			                           &binding_point)) {
+				// Has handled the rejection logging.
+				continue;
+			}
+
+			append_resolved_input(           //
+			    log,                         //
+			    slog,                        //
+			    io_cache,                    //
+			    profile,                     //
+			    suggested_binding,           //
+			    act_attached->act_ref->name, //
+			    dev,                         //
+			    binding_point,               //
+			    act_attached,                //
+			    &storage);                   //
+		}
 	}
 
 	if (storage.count > 0) {
@@ -523,17 +547,30 @@ oxr_resolver_populate_output(struct oxr_logger *log,
 		assert(suggested_binding->binding_point->templ != NULL);
 		oxr_slog(slog, "\t\tSuggested: %s\n", suggested_binding->binding_point->templ->path);
 
-		const struct oxr_binding_point *binding_point = NULL;
-		if (!resolve_binding_point(slog, info, suggested_binding, action_type, &binding_point)) {
+		const struct oxr_binding_profile *binding_profile = NULL;
+		const XrPath *target_paths = NULL;
+		size_t target_count = 0;
+		if (!resolve_rebinding_targets(slog, info, suggested_binding, &binding_profile, &target_paths,
+		                               &target_count)) {
+			// Has handled the rejection logging.
 			continue;
 		}
 
-		if (storage.count >= OXR_MAX_BINDINGS_PER_ACTION) {
-			oxr_slog(slog, "\t\t\tRejected! (TOO MANY OUTPUT BINDINGS)\n");
-			continue;
-		}
+		for (size_t target_i = 0; target_i < target_count; target_i++) {
+			if (storage.count >= OXR_MAX_BINDINGS_PER_ACTION) {
+				oxr_slog(slog, "\t\t\tRejected! (TOO MANY OUTPUT BINDINGS)\n");
+				continue;
+			}
 
-		append_resolved_output(slog, io_cache, dev, binding_point, &storage);
+			const struct oxr_binding_point *binding_point = NULL;
+			if (!resolve_binding_point(slog, binding_profile, target_paths[target_i], action_type,
+			                           &binding_point)) {
+				// Has handled the rejection logging.
+				continue;
+			}
+
+			append_resolved_output(slog, io_cache, dev, binding_point, &storage);
+		}
 	}
 
 	if (storage.count > 0) {

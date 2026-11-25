@@ -217,10 +217,12 @@ dump_rebindings(u_pp_delegate_t dg, struct oxr_path_store *store, const struct o
 		     target_binding_profile != NULL ? target_binding_profile->device_name : XRT_DEVICE_INVALID);
 		for (size_t k = 0; k < rebinding->binding_count; k++) {
 			const char *source = NULL;
-			const char *target = NULL;
 			path_to_string(store, rebinding->bindings[k].source_path, &source);
-			path_to_string(store, rebinding->bindings[k].target_path, &target);
-			u_pp(dg, "\n  %s -> %s", source, target);
+			for (size_t target_i = 0; target_i < rebinding->bindings[k].target_count; target_i++) {
+				const char *target = NULL;
+				path_to_string(store, rebinding->bindings[k].target_paths[target_i], &target);
+				u_pp(dg, "\n  %s -> %s", source, target);
+			}
 		}
 		u_pp(dg, "\n");
 	}

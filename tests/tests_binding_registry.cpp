@@ -65,14 +65,17 @@ TEST_CASE("binding_registry")
 
 	XrPath source_primary = XR_NULL_PATH;
 	XrPath target_a = XR_NULL_PATH;
-	XrPath rebinding_target = XR_NULL_PATH;
+	const XrPath *rebinding_targets = nullptr;
+	size_t rebinding_target_count = 0;
 	REQUIRE(oxr_path_store_get_or_create(&store, "/user/hand/right/input/primary/click",
 	                                     strlen("/user/hand/right/input/primary/click"),
 	                                     &source_primary) == XR_SUCCESS);
 	REQUIRE(oxr_path_store_get_or_create(&store, "/user/hand/right/input/a/click",
 	                                     strlen("/user/hand/right/input/a/click"), &target_a) == XR_SUCCESS);
-	REQUIRE(oxr_rebinding_profile_find_target(rebinding, source_primary, &rebinding_target));
-	CHECK(rebinding_target == target_a);
+	REQUIRE(
+	    oxr_rebinding_profile_find_target(rebinding, source_primary, &rebinding_targets, &rebinding_target_count));
+	REQUIRE(rebinding_target_count == 1);
+	CHECK(rebinding_targets[0] == target_a);
 #endif // OXR_HAVE_KHR_generic_controller
 
 	oxr_binding_registry_unref(registry);

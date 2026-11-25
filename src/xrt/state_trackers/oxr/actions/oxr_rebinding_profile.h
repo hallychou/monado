@@ -20,12 +20,13 @@ extern "C" {
 #endif
 
 /*!
- * Single source-to-target binding path mapping in a rebinding profile.
+ * One source path and its target binding paths in a rebinding profile.
  */
 struct oxr_rebinding
 {
 	XrPath source_path;
-	XrPath target_path;
+	XrPath *target_paths;
+	size_t target_count;
 };
 
 /*!
@@ -52,14 +53,16 @@ struct oxr_rebinding_profile
 };
 
 /*!
- * Find a target binding path in a rebinding profile for @p source_path.
+ * Find the target binding paths in a rebinding profile for @p source_path.
+ * The returned array is owned by @p profile and remains valid for its lifetime.
  *
  * @memberof oxr_rebinding_profile
  */
 bool
 oxr_rebinding_profile_find_target(const struct oxr_rebinding_profile *profile,
                                   XrPath source_path,
-                                  XrPath *out_target_path);
+                                  const XrPath **out_target_paths,
+                                  size_t *out_target_count);
 
 
 #ifdef __cplusplus
