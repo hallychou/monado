@@ -33,6 +33,65 @@
 			"/user/hand/right/input/thumbstick/touch": false
 		}
 	},
+	"touch_controller_to_frame_controller": {
+		"source_profile": "/interaction_profiles/oculus/touch_controller",
+		"target_profile": "/interaction_profiles/valve/frame_controller_valve",
+		"helpers": [
+			"/helper/controller/identity/output",
+			"/helper/controller/identity/poses",
+			"/helper/controller/identity/squeeze",
+			"/helper/controller/identity/thumbstick",
+			"/helper/controller/identity/trigger",
+			"/helper/controller/touch/no_proximity",
+			"/helper/controller/touch/no_thumbrest"
+		],
+		"bindings": {
+			"/user/hand/left/input/menu": "/user/hand/left/input/system",
+			"/user/hand/left/input/menu/click": "/user/hand/left/input/system/click",
+			"/user/hand/left/input/trigger/touch": true,
+			"/user/hand/left/input/thumbstick/touch": true,
+			"/user/hand/left/input/x": "/user/hand/left/input/dpad_down",
+			"/user/hand/left/input/x/click": "/user/hand/left/input/dpad_down/click",
+			"/user/hand/left/input/x/touch": "/user/hand/left/input/dpad_down/touch",
+			"/user/hand/left/input/y": [
+				"/user/hand/left/input/dpad_left",
+				"/user/hand/left/input/dpad_right",
+				"/user/hand/left/input/dpad_up"
+			],
+			"/user/hand/left/input/y/click": [
+				"/user/hand/left/input/dpad_left/click",
+				"/user/hand/left/input/dpad_right/click",
+				"/user/hand/left/input/dpad_up/click"
+			],
+			"/user/hand/left/input/y/touch": [
+				"/user/hand/left/input/dpad_left/touch",
+				"/user/hand/left/input/dpad_right/touch",
+				"/user/hand/left/input/dpad_up/touch"
+			],
+			"/user/hand/right/input/system": true,
+			"/user/hand/right/input/system/click": true,
+			"/user/hand/right/input/trigger/touch": true,
+			"/user/hand/right/input/thumbstick/touch": true,
+			"/user/hand/right/input/a": true,
+			"/user/hand/right/input/a/click": true,
+			"/user/hand/right/input/a/touch": true,
+			"/user/hand/right/input/b": [
+				"/user/hand/right/input/b",
+				"/user/hand/right/input/x",
+				"/user/hand/right/input/y"
+			],
+			"/user/hand/right/input/b/click": [
+				"/user/hand/right/input/b/click",
+				"/user/hand/right/input/x/click",
+				"/user/hand/right/input/y/click"
+			],
+			"/user/hand/right/input/b/touch": [
+				"/user/hand/right/input/b/touch",
+				"/user/hand/right/input/x/touch",
+				"/user/hand/right/input/y/touch"
+			]
+		}
+	},
 	"touch_controller_to_touch_controller_rift_cv1": {
 		"source_profile": "/interaction_profiles/oculus/touch_controller",
 		"target_profile": "/interaction_profiles/meta/touch_controller_rift_cv1",

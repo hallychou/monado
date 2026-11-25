@@ -116,7 +116,8 @@ struct oxr_profile_template
 struct oxr_rebinding_binding_template
 {
 	const char *source_path;
-	const char *target_path;
+	const char *const *target_paths;
+	size_t target_count;
 };
 
 struct oxr_rebinding_profile_template

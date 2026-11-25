@@ -12,20 +12,24 @@
 bool
 oxr_rebinding_profile_find_target(const struct oxr_rebinding_profile *profile,
                                   XrPath source_path,
-                                  XrPath *out_target_path)
+                                  const XrPath **out_target_paths,
+                                  size_t *out_target_count)
 {
 	if (profile == NULL) {
-		*out_target_path = XR_NULL_PATH;
+		*out_target_paths = NULL;
+		*out_target_count = 0;
 		return false;
 	}
 
 	for (size_t i = 0; i < profile->binding_count; i++) {
 		if (profile->bindings[i].source_path == source_path) {
-			*out_target_path = profile->bindings[i].target_path;
+			*out_target_paths = profile->bindings[i].target_paths;
+			*out_target_count = profile->bindings[i].target_count;
 			return true;
 		}
 	}
 
-	*out_target_path = XR_NULL_PATH;
+	*out_target_paths = NULL;
+	*out_target_count = 0;
 	return false;
 }

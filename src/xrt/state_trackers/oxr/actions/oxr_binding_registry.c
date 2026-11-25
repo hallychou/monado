@@ -150,6 +150,11 @@ binding_profile_fini(struct oxr_binding_profile *profile)
 static void
 rebinding_profile_fini(struct oxr_rebinding_profile *profile)
 {
+	if (profile->bindings != NULL) {
+		for (size_t i = 0; i < profile->binding_count; i++) {
+			free(profile->bindings[i].target_paths);
+		}
+	}
 	free(profile->bindings);
 	U_ZERO(profile);
 }
@@ -392,7 +397,14 @@ rebinding_profile_init(struct oxr_logger *log,
 	for (size_t i = 0; i < profile->binding_count; i++) {
 		const struct oxr_rebinding_binding_template *binding = &templ->bindings[i];
 		MAKE_PATH(binding->source_path, &profile->bindings[i].source_path);
-		MAKE_PATH(binding->target_path, &profile->bindings[i].target_path);
+		profile->bindings[i].target_count = binding->target_count;
+		profile->bindings[i].target_paths = U_TYPED_ARRAY_CALLOC(XrPath, binding->target_count);
+		if (profile->bindings[i].target_paths == NULL && binding->target_count > 0) {
+			return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to allocate rebinding target paths");
+		}
+		for (size_t j = 0; j < binding->target_count; j++) {
+			MAKE_PATH(binding->target_paths[j], &profile->bindings[i].target_paths[j]);
+		}
 	}
 
 	return XR_SUCCESS;
