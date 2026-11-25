@@ -7,6 +7,10 @@ set(FILE_CONTENTS "")
 foreach(driver ${AVAILABLE_DRIVERS})
 	if(XRT_BUILD_DRIVER_${driver})
 		string(APPEND FILE_CONTENTS "#define XRT_BUILD_DRIVER_${driver}\n")
+	else()
+		# Allows the rust/monado-build cfg generator to find disabled flags,
+		# so flags that exist but are disabled don't cause missing cfg warnings
+		string(APPEND FILE_CONTENTS "/* #undef XRT_BUILD_DRIVER_${driver} */\n")
 	endif()
 endforeach()
 

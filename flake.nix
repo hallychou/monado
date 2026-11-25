@@ -35,14 +35,18 @@
             # but are not required to build Monado itself
             ninja
 
-            # Needed for running things in ./scripts
+            # Editor tools (LSPs)
             clang-tools
+            rust-analyzer
+
+            # Needed for running things in ./scripts
             cmake-format
             codespell
             # Recommended for debugging
             gdb
             lldb
             vulkan-tools
+            sysprof
 
             # Needed for Android
             gradle
@@ -54,15 +58,25 @@
           nativeBuildInputsToUpstream = with pkgs; [
             # If there are any nativeBuildInputs that are not in nixpkgs, add them here
             # nativeBuildInputs are packages that are needed to develop and/or build the project (i.e. tooling)
+
+            # Needed for Rust
+            rustPlatform.bindgenHook
+            rustPlatform.cargoSetupHook
           ];
 
           buildInputsToUpstream = with pkgs; [
             # If there are any buildInputs that are not in nixpkgs, add them here
             # buildInputs are any packages that are needed at runtime (i.e. dependencies)
+            ceres-solver
 
             # Survive has not received a new tagged release in years, so use the
             # version provided by nixpkgs-xr instead
             (inputs.nixpkgs-xr.packages.${system}.libsurvive)
+
+            # Needed for Rust
+            rustc
+            cargo
+            corrosion
           ];
 
           package = pkgs.monado.overrideAttrs (oldAttrs: {
@@ -71,6 +85,10 @@
             nativeBuildInputs = oldAttrs.nativeBuildInputs ++ nativeBuildInputsToUpstream;
             buildInputs = oldAttrs.buildInputs ++ buildInputsToUpstream;
             cmakeFlags = lib.remove "-DXRT_HAVE_STEAM:BOOL=TRUE" oldAttrs.cmakeFlags;
+
+            cargoDeps = pkgs.rustPlatform.importCargoLock {
+              lockFile = ./Cargo.lock;
+            };
 
             patches = [ ];
           });

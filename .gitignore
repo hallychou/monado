@@ -117,3 +117,9 @@ result/
 
 # Kotlin
 .kotlin
+
+# Cargo output when built directly in src/ e.g. by an IDE
+/target/
+
+# Generated file, for IDE support, written by MonadoRustBindgen.cmake
+/.cargo/config.toml

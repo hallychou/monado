@@ -1,0 +1,25 @@
+# Copyright 2026, UltraDev.
+# SPDX-License-Identifier: BSL-1.0
+
+[package]
+name = "monado-sys"
+version = "0.1.0"
+description = "Rust Bindings for Monado's C interfaces"
+edition.workspace = true
+license.workspace = true
+links = "monado"
+
+[lib]
+doctest = false
+
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+
+[build-dependencies]
+bindgen = "0.73.2"
+cc = "1.4.5"
+glob = "0.3"
+regex = "1"

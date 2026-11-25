@@ -1,0 +1,22 @@
+# Copyright 2026, UltraDev.
+# SPDX-License-Identifier: BSL-1.0
+
+[package]
+name = "monado-rust"
+version = "0.1.0"
+description = "Bundles all Rust libs into a single C staticlib, so Rust dependencies (including std) are only included once"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[features]
+# Force the rust bindings to be built, even if no rust driver is present
+force = ["dep:monado-sys"]
+
+# example = ["dep:drv-example"]
+
+[dependencies]
+monado-sys = { workspace = true, optional = true }
+# drv-example = { path = "../../drivers/example", optional = true }
