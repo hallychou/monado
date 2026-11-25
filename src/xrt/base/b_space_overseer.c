@@ -57,8 +57,9 @@ enum u_space_type
 	U_SPACE_TYPE_ATTACHABLE,
 
 	/*!
-	 * A pose space whose device was removed. Resolving through this space
-	 * yields an invalid relation with no flags set.
+	 * A pose space whose device was removed, or the space of a tracking
+	 * origin that was removed. Resolving through this space yields an
+	 * invalid relation with no flags set.
 	 */
 	U_SPACE_TYPE_ZOMBIE,
 };
@@ -114,7 +115,10 @@ struct b_space_overseer
 	//! Map from xdev to tracked device, each entry holds a reference.
 	struct u_hashmap_int *xdev_map;
 
-	//! Map from xrt_tracking_origin::id to space, each entry holds a reference.
+	/*!
+	 * Map from xrt_tracking_origin::id to space, filled by add_tracking_origin
+	 * and emptied by remove_tracking_origin. Each entry holds a reference.
+	 */
 	struct u_hashmap_int *xto_map;
 
 	//! Tracks usage of reference spaces.
@@ -246,9 +250,8 @@ find_xto_space_read_locked(struct b_space_overseer *uso, struct xrt_tracking_ori
 	u_hashmap_int_find(uso->xto_map, key, &ptr);
 
 	if (ptr == NULL) {
-		U_LOG_E("Looking for space belonging to unknown xrt_tracking_origin! '%s'", xto->name);
+		U_LOG_D("Looking for space belonging to unknown xrt_tracking_origin! '%s'", xto->name);
 	}
-	assert(ptr != NULL);
 
 	return (struct u_space *)ptr;
 }
@@ -333,16 +336,22 @@ notify_ref_space_usage_device(struct b_space_overseer *uso, enum xrt_reference_s
 static void
 zombiefy_space_write_locked(struct u_space *us)
 {
-	assert(us->type == U_SPACE_TYPE_POSE);
+	assert(us->type != U_SPACE_TYPE_ROOT);
+	assert(us->type != U_SPACE_TYPE_ZOMBIE);
+
+	if (us->type == U_SPACE_TYPE_POSE) {
+		us->pose.xdev = NULL;
+		us->pose.xname = 0;
+		us->pose.overseer = NULL;
+	} else {
+		U_ZERO(&us->offset.pose);
+	}
 
 	us->type = U_SPACE_TYPE_ZOMBIE;
-	us->pose.xdev = NULL;
-	us->pose.xname = 0;
-	us->pose.overseer = NULL;
 }
 
 static void
-zombiefy_pose_space_cb(struct xrt_space *xs, void *priv)
+zombiefy_pose_space_cb_write_locked(struct xrt_space *xs, void *priv)
 {
 	(void)priv;
 
@@ -366,8 +375,8 @@ hashmap_unreference_tracked_device_items(void *item, void *priv)
 	 * the tracked-device destroy would otherwise see a non-empty pose list.
 	 * Zombify and clear first, matching remove_device.
 	 */
-	b_tracked_device_for_each_pose_space(btd, zombiefy_pose_space_cb, NULL);
-	b_tracked_device_clear_pose_spaces(btd);
+	b_tracked_device_for_each_pose_space_read_locked(btd, zombiefy_pose_space_cb_write_locked, NULL);
+	b_tracked_device_clear_pose_spaces_write_locked(btd);
 	b_tracked_device_reference(&btd, NULL);
 }
 
@@ -380,12 +389,12 @@ hashmap_unreference_tracked_device_items(void *item, void *priv)
 
 /*!
  * For each space, push the relation of that space and then traverse by calling
- * @p push_then_traverse again with the parent space. That means traverse goes
+ * @p push_then_traverse_read_locked again with the parent space. That means traverse goes
  * from a leaf space to a the root space, relations are pushed in the same
  * order.
  */
 static void
-push_then_traverse(struct xrt_relation_chain *xrc, struct u_space *space, int64_t at_timestamp_ns)
+push_then_traverse_read_locked(struct xrt_relation_chain *xrc, struct u_space *space, int64_t at_timestamp_ns)
 {
 	switch (space->type) {
 	case U_SPACE_TYPE_ZOMBIE:
@@ -407,17 +416,17 @@ push_then_traverse(struct xrt_relation_chain *xrc, struct u_space *space, int64_
 
 	// Please tail-call optimise this miss compiler.
 	assert(space->next != NULL);
-	push_then_traverse(xrc, space->next, at_timestamp_ns);
+	push_then_traverse_read_locked(xrc, space->next, at_timestamp_ns);
 }
 
 /*!
- * For each space, traverse by calling @p traverse_then_push_inverse again with
+ * For each space, traverse by calling @p traverse_then_push_inverse_read_locked again with
  * the parent space then push the inverse of the relation of that. That means
  * traverse goes from a leaf space to a the root space, relations are pushed in
  * the reversed order.
  */
 static void
-traverse_then_push_inverse(struct xrt_relation_chain *xrc, struct u_space *space, int64_t at_timestamp_ns)
+traverse_then_push_inverse_read_locked(struct xrt_relation_chain *xrc, struct u_space *space, int64_t at_timestamp_ns)
 {
 	// Done traversing.
 	switch (space->type) {
@@ -433,7 +442,7 @@ traverse_then_push_inverse(struct xrt_relation_chain *xrc, struct u_space *space
 
 	// Can't tail-call optimise this one :(
 	assert(space->next != NULL);
-	traverse_then_push_inverse(xrc, space->next, at_timestamp_ns);
+	traverse_then_push_inverse_read_locked(xrc, space->next, at_timestamp_ns);
 
 	switch (space->type) {
 	case U_SPACE_TYPE_NULL: break; // No-op
@@ -463,8 +472,8 @@ build_relation_chain_read_locked(struct b_space_overseer *uso,
 	assert(base != NULL);
 	assert(target != NULL);
 
-	push_then_traverse(xrc, target, at_timestamp_ns);
-	traverse_then_push_inverse(xrc, base, at_timestamp_ns);
+	push_then_traverse_read_locked(xrc, target, at_timestamp_ns);
+	traverse_then_push_inverse_read_locked(xrc, base, at_timestamp_ns);
 }
 
 static void
@@ -518,7 +527,7 @@ space_destroy(struct xrt_space *xs)
 		pthread_rwlock_wrlock(&uso->lock);
 		struct b_tracked_device *btd = find_xdev_tracked_device_read_locked(uso, us->pose.xdev);
 		if (btd != NULL) {
-			b_tracked_device_untrack_pose_space(btd, xs);
+			b_tracked_device_untrack_pose_space_write_locked(btd, xs);
 		}
 		pthread_rwlock_unlock(&uso->lock);
 	}
@@ -564,41 +573,85 @@ create_and_set_root_space(struct b_space_overseer *uso)
 
 /*
  *
- * Device helpers.
+ * Tracking origin and device helpers.
  *
  */
 
+struct print_devices_ctx
+{
+	struct xrt_space *xs;
+	u_pp_delegate_t dg;
+	uint32_t count;
+};
+
+static void
+print_devices_cb_read_locked(uint64_t key, const void *value, void *priv_ctx)
+{
+	struct print_devices_ctx *ctx = (struct print_devices_ctx *)priv_ctx;
+	struct b_tracked_device *btd = (struct b_tracked_device *)value;
+
+	if (b_tracked_device_get_space(btd) != ctx->xs) {
+		return;
+	}
+
+	u_pp(ctx->dg, "\n\t%s", b_tracked_device_get_xdev(btd)->str);
+	ctx->count++;
+}
+
 /*!
- * Helper function to add a device to the space overseer. This function
- * handles creating or finding a space for the device's tracking origin
- * and linking the device to that space.
+ * Prints the name of every device whose space is the space of a tracking
+ * origin, one per line prefixed with a tab. Returns the number of devices.
+ */
+static uint32_t
+print_tracking_origin_devices_read_locked(struct b_space_overseer *uso, struct u_space *us, u_pp_delegate_t dg)
+{
+	struct print_devices_ctx ctx = {
+	    .xs = &us->base,
+	    .dg = dg,
+	    .count = 0,
+	};
+
+	u_hashmap_int_for_each(uso->xdev_map, print_devices_cb_read_locked, &ctx);
+
+	return ctx.count;
+}
+
+static bool
+check_xto_id(struct xrt_tracking_origin *xto)
+{
+	// Zero is never assigned and can't be used as a key.
+	if (xto->id.val == 0) {
+		U_LOG_E("Tracking origin '%s' has no ID!", xto->name);
+		return false;
+	}
+
+	return true;
+}
+
+/*!
+ * Creates the space of the tracking origin and adds it to the xto_map, does
+ * nothing if the tracking origin already has one.
  */
 static xrt_result_t
-add_device_helper(struct b_space_overseer *uso, struct xrt_device *xdev)
+create_xto_space_write_locked(struct b_space_overseer *uso, struct xrt_tracking_origin *xto)
 {
-	struct xrt_tracking_origin *torig = xdev->tracking_origin;
-	assert(torig != NULL);
-
-	// Zero is never assigned and can't be used as a key.
-	if (torig->id.val == 0) {
-		U_LOG_E("Tracking origin '%s' of device '%s' has no ID!", torig->name, xdev->str);
+	if (!check_xto_id(xto)) {
 		return XRT_ERROR_INVALID_ARGUMENT;
 	}
 
 	struct xrt_space *root = uso->base.semantic.root;
-	uint64_t key = torig->id.val;
+	uint64_t key = xto->id.val;
 	struct xrt_space *xs = NULL;
-
-	// Need to take the write lock.
-	pthread_rwlock_wrlock(&uso->lock);
 
 	// Does this tracking origin already have space.
 	void *ptr = NULL;
 	u_hashmap_int_find(uso->xto_map, key, &ptr);
 
 	if (ptr != NULL) {
-		xs = (struct xrt_space *)ptr;
-	} else if (torig->type == XRT_TRACKING_TYPE_ATTACHABLE) {
+		return XRT_SUCCESS;
+	}
+
+	if (xto->type == XRT_TRACKING_TYPE_ATTACHABLE) {
 		/*
 		 * If we ever make b_space_overseer sub-classable make sure
 		 * this calls the right function, can't call interface function
@@ -614,14 +667,81 @@ add_device_helper(struct b_space_overseer *uso, struct xrt_device *xdev)
 		 */
 		xs = (struct xrt_space *)create_space(U_SPACE_TYPE_OFFSET, u_space(root));
 
-		update_offset_write_locked(u_space(xs), &torig->initial_offset);
+		update_offset_write_locked(u_space(xs), &xto->initial_offset);
 
 		u_hashmap_int_insert(uso->xto_map, key, xs);
 	}
 
+	return XRT_SUCCESS;
+}
+
+/*!
+ * Links the device to the space, replacing any tracked device it already had.
+ * The replaced tracked device is returned in @p out_old_btd, the caller must
+ * unreference it after unlocking.
+ */
+static void
+link_space_to_device_write_locked(struct b_space_overseer *uso,
+                                  struct xrt_space *xs,
+                                  struct xrt_device *xdev,
+                                  struct b_tracked_device **out_old_btd)
+{
+	void *ptr = NULL;
+	uint64_t key = xdev->id.val;
+	u_hashmap_int_find(uso->xdev_map, key, &ptr);
+	if (ptr != NULL) {
+		/*
+		 * Re-linking the same device must not happen in production.
+		 * Pose spaces stay on the old b_tracked_device pose list; dropping
+		 * that object here skips zombify on remove_device and can leave
+		 * destroy asserting on a non-empty pose list.
+		 */
+		U_LOG_E("Device '%s' (name=%s, id=%" PRIu64 ") already has a space attached!", xdev->str,
+		        u_str_xrt_device_name(xdev->name), xdev->id.val);
+		assert(false);
+	}
+
+	struct b_tracked_device *new_btd = b_tracked_device_create(xdev, xs);
+
+	u_hashmap_int_insert(uso->xdev_map, key, new_btd);
+
+	*out_old_btd = (struct b_tracked_device *)ptr;
+}
+
+/*!
+ * Helper function to add a device to the space overseer. This function
+ * finds the space of the device's tracking origin, which must have been
+ * added, and links the device to that space.
+ */
+static xrt_result_t
+add_device_helper(struct b_space_overseer *uso, struct xrt_device *xdev)
+{
+	struct xrt_tracking_origin *xto = xdev->tracking_origin;
+	assert(xto != NULL);
+
+	if (!check_xto_id(xto)) {
+		return XRT_ERROR_INVALID_ARGUMENT;
+	}
+
+	struct b_tracked_device *old_btd = NULL;
+
+	// Held across the lookup and linking so the tracking origin can't be removed in between.
+	pthread_rwlock_wrlock(&uso->lock);
+
+	struct u_space *us = find_xto_space_read_locked(uso, xto);
+	if (us != NULL) {
+		link_space_to_device_write_locked(uso, &us->base, xdev, &old_btd);
+	}
+
 	pthread_rwlock_unlock(&uso->lock);
 
-	b_space_overseer_link_space_to_device(uso, xs, xdev);
+	if (us == NULL) {
+		U_LOG_E("Tracking origin '%s' of device '%s' has not been added!", xto->name, xdev->str);
+		return XRT_ERROR_TRACKING_ORIGIN_NOT_ADDED;
+	}
+
+	// Dereference old tracked device outside of lock.
+	b_tracked_device_reference(&old_btd, NULL);
 
 	return XRT_SUCCESS;
 }
@@ -693,7 +813,7 @@ create_pose_space(struct xrt_space_overseer *xso,
 	us->pose.xname = name;
 	us->pose.overseer = uso;
 
-	b_tracked_device_track_pose_space(btd, &us->base);
+	b_tracked_device_track_pose_space_write_locked(btd, &us->base);
 
 	pthread_rwlock_unlock(&uso->lock);
 
@@ -1246,6 +1366,62 @@ unlock:
 }
 
 static xrt_result_t
+add_tracking_origin(struct xrt_space_overseer *xso, struct xrt_tracking_origin *xto)
+{
+	struct b_space_overseer *uso = b_space_overseer(xso);
+
+	pthread_rwlock_wrlock(&uso->lock);
+	xrt_result_t xret = create_xto_space_write_locked(uso, xto);
+	pthread_rwlock_unlock(&uso->lock);
+
+	return xret;
+}
+
+static xrt_result_t
+remove_tracking_origin(struct xrt_space_overseer *xso, struct xrt_tracking_origin *xto)
+{
+	struct b_space_overseer *uso = b_space_overseer(xso);
+
+	struct u_pp_sink_stack_only sink;
+	u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);
+	uint32_t device_count = 0;
+
+	pthread_rwlock_wrlock(&uso->lock);
+
+	void *ptr = NULL;
+	uint64_t key = xto->id.val;
+	u_hashmap_int_find(uso->xto_map, key, &ptr);
+	if (ptr != NULL) {
+		u_hashmap_int_erase(uso->xto_map, key);
+
+		struct u_space *us = (struct u_space *)ptr;
+
+		u_pp(dg, "Removing tracking origin '%s' that is still used by devices, they can no longer be located:",
+		     xto->name);
+		device_count = print_tracking_origin_devices_read_locked(uso, us, dg);
+
+		/*
+		 * Devices and pose spaces still using the space hold their own
+		 * references, so make them unlocatable instead of leaving them
+		 * at a stale offset.
+		 */
+		zombiefy_space_write_locked(us);
+	}
+
+	pthread_rwlock_unlock(&uso->lock);
+
+	if (device_count > 0) {
+		U_LOG_E("%s", sink.buffer);
+	}
+
+	// Drop the reference the map held outside of the lock.
+	struct u_space *us = (struct u_space *)ptr;
+	u_space_reference(&us, NULL);
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
 add_device(struct xrt_space_overseer *xso, struct xrt_device *xdev)
 {
 	struct b_space_overseer *uso = b_space_overseer(xso);
@@ -1262,8 +1438,8 @@ remove_device(struct xrt_space_overseer *xso, struct xrt_device *xdev)
 
 	struct b_tracked_device *btd = find_xdev_tracked_device_read_locked(uso, xdev);
 	if (btd != NULL) {
-		b_tracked_device_for_each_pose_space(btd, zombiefy_pose_space_cb, NULL);
-		b_tracked_device_clear_pose_spaces(btd);
+		b_tracked_device_for_each_pose_space_read_locked(btd, zombiefy_pose_space_cb_write_locked, NULL);
+		b_tracked_device_clear_pose_spaces_write_locked(btd);
 
 		uint64_t key = xdev->id.val;
 		u_hashmap_int_erase(uso->xdev_map, key);
@@ -1274,7 +1450,7 @@ remove_device(struct xrt_space_overseer *xso, struct xrt_device *xdev)
 	/*
 	 * Drop the reference the device held on its tracked device outside of the
 	 * lock. The per-tracking-origin space in xto_map is shared between devices
-	 * so it is intentionally left in place.
+	 * so it is intentionally left in place, see remove_tracking_origin.
 	 */
 	b_tracked_device_reference(&btd, NULL);
 
@@ -1302,18 +1478,21 @@ attach_device(struct xrt_space_overseer *xso, struct xrt_device *xdev, struct xr
 	pthread_rwlock_wrlock(&uso->lock);
 
 
-	void *ptr = NULL;
-	uint64_t key = xdev->tracking_origin->id.val;
-	u_hashmap_int_find(uso->xto_map, key, &ptr);
-	if (ptr == NULL) {
-		U_LOG_E("Device doesn't have space associated with it!");
+	/*
+	 * Use the space the device was added with, not the one currently in the
+	 * xto_map, if the tracking origin was removed (and maybe re-added) it is
+	 * a zombie space and the device can't be attached.
+	 */
+	struct b_tracked_device *btd = find_xdev_tracked_device_read_locked(uso, xdev);
+	if (btd == NULL) {
+		U_LOG_E("Device '%s' has not been added!", xdev->str);
 		xret = XRT_ERROR_DEVICE_NOT_ATTACHABLE;
 		goto err_unlock;
 	}
 
-	struct u_space *us = (struct u_space *)ptr;
+	struct u_space *us = u_space(b_tracked_device_get_space(btd));
 	if (us->type != U_SPACE_TYPE_ATTACHABLE) {
-		U_LOG_E("Device doesn't have a attachable space!");
+		U_LOG_E("Device '%s' doesn't have an attachable space!", xdev->str);
 		xret = XRT_ERROR_DEVICE_NOT_ATTACHABLE;
 		goto err_unlock;
 	}
@@ -1383,6 +1562,8 @@ b_space_overseer_create(struct xrt_session_event_sink *broadcast)
 	uso->base.set_tracking_origin_offset = set_tracking_origin_offset;
 	uso->base.get_reference_space_offset = get_reference_space_offset;
 	uso->base.set_reference_space_offset = set_reference_space_offset;
+	uso->base.add_tracking_origin = add_tracking_origin;
+	uso->base.remove_tracking_origin = remove_tracking_origin;
 	uso->base.add_device = add_device;
 	uso->base.remove_device = remove_device;
 	uso->base.attach_device = attach_device;
@@ -1415,6 +1596,15 @@ b_space_overseer_legacy_setup(struct b_space_overseer *uso,
                               bool per_app_local_spaces)
 {
 	uso->per_app_local_spaces = per_app_local_spaces;
+
+	// Add the tracking origins of all devices, adding the same one again is a no-op.
+	for (uint32_t i = 0; i < xdev_count; i++) {
+		xrt_result_t xret = add_tracking_origin(&uso->base, xdevs[i]->tracking_origin);
+		if (xret != XRT_SUCCESS) {
+			U_LOG_E("Failed to add tracking origin '%s' to space overseer!",
+			        xdevs[i]->tracking_origin->name);
+		}
+	}
 
 	// Add all devices to the space overseer.
 	for (uint32_t i = 0; i < xdev_count; i++) {
@@ -1485,29 +1675,12 @@ b_space_overseer_create_null_space(struct b_space_overseer *uso, struct xrt_spac
 void
 b_space_overseer_link_space_to_device(struct b_space_overseer *uso, struct xrt_space *xs, struct xrt_device *xdev)
 {
+	struct b_tracked_device *old_btd = NULL;
+
 	pthread_rwlock_wrlock(&uso->lock);
-
-	void *ptr = NULL;
-	uint64_t key = xdev->id.val;
-	u_hashmap_int_find(uso->xdev_map, key, &ptr);
-	if (ptr != NULL) {
-		/*
-		 * Re-linking the same device must not happen in production.
-		 * Pose spaces stay on the old b_tracked_device pose list; dropping
-		 * that object here skips zombify on remove_device and can leave
-		 * destroy asserting on a non-empty pose list.
-		 */
-		U_LOG_W("Device '%s' (name=%s, id=%" PRIu64 ") already has a space attached!", xdev->str,
-		        u_str_xrt_device_name(xdev->name), xdev->id.val);
-	}
-
-	struct b_tracked_device *new_btd = b_tracked_device_create(xs);
-
-	u_hashmap_int_insert(uso->xdev_map, key, new_btd);
-
+	link_space_to_device_write_locked(uso, xs, xdev, &old_btd);
 	pthread_rwlock_unlock(&uso->lock);
 
 	// Dereference old tracked device outside of lock.
-	struct b_tracked_device *old_btd = (struct b_tracked_device *)ptr;
 	b_tracked_device_reference(&old_btd, NULL);
 }

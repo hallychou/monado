@@ -287,4 +287,10 @@ typedef enum xrt_result
 	 * This does not, however, indicate a permanent inability to start the stream. Other modes may work.
 	 */
 	XRT_ERROR_STREAMING_START_FAILED = -47,
+
+	/*!
+	 * The tracking origin of the device has not been added to the space
+	 * overseer, it needs to be added before any device using it.
+	 */
+	XRT_ERROR_TRACKING_ORIGIN_NOT_ADDED = -48,
 } xrt_result_t;

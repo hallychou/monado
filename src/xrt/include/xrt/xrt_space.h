@@ -311,6 +311,63 @@ struct xrt_space_overseer
 	 */
 
 	/*!
+	 * Add a tracking origin to the space overseer, giving it a space that
+	 * the devices using this tracking origin are in. The exact semantic of
+	 * the space is determined by the implementation of the space overseer.
+	 * And may be outright rejected by the implementation.
+	 *
+	 * After this call completes successfully, devices using the tracking
+	 * origin can be added with @ref xrt_space_overseer::add_device, and the
+	 * offset of the tracking origin can be used with
+	 * @ref xrt_space_overseer::get_tracking_origin_offset and
+	 * @ref xrt_space_overseer::set_tracking_origin_offset if supported.
+	 *
+	 * The tracking origin is identified by @ref xrt_tracking_origin::id,
+	 * which must be assigned. Tracking origins are never added implicitly,
+	 * it must be added before any device using it. Adding a tracking origin
+	 * that has already been added is a no-op and keeps its current offset.
+	 * The space overseer does not take ownership of the tracking origin,
+	 * the caller keeps it alive until it has been removed and all devices
+	 * using it have been removed.
+	 *
+	 * Like @ref xrt_space_overseer::add_device this is not intended to be
+	 * called by the OpenXR state tracker, but by other monado components
+	 * that create tracking origins but do not own the space overseer.
+	 *
+	 * @param[in] xso The space overseer.
+	 * @param[in] xto The tracking origin to add.
+	 * @return XRT_SUCCESS if added or already present, otherwise an error
+	 *         code.
+	 */
+	xrt_result_t (*add_tracking_origin)(struct xrt_space_overseer *xso, struct xrt_tracking_origin *xto);
+
+	/*!
+	 * Remove a tracking origin that was previously added with
+	 * @ref xrt_space_overseer::add_tracking_origin. After this call the
+	 * offset of the tracking origin can no longer be read or changed, and
+	 * its devices can no longer be attached, through this space overseer.
+	 *
+	 * Devices using the tracking origin should be removed with
+	 * @ref xrt_space_overseer::remove_device first. Devices that are still
+	 * added, and any pose spaces created for them, can no longer be located
+	 * and stay that way until they are removed. Adding the tracking origin
+	 * again starts over from its initial offset, devices that were still
+	 * added when it was removed are not revived by this and need to be
+	 * removed and added again.
+	 *
+	 * Removing a tracking origin that was never added (or has already been
+	 * removed) is a safe no-op.
+	 *
+	 * Like @ref xrt_space_overseer::add_tracking_origin this is not
+	 * intended to be called by the OpenXR state tracker.
+	 *
+	 * @param[in] xso The space overseer.
+	 * @param[in] xto The tracking origin to remove.
+	 * @return XRT_SUCCESS if removed or not present, otherwise an error code.
+	 */
+	xrt_result_t (*remove_tracking_origin)(struct xrt_space_overseer *xso, struct xrt_tracking_origin *xto);
+
+	/*!
 	 * Add a new device to be tracked by the space overseer. The exact
 	 * semantic of the space is determined by the implementation of the
 	 * space overseer. And may be outright rejected by the implementation.
@@ -319,6 +376,9 @@ struct xrt_space_overseer
 	 * into the @ref xrt_space_overseer::locate_device function, but may
 	 * not be locatable immediately.
 	 *
+	 * The tracking origin of the device must have been added with
+	 * @ref xrt_space_overseer::add_tracking_origin before the device.
+	 *
 	 * This function is not intended to be called by the OpenXR state
 	 * tracker, but by other monado components that need to add devices
 	 * but does not own the space overseer. Components like the fixer
@@ -326,7 +386,9 @@ struct xrt_space_overseer
 	 *
 	 * @param[in] xso The space overseer.
 	 * @param[in] xdev The device to be tracked.
-	 * @return XRT_SUCCESS if added, otherwise an error code.
+	 * @return XRT_SUCCESS if added, XRT_ERROR_TRACKING_ORIGIN_NOT_ADDED if
+	 *         the tracking origin of the device has not been added,
+	 *         otherwise an error code.
 	 */
 	xrt_result_t (*add_device)(struct xrt_space_overseer *xso, struct xrt_device *xdev);
 
@@ -587,6 +649,32 @@ xrt_space_overseer_create_local_space(struct xrt_space_overseer *xso,
                                       struct xrt_space **out_local_floor_space)
 {
 	return xso->create_local_space(xso, out_local_space, out_local_floor_space);
+}
+
+/*!
+ * @copydoc xrt_space_overseer::add_tracking_origin
+ *
+ * Helper for calling through the function pointer.
+ *
+ * @public @memberof xrt_space_overseer
+ */
+XRT_NONNULL_ALL static inline xrt_result_t
+xrt_space_overseer_add_tracking_origin(struct xrt_space_overseer *xso, struct xrt_tracking_origin *xto)
+{
+	return xso->add_tracking_origin(xso, xto);
+}
+
+/*!
+ * @copydoc xrt_space_overseer::remove_tracking_origin
+ *
+ * Helper for calling through the function pointer.
+ *
+ * @public @memberof xrt_space_overseer
+ */
+XRT_NONNULL_ALL static inline xrt_result_t
+xrt_space_overseer_remove_tracking_origin(struct xrt_space_overseer *xso, struct xrt_tracking_origin *xto)
+{
+	return xso->remove_tracking_origin(xso, xto);
 }
 
 /*!
