@@ -22,6 +22,7 @@
 #include "shared/ipc_message_channel.h"
 
 #include "ipc_client_tracking_origin.h"
+#include "ipc_client_allocation_collection.h"
 
 #include <stdio.h>
 

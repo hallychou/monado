@@ -16,6 +16,45 @@ struct xrt_body_tracker;
 struct xrt_hand_tracker;
 struct xrt_io_cache;
 struct ipc_client_state;
+struct xrt_allocation_collection;
+
+
+/*!
+ *
+ * Allocation collection functions.
+ *
+ */
+
+/*!
+ * Get an allocation collection by ID, must only be called from the per client
+ * thread as this function accesses the client state's memory.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_objects_get_xac_and_validate(volatile struct ipc_client_state *ics,
+                                        uint32_t id,
+                                        struct xrt_allocation_collection **out_xac);
+
+/*!
+ * Get or assign an allocation collection ID, must only be called from the per
+ * client thread as this function accesses the client state's memory.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_objects_get_xac_id_or_add(volatile struct ipc_client_state *ics,
+                                     struct xrt_allocation_collection *xac,
+                                     uint32_t *out_id);
+
+/*!
+ * Remove the tracked allocation collection for @p id without destroying the
+ * underlying object. Must only be called from the per client thread.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_objects_destroy_xac(volatile struct ipc_client_state *ics, uint32_t id);
 
 
 /*

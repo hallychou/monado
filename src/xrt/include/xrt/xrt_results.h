@@ -287,4 +287,16 @@ typedef enum xrt_result
 	 * This does not, however, indicate a permanent inability to start the stream. Other modes may work.
 	 */
 	XRT_ERROR_STREAMING_START_FAILED = -47,
+
+	/*!
+	 * The requested property is not supported.
+	 */
+	XRT_ERROR_UNSUPPORTED_PROPERTY = -48,
+
+	/*!
+	 * The context passed in, such as a VkDevice, is not the one the
+	 * allocations were created with, see
+	 * @ref xrt_allocation_collection_get_vk_images.
+	 */
+	XRT_ERROR_INVALID_CONTEXT_FOR_TYPE = -49,
 } xrt_result_t;

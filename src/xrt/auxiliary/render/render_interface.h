@@ -643,37 +643,10 @@ render_resources_get_duration(struct render_resources *r, uint64_t *out_gpu_dura
  */
 struct render_scratch_color_image
 {
-	VkDeviceMemory device_memory;
 	VkImage image;
 	VkImageView srgb_view;
 	VkImageView unorm_view;
 };
-
-/*!
- * Helper struct to hold scratch images.
- */
-struct render_scratch_images
-{
-	VkExtent2D extent;
-
-	struct render_scratch_color_image color[XRT_MAX_VIEWS];
-};
-
-/*!
- * Ensure that the scratch images are created and have the given extent.
- *
- * @public @memberof render_scratch_images
- */
-bool
-render_scratch_images_ensure(struct render_resources *r, struct render_scratch_images *rsi, VkExtent2D extent);
-
-/*!
- * Close all resources on the given @ref render_scratch_images.
- *
- * @public @memberof render_scratch_images
- */
-void
-render_scratch_images_fini(struct render_resources *r, struct render_scratch_images *rsi);
 
 
 /*

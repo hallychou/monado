@@ -20,12 +20,16 @@
 #include "util/u_misc.h"
 #include "util/u_wait.h"
 #include "util/u_handles.h"
+#include "util/u_native_images_xac.h"
 #include "util/u_trace_marker.h"
 #include "util/u_limited_unique_id.h"
 
 #include "shared/ipc_protocol.h"
 #include "client/ipc_client.h"
+#include "client/ipc_client_allocation_collection.h"
 #include "ipc_client_generated.h"
+
+#include "xrt/xrt_allocation_collection.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -172,6 +176,8 @@ ipc_compositor_swapchain_destroy(struct xrt_swapchain *xsc)
 	// Can't return anything here, just continue.
 	IPC_CHK_ONLY_PRINT(icc->ipc_c, xret, "ipc_call_swapchain_destroy");
 
+	xrt_allocation_collection_reference(&ics->base.xac, NULL);
+
 	free(xsc);
 }
 
@@ -265,22 +271,16 @@ swapchain_server_create(struct ipc_client_compositor *icc,
                         const struct xrt_swapchain_create_info *info,
                         struct xrt_swapchain **out_xsc)
 {
-	xrt_graphics_buffer_handle_t remote_handles[XRT_MAX_SWAPCHAIN_IMAGES] = {0};
-	xrt_result_t xret;
-	uint32_t handle;
-	uint32_t image_count;
-	uint64_t size;
-	bool use_dedicated_allocation;
+	xrt_result_t xret, xdret;
+	uint32_t id;
+	uint32_t allocation_collection_id;
+	struct xrt_allocation_collection *xac = NULL;
 
 	xret = ipc_call_swapchain_create( //
 	    icc->ipc_c,                   // connection
 	    info,                         // in
-	    &handle,                      // out
-	    &image_count,                 // out
-	    &size,                        // out
-	    &use_dedicated_allocation,    // out
-	    remote_handles,               // handles
-	    XRT_MAX_SWAPCHAIN_IMAGES);    // handles
+	    &id,                          // out
+	    &allocation_collection_id);   // out
 	if (xret == XRT_ERROR_SWAPCHAIN_FLAG_VALID_BUT_UNSUPPORTED) {
 		// Don't error print this, will spam CTS logs.
 		IPC_DEBUG(icc->ipc_c, "Got XRT_ERROR_SWAPCHAIN_FLAG_VALID_BUT_UNSUPPORTED");
@@ -288,8 +288,21 @@ swapchain_server_create(struct ipc_client_compositor *icc,
 	}
 	IPC_CHK_AND_RET(icc->ipc_c, xret, "ipc_call_swapchain_create");
 
+	// Create the allocation collection.
+	xret = ipc_client_allocation_collection_create(icc->ipc_c, allocation_collection_id, &xac);
+	IPC_CHK_WITH_GOTO(icc->ipc_c, xret, "ipc_client_allocation_collection_create", error_xac);
+
+	/*
+	 * Create the swapchain object.
+	 */
 	struct ipc_client_swapchain *ics = U_TYPED_CALLOC(struct ipc_client_swapchain);
-	ics->base.base.image_count = image_count;
+	if (ics == NULL) {
+		IPC_ERROR(icc->ipc_c, "Failed to allocate ipc_client_swapchain");
+		xret = XRT_ERROR_ALLOCATION;
+		goto error_free_ics;
+	}
+
+	ics->base.base.image_count = xac->image_count;
 	ics->base.base.wait_image = ipc_compositor_swapchain_wait_image;
 	ics->base.base.acquire_image = ipc_compositor_swapchain_acquire_image;
 	ics->base.base.release_image = ipc_compositor_swapchain_release_image;
@@ -297,17 +310,22 @@ swapchain_server_create(struct ipc_client_compositor *icc,
 	ics->base.base.reference.count = 1;
 	ics->base.limited_unique_id = u_limited_unique_id_get();
 	ics->icc = icc;
-	ics->id = handle;
-
-	for (uint32_t i = 0; i < image_count; i++) {
-		ics->base.images[i].handle = remote_handles[i];
-		ics->base.images[i].size = size;
-		ics->base.images[i].use_dedicated_allocation = use_dedicated_allocation;
-	}
+	ics->id = id;
+	ics->base.xac = xac;
 
 	*out_xsc = &ics->base.base;
 
 	return XRT_SUCCESS;
+
+error_free_ics:
+	free(ics);
+
+error_xac:
+	xdret = ipc_call_swapchain_destroy(icc->ipc_c, id);
+	IPC_CHK_ONLY_PRINT(icc->ipc_c, xdret, "ipc_call_swapchain_destroy");
+	xrt_allocation_collection_reference(&xac, NULL);
+
+	return xret;
 }
 
 static xrt_result_t
@@ -361,11 +379,6 @@ swapchain_server_import(struct ipc_client_compositor *icc,
 	ics->icc = icc;
 	ics->id = id;
 
-	// The handles were copied in the IPC call so we can reuse them here.
-	for (uint32_t i = 0; i < image_count; i++) {
-		ics->base.images[i] = native_images[i];
-	}
-
 	*out_xsc = &ics->base.base;
 
 	return XRT_SUCCESS;
@@ -378,6 +391,7 @@ swapchain_allocator_create(struct ipc_client_compositor *icc,
                            struct xrt_swapchain **out_xsc)
 {
 	struct xrt_swapchain_create_properties xsccp = {0};
+	struct xrt_allocation_collection *xac = NULL;
 	struct xrt_image_native *images = NULL;
 	xrt_result_t xret;
 
@@ -392,15 +406,23 @@ swapchain_allocator_create(struct ipc_client_compositor *icc,
 	xret = xrt_images_allocate(xina, info, xsccp.image_count, images);
 	IPC_CHK_WITH_GOTO(icc->ipc_c, xret, "xrt_images_allocate", out_free);
 
-	/*
-	 * The import function takes ownership of the handles,
-	 * we do not need free them if the call succeeds.
-	 */
+	// The import copies the handles, on success the collection takes ownership of them.
 	xret = swapchain_server_import(icc, info, images, xsccp.image_count, out_xsc);
 	IPC_CHK_ONLY_PRINT(icc->ipc_c, xret, "swapchain_server_import");
 	if (xret != XRT_SUCCESS) {
 		xrt_images_free(xina, xsccp.image_count, images);
+		goto out_free;
 	}
+
+	xret = u_native_images_xac_create(info, images, xsccp.image_count, &xac);
+	IPC_CHK_ONLY_PRINT(icc->ipc_c, xret, "u_native_images_xac_create");
+	if (xret != XRT_SUCCESS) {
+		xrt_swapchain_reference(out_xsc, NULL);
+		xrt_images_free(xina, xsccp.image_count, images);
+		goto out_free;
+	}
+
+	ipc_client_swapchain(*out_xsc)->base.xac = xac;
 
 out_free:
 	free(images);

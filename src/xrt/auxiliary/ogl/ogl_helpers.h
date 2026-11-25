@@ -1,4 +1,5 @@
 // Copyright 2020-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -16,6 +17,8 @@
 extern "C" {
 #endif
 
+
+struct xrt_allocation_collection;
 
 /*!
  * Results from a import, nicer then having to pass in multiple arrays.
@@ -67,6 +70,24 @@ ogl_import_from_native(struct xrt_image_native *natives,
                        uint32_t native_count,
                        const struct xrt_swapchain_create_info *info,
                        struct ogl_import_results *results);
+
+/*!
+ * Import from an allocation collection, the info is optional and must be
+ * compatible with the swapchain info from the collection, if not provided the
+ * swapchain info is obtained from the collection.
+ *
+ * The allocation collection must support @ref XRT_ALLOCATION_TYPE_NATIVE_IMAGE,
+ * if no info is provided the allocation collection must support
+ * @ref XRT_ALLOCATION_PROPERTY_SWAPCHAIN_INFO.
+ *
+ * A GL context must be current, like @ref ogl_import_from_native.
+ *
+ * @ingroup aux_ogl
+ */
+XRT_CHECK_RESULT bool
+ogl_import_from_allocation_collection(struct xrt_allocation_collection *xac,
+                                      const struct xrt_swapchain_create_info *info,
+                                      struct ogl_import_results *results);
 
 
 #ifdef __cplusplus

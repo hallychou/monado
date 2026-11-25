@@ -1,0 +1,41 @@
+{
+	"$schema": "../proto.schema.json",
+
+	"allocation_collection_get_capabilities": {
+		"in": [
+			{"name": "id", "type": "uint32_t"}
+		],
+		"out": [
+			{"name": "supports_swapchain_info", "type": "bool"},
+			{"name": "supports_native_image", "type": "bool"},
+			{"name": "image_count", "type": "uint32_t"},
+			{"name": "swapchain_info", "type": "struct xrt_swapchain_create_info"}
+		]
+	},
+
+	"allocation_collection_get_swapchain_info": {
+		"in": [
+			{"name": "id", "type": "uint32_t"}
+		],
+		"out": [
+			{"name": "info", "type": "struct xrt_swapchain_create_info"}
+		]
+	},
+
+	"allocation_collection_get_native_images": {
+		"varlen": true,
+		"in": [
+			{"name": "id", "type": "uint32_t"}
+		],
+		"out": [
+			{"name": "image_count", "type": "uint32_t"},
+			{"name": "native_meta", "type": "struct ipc_allocation_collection_native_images_meta"}
+		]
+	},
+
+	"allocation_collection_destroy": {
+		"in": [
+			{"name": "id", "type": "uint32_t"}
+		]
+	}
+}
