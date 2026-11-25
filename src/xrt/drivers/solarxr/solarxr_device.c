@@ -14,6 +14,7 @@
 #include "os/os_time.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
+#include "util/u_tracking_origin.h"
 #include "xrt/xrt_system.h"
 
 #include <endian.h>
@@ -846,11 +847,7 @@ solarxr_device_create_xdevs(struct xrt_tracking_origin *const tracking_origin,
 
 	if (device->base.tracking_origin == NULL) {
 		device->base.tracking_origin = &device->standalone_origin;
-		device->standalone_origin = (struct xrt_tracking_origin){
-		    .name = "SolarXR Bridge",
-		    .type = XRT_TRACKING_TYPE_OTHER,
-		    .initial_offset = XRT_POSE_IDENTITY,
-		};
+		u_tracking_origin_init(&device->standalone_origin, XRT_TRACKING_TYPE_OTHER, "SolarXR Bridge");
 	}
 
 	device->base.supported.body_tracking = true;

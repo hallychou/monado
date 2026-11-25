@@ -36,9 +36,9 @@
  *
  */
 
-#define GET_XTRACK_OR_RETURN(ICS, ID, XTRACK)                                                                          \
+#define GET_XTRACK_OR_RETURN(ICS, IPC_ID, XTRACK)                                                                      \
 	do {                                                                                                           \
-		xrt_result_t xret = ipc_server_objects_get_xtrack_and_validate((ICS), ID, &(XTRACK));                  \
+		xrt_result_t xret = ipc_server_objects_get_xtrack_and_validate((ICS), IPC_ID, &(XTRACK));              \
 		IPC_CHK_AND_RET((ICS)->server, xret, "ipc_server_objects_get_xtrack_and_validate");                    \
 	} while (0)
 
@@ -891,24 +891,24 @@ ipc_handle_space_recenter_local_spaces(volatile struct ipc_client_state *ics)
 
 xrt_result_t
 ipc_handle_space_get_tracking_origin_offset(volatile struct ipc_client_state *ics,
-                                            uint32_t origin_id,
+                                            uint32_t origin_ipc_id,
                                             struct xrt_pose *out_offset)
 {
 	struct xrt_space_overseer *xso = ics->server->xso;
 	struct xrt_tracking_origin *xto = NULL;
-	GET_XTRACK_OR_RETURN(ics, origin_id, xto);
+	GET_XTRACK_OR_RETURN(ics, origin_ipc_id, xto);
 
 	return xrt_space_overseer_get_tracking_origin_offset(xso, xto, out_offset);
 }
 
 xrt_result_t
 ipc_handle_space_set_tracking_origin_offset(volatile struct ipc_client_state *ics,
-                                            uint32_t origin_id,
+                                            uint32_t origin_ipc_id,
                                             const struct xrt_pose *offset)
 {
 	struct xrt_space_overseer *xso = ics->server->xso;
 	struct xrt_tracking_origin *xto = NULL;
-	GET_XTRACK_OR_RETURN(ics, origin_id, xto);
+	GET_XTRACK_OR_RETURN(ics, origin_ipc_id, xto);
 
 	return xrt_space_overseer_set_tracking_origin_offset(xso, xto, offset);
 }
@@ -1696,12 +1696,12 @@ ipc_handle_compositor_semaphore_destroy(volatile struct ipc_client_state *ics, u
 xrt_result_t
 ipc_handle_tracking_origin_get_list(volatile struct ipc_client_state *ics, struct ipc_tracking_origin_list *out_list)
 {
-	// Count and collect origin IDs.
+	// Count and collect origin IPC IDs.
 	uint32_t count = 0;
 	for (uint32_t i = 0; i < XRT_SYSTEM_MAX_DEVICES; i++) {
 		struct xrt_tracking_origin *xtrack = ics->objects.xtracks[i];
 		if (xtrack != NULL) {
-			out_list->origins[count].id = i;
+			out_list->origins[count].ipc_id = i;
 			count++;
 		}
 	}
@@ -1713,14 +1713,15 @@ ipc_handle_tracking_origin_get_list(volatile struct ipc_client_state *ics, struc
 
 xrt_result_t
 ipc_handle_tracking_origin_get_info(volatile struct ipc_client_state *ics,
-                                    uint32_t tracking_origin_id,
+                                    uint32_t tracking_origin_ipc_id,
                                     struct ipc_tracking_origin_info *out_info)
 {
-	// Validate the tracking origin ID and get the tracking origin
+	// Validate the tracking origin IPC ID and get the tracking origin
 	struct xrt_tracking_origin *xtrack = NULL;
-	GET_XTRACK_OR_RETURN(ics, tracking_origin_id, xtrack);
+	GET_XTRACK_OR_RETURN(ics, tracking_origin_ipc_id, xtrack);
 
 	// Copy tracking origin info to output
+	out_info->xrt_tracking_origin_id_val = xtrack->id.val;
 	memcpy(out_info->name, xtrack->name, sizeof(out_info->name));
 	out_info->type = xtrack->type;
 	out_info->offset = xtrack->initial_offset;
@@ -1736,7 +1737,7 @@ ipc_handle_tracking_origin_get_info(volatile struct ipc_client_state *ics,
  */
 
 static void
-fill_device_info(struct xrt_device *xdev, uint32_t tracking_origin_id, struct ipc_device_info *out_info)
+fill_device_info(struct xrt_device *xdev, uint32_t tracking_origin_ipc_id, struct ipc_device_info *out_info)
 {
 	// Synchronize the stable device ID to IPC clients.
 	out_info->xrt_device_id_val = xdev->id.val;
@@ -1744,7 +1745,7 @@ fill_device_info(struct xrt_device *xdev, uint32_t tracking_origin_id, struct ip
 	// Fill in basic device info
 	out_info->name = xdev->name;
 	out_info->device_type = xdev->device_type;
-	out_info->tracking_origin_id = tracking_origin_id;
+	out_info->tracking_origin_ipc_id = tracking_origin_ipc_id;
 	memcpy(out_info->str, xdev->str, sizeof(out_info->str));
 	memcpy(out_info->serial, xdev->serial, sizeof(out_info->serial));
 	out_info->supported = xdev->supported;
@@ -1764,16 +1765,16 @@ ipc_handle_device_get_info(volatile struct ipc_client_state *ics, uint32_t devic
 	struct xrt_device *xdev = NULL;
 	GET_XDEV_OR_RETURN(ics, device_id, xdev);
 
-	// Get tracking origin ID
-	uint32_t tracking_origin_id = UINT32_MAX;
-	xret = ipc_server_objects_get_xtrack_id_or_add(ics, xdev->tracking_origin, &tracking_origin_id);
-	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_get_xtrack_id_or_add");
+	// Get tracking origin IPC ID
+	uint32_t tracking_origin_ipc_id = UINT32_MAX;
+	xret = ipc_server_objects_get_xtrack_ipc_id_or_add(ics, xdev->tracking_origin, &tracking_origin_ipc_id);
+	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_get_xtrack_ipc_id_or_add");
 
 	// Reply structure.
 	struct ipc_device_get_info_reply reply = XRT_STRUCT_INIT;
 
 	// Use helper to fill device info
-	fill_device_info(xdev, tracking_origin_id, &reply.info);
+	fill_device_info(xdev, tracking_origin_ipc_id, &reply.info);
 
 	// Send the device info.
 	xret = ipc_send(imc, &reply, sizeof(reply));
@@ -1816,13 +1817,13 @@ ipc_handle_device_get_info_no_arrays(volatile struct ipc_client_state *ics,
 
 	GET_XDEV_OR_RETURN(ics, device_id, xdev);
 
-	// Get tracking origin ID
-	uint32_t tracking_origin_id = UINT32_MAX;
-	xret = ipc_server_objects_get_xtrack_id_or_add(ics, xdev->tracking_origin, &tracking_origin_id);
-	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_get_xtrack_id_or_add");
+	// Get tracking origin IPC ID
+	uint32_t tracking_origin_ipc_id = UINT32_MAX;
+	xret = ipc_server_objects_get_xtrack_ipc_id_or_add(ics, xdev->tracking_origin, &tracking_origin_ipc_id);
+	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_get_xtrack_ipc_id_or_add");
 
 	// Use helper to fill device info
-	fill_device_info(xdev, tracking_origin_id, out_info);
+	fill_device_info(xdev, tracking_origin_ipc_id, out_info);
 
 	return XRT_SUCCESS;
 }

@@ -33,6 +33,7 @@
 #include "util/u_config_json.h"
 #include "util/u_format.h"
 #include "util/u_frameserver.h"
+#include "util/u_tracking_origin.h"
 
 #include "tracking/t_tracking.h"
 
@@ -1010,8 +1011,7 @@ rs_hdev_create(struct xrt_prober *xp, int device_idx)
 	snprintf(xd->str, XRT_DEVICE_NAME_LEN, "%s", RS_DEVICE_STR);
 	snprintf(xd->serial, XRT_DEVICE_NAME_LEN, "%s", RS_DEVICE_STR);
 
-	snprintf(xd->tracking_origin->name, XRT_TRACKING_NAME_LEN, "%s", RS_HOST_SLAM_TRACKER_STR);
-	xd->tracking_origin->type = XRT_TRACKING_TYPE_EXTERNAL_SLAM;
+	u_tracking_origin_init(xd->tracking_origin, XRT_TRACKING_TYPE_EXTERNAL_SLAM, "%s", RS_HOST_SLAM_TRACKER_STR);
 
 	xd->inputs[0].name = XRT_INPUT_GENERIC_TRACKER_POSE;
 

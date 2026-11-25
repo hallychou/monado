@@ -78,9 +78,10 @@ ipc_server_objects_get_xdev_id_or_add(volatile struct ipc_client_state *ics, str
 	}
 
 	// Check that we can also get the tracking origin allocated.
-	uint32_t tracking_origin_id = UINT32_MAX;
-	xrt_result_t xret = ipc_server_objects_get_xtrack_id_or_add(ics, xdev->tracking_origin, &tracking_origin_id);
-	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_get_xtrack_id_or_add");
+	uint32_t tracking_origin_ipc_id = UINT32_MAX;
+	xrt_result_t xret =
+	    ipc_server_objects_get_xtrack_ipc_id_or_add(ics, xdev->tracking_origin, &tracking_origin_ipc_id);
+	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_get_xtrack_ipc_id_or_add");
 
 	ics->objects.xdevs[index] = xdev;
 
@@ -98,17 +99,17 @@ ipc_server_objects_get_xdev_id_or_add(volatile struct ipc_client_state *ics, str
 
 xrt_result_t
 ipc_server_objects_get_xtrack_and_validate(volatile struct ipc_client_state *ics,
-                                           uint32_t id,
+                                           uint32_t ipc_id,
                                            struct xrt_tracking_origin **out_xtrack)
 {
-	if (id >= XRT_SYSTEM_MAX_DEVICES) {
-		IPC_ERROR(ics->server, "Invalid tracking origin ID %u (>= XRT_SYSTEM_MAX_DEVICES)", id);
+	if (ipc_id >= XRT_SYSTEM_MAX_DEVICES) {
+		IPC_ERROR(ics->server, "Invalid tracking origin IPC ID %u (>= XRT_SYSTEM_MAX_DEVICES)", ipc_id);
 		return XRT_ERROR_IPC_FAILURE;
 	}
 
-	struct xrt_tracking_origin *xtrack = ics->objects.xtracks[id];
+	struct xrt_tracking_origin *xtrack = ics->objects.xtracks[ipc_id];
 	if (xtrack == NULL) {
-		IPC_ERROR(ics->server, "Tracking origin ID %u not found (NULL)", id);
+		IPC_ERROR(ics->server, "Tracking origin IPC ID %u not found (NULL)", ipc_id);
 		return XRT_ERROR_IPC_FAILURE;
 	}
 
@@ -118,16 +119,16 @@ ipc_server_objects_get_xtrack_and_validate(volatile struct ipc_client_state *ics
 }
 
 xrt_result_t
-ipc_server_objects_get_xtrack_id_or_add(volatile struct ipc_client_state *ics,
-                                        struct xrt_tracking_origin *xtrack,
-                                        uint32_t *out_id)
+ipc_server_objects_get_xtrack_ipc_id_or_add(volatile struct ipc_client_state *ics,
+                                            struct xrt_tracking_origin *xtrack,
+                                            uint32_t *out_ipc_id)
 {
-	assert(out_id != NULL);
+	assert(out_ipc_id != NULL);
 
-	// Check if tracking origin is already tracked and return its ID.
+	// Check if tracking origin is already tracked and return its IPC ID.
 	for (uint32_t index = 0; index < XRT_SYSTEM_MAX_DEVICES; index++) {
 		if (ics->objects.xtracks[index] == xtrack) {
-			*out_id = index;
+			*out_ipc_id = index;
 			return XRT_SUCCESS;
 		}
 	}
@@ -136,7 +137,7 @@ ipc_server_objects_get_xtrack_id_or_add(volatile struct ipc_client_state *ics,
 	for (uint32_t index = 0; index < XRT_SYSTEM_MAX_DEVICES; index++) {
 		if (ics->objects.xtracks[index] == NULL) {
 			ics->objects.xtracks[index] = xtrack;
-			*out_id = index;
+			*out_ipc_id = index;
 			return XRT_SUCCESS;
 		}
 	}

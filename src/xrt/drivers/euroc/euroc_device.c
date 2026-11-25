@@ -11,6 +11,7 @@
 #include "util/u_debug.h"
 #include "util/u_device.h"
 #include "util/u_distortion_mesh.h"
+#include "util/u_tracking_origin.h"
 #include "util/u_var.h"
 #include "math/m_space.h"
 #include "math/m_mathinclude.h"
@@ -197,8 +198,7 @@ euroc_device_create(struct xrt_prober *xp)
 	}
 
 	xd->tracking_origin = &ed->tracking_origin;
-	xd->tracking_origin->type = XRT_TRACKING_TYPE_EXTERNAL_SLAM;
-	snprintf(xd->tracking_origin->name, XRT_TRACKING_NAME_LEN, "%s %s", dev_name, "SLAM Tracker");
+	u_tracking_origin_init(xd->tracking_origin, XRT_TRACKING_TYPE_EXTERNAL_SLAM, "%s %s", dev_name, "SLAM Tracker");
 
 	if (is_hmd) {
 		xd->inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;

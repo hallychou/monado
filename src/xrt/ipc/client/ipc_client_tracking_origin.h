@@ -23,8 +23,12 @@ struct ipc_connection;
 /*!
  * Tracking origin manager for IPC client.
  *
- * Maintains a hashmap of tracking origin IDs to xrt_tracking_origin objects.
+ * Maintains a hashmap of tracking origin IPC IDs to xrt_tracking_origin objects.
  * Fetches tracking origin info from the server on-demand.
+ *
+ * The IPC IDs are per-client-connection indices used in IPC messages, not
+ * @ref xrt_tracking_origin::id, which is synchronized from the service via
+ * @ref ipc_tracking_origin_info.
  *
  * @ingroup ipc_client
  */
@@ -33,7 +37,7 @@ struct ipc_client_tracking_origin_manager
 	//! Connection to the IPC server
 	struct ipc_connection *ipc_c;
 
-	//! Hashmap from tracking_origin_id to xrt_tracking_origin*
+	//! Hashmap from tracking_origin_ipc_id to xrt_tracking_origin*
 	struct u_hashmap_int *tracking_origin_map;
 };
 
@@ -47,13 +51,13 @@ ipc_client_tracking_origin_manager_init(struct ipc_client_tracking_origin_manage
                                         struct ipc_connection *ipc_c);
 
 /*!
- * Get a tracking origin by ID. If not already cached, fetches it from the server.
+ * Get a tracking origin by IPC ID. If not already cached, fetches it from the server.
  *
  * @ingroup ipc_client
  */
 xrt_result_t
 ipc_client_tracking_origin_manager_get(struct ipc_client_tracking_origin_manager *manager,
-                                       uint32_t tracking_origin_id,
+                                       uint32_t tracking_origin_ipc_id,
                                        struct xrt_tracking_origin **out_xtrack);
 
 /*!

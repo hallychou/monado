@@ -300,7 +300,8 @@ rgb_open_system_impl(struct xrt_builder *xb,
 		build.xfctx = xfctx;
 		build.origin = origin;
 		build.origin->type = XRT_TRACKING_TYPE_RGB;
-		build.origin->initial_offset.orientation.y = 1.0f;
+		build.origin->initial_offset.orientation =
+		    (struct xrt_quat){.x = 0.0f, .y = 1.0f, .z = 0.0f, .w = 0.0f};
 		build.origin->initial_offset.position.z = -2.0f;
 		build.origin->initial_offset.position.y = 1.0f;
 

@@ -23,6 +23,7 @@
 #include "util/u_misc.h"
 #include "util/u_sink.h"
 #include "util/u_config_json.h"
+#include "util/u_tracking_origin.h"
 #include "p_prober.h"
 
 #include <stdio.h>
@@ -420,13 +421,11 @@ p_tracking_init(struct prober *p)
 	fact->base.create_tracked_psmv = p_factory_create_tracked_psmv;
 	fact->base.create_tracked_psvr = p_factory_create_tracked_psvr;
 	fact->base.create_tracked_slam = p_factory_create_tracked_slam;
-	fact->origin.type = XRT_TRACKING_TYPE_RGB;
-	fact->origin.initial_offset.orientation.y = 1.0f;
+	u_tracking_origin_init(&fact->origin, XRT_TRACKING_TYPE_RGB, "PSVR & PSMV tracking");
+	fact->origin.initial_offset.orientation = (struct xrt_quat){.x = 0.0f, .y = 1.0f, .z = 0.0f, .w = 0.0f};
 	fact->origin.initial_offset.position.z = -2.0f;
 	fact->origin.initial_offset.position.y = 1.0f;
 	fact->p = p;
-
-	snprintf(fact->origin.name, sizeof(fact->origin.name), "PSVR & PSMV tracking");
 
 	u_var_add_root(fact, "Tracking Factory", false);
 	u_var_add_pose(fact, &fact->origin.initial_offset, "offset");

@@ -572,7 +572,7 @@ out_free_and_unlock:
 
 	// Get the tracking origin, can't do this with the critical section, so do it after.
 	struct xrt_tracking_origin *xtrack = NULL;
-	xret = ipc_client_tracking_origin_manager_get(ictom, info.tracking_origin_id, &xtrack);
+	xret = ipc_client_tracking_origin_manager_get(ictom, info.tracking_origin_ipc_id, &xtrack);
 	IPC_CHK_WITH_GOTO(ipc_c, xret, "ipc_client_tracking_origin_manager_get", err_fini);
 
 	icx->base.tracking_origin = xtrack;

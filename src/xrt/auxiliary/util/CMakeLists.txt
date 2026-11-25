@@ -121,6 +121,10 @@ add_library(
 	u_trace_marker.h
 	u_tracked_imu_3dof.c
 	u_tracked_imu_3dof.h
+	u_tracking_origin.c
+	u_tracking_origin.h
+	u_tracking_origin_id.c
+	u_tracking_origin_id.h
 	u_var.cpp
 	u_var.h
 	u_vector.cpp

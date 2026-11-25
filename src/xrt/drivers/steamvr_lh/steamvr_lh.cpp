@@ -19,6 +19,7 @@
 #include "util/u_var.h"
 #include "util/u_device.h"
 #include "util/u_time.h"
+#include "util/u_tracking_origin.h"
 
 #include "math/m_api.h"
 
@@ -158,9 +159,7 @@ Context::create(const std::string &steam_install,
 	std::shared_ptr<Context> c =
 	    std::make_shared<Context>(steam_install, steamvr_install, debug_get_log_option_lh_log());
 	c->providers = std::move(providers);
-	std::strncpy(c->name, "SteamVR Lighthouse Tracking", XRT_TRACKING_NAME_LEN);
-	c->type = XRT_TRACKING_TYPE_LIGHTHOUSE;
-	c->initial_offset = XRT_POSE_IDENTITY;
+	u_tracking_origin_init(c.get(), XRT_TRACKING_TYPE_LIGHTHOUSE, "SteamVR Lighthouse Tracking");
 	for (vr::IServerTrackedDeviceProvider *const &driver : c->providers) {
 		vr::EVRInitError err = driver->Init(c.get());
 		if (err != vr::VRInitError_None) {
@@ -183,8 +182,8 @@ Context::create(const std::string &steam_install,
 }
 
 Context::Context(const std::string &steam_install, const std::string &steamvr_install, u_logging_level level)
-    : settings(steam_install, steamvr_install, this), resources(level, steamvr_install), log_level(level),
-      frame_thread_run(true), frame_thread()
+    : xrt_tracking_origin{}, settings(steam_install, steamvr_install, this), resources(level, steamvr_install),
+      log_level(level), frame_thread_run(true), frame_thread()
 {}
 
 Context::~Context()

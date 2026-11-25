@@ -13,6 +13,7 @@
 #include "util/u_debug.h"
 #include "util/u_system_devices.h"
 #include "util/u_system_helpers.h"
+#include "util/u_tracking_origin.h"
 
 #include "b_body_tracker.h"
 #include "b_hand_tracker.h"
@@ -431,8 +432,7 @@ r_create_devices(uint16_t port,
 	r->base.create_hand_tracker = b_hand_tracker_create;
 	r->base.create_io_cache = b_io_cache_create;
 
-	r->origin.type = XRT_TRACKING_TYPE_RGB;
-	r->origin.initial_offset = (struct xrt_pose)XRT_POSE_IDENTITY;
+	u_tracking_origin_init(&r->origin, XRT_TRACKING_TYPE_RGB, "Remote Simulator");
 	r->reset.header = R_HEADER_VALUE;
 	r->reset.head.center = (struct xrt_pose)XRT_POSE_IDENTITY;
 	r->reset.head.center.position.y = 1.6f;
@@ -462,8 +462,6 @@ r_create_devices(uint16_t port,
 	r->h_meters = h_meters;
 	r->accept_fd = -1;
 	r->rc.fd = -1;
-
-	snprintf(r->origin.name, sizeof(r->origin.name), "Remote Simulator");
 
 	ret = os_thread_helper_init(&r->oth);
 	if (ret != 0) {

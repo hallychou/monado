@@ -22,6 +22,8 @@ set(tests
     tests_rational
     tests_relation_chain
     tests_relation_history
+    tests_tracking_origin
+    tests_tracking_origin_id
     tests_vector
     tests_worker
     tests_pose
@@ -81,6 +83,8 @@ target_link_libraries(tests_quatexpmap PRIVATE xrt-external-tinyceres aux_math)
 target_link_libraries(tests_rational PRIVATE aux_math)
 target_link_libraries(tests_relation_chain PRIVATE aux_math)
 target_link_libraries(tests_relation_history PRIVATE aux_math)
+target_link_libraries(tests_tracking_origin PRIVATE xrt-interfaces)
+target_link_libraries(tests_tracking_origin_id PRIVATE xrt-interfaces)
 target_link_libraries(tests_pose PRIVATE aux_math)
 target_link_libraries(tests_quat_change_of_basis PRIVATE aux_math)
 target_link_libraries(tests_quat_swing_twist PRIVATE aux_math)

@@ -37,6 +37,7 @@
 #include "util/u_device.h"
 #include "util/u_distortion_mesh.h"
 #include "util/u_trace_marker.h"
+#include "util/u_tracking_origin.h"
 #include "util/u_var.h"
 
 #include "xrt/xrt_device.h"
@@ -156,8 +157,7 @@ rift_s_system_create(struct xrt_prober *xp,
 	DRV_TRACE_MARKER();
 
 	struct rift_s_system *sys = U_TYPED_CALLOC(struct rift_s_system);
-	sys->base.type = XRT_TRACKING_TYPE_NONE;
-	sys->base.initial_offset.orientation.w = 1.0f;
+	u_tracking_origin_init(&sys->base, XRT_TRACKING_TYPE_NONE, "Rift S Tracking");
 
 	/* Init refcount */
 	sys->ref.count = 1;

@@ -19,6 +19,7 @@
 #include "util/u_logging.h"
 #include "util/u_time.h"
 #include "util/u_misc.h"
+#include "util/u_tracking_origin.h"
 #include "os/os_time.h"
 
 #include "qwerty_device.h"
@@ -308,8 +309,7 @@ qwerty_hmd_create(void)
 		return NULL;
 	}
 
-	xd->tracking_origin->type = XRT_TRACKING_TYPE_OTHER;
-	snprintf(xd->tracking_origin->name, XRT_TRACKING_NAME_LEN, QWERTY_HMD_TRACKER_STR);
+	u_tracking_origin_init(xd->tracking_origin, XRT_TRACKING_TYPE_OTHER, "%s", QWERTY_HMD_TRACKER_STR);
 
 	xd->inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;
 
@@ -347,9 +347,8 @@ qwerty_controller_create(bool is_left, struct qwerty_hmd *qhmd)
 	snprintf(xd->str, XRT_DEVICE_NAME_LEN, "%s", controller_name);
 	snprintf(xd->serial, XRT_DEVICE_NAME_LEN, "%s", controller_name);
 
-	xd->tracking_origin->type = XRT_TRACKING_TYPE_OTHER;
 	char *tracker_name = is_left ? QWERTY_LEFT_TRACKER_STR : QWERTY_RIGHT_TRACKER_STR;
-	snprintf(xd->tracking_origin->name, XRT_TRACKING_NAME_LEN, "%s", tracker_name);
+	u_tracking_origin_init(xd->tracking_origin, XRT_TRACKING_TYPE_OTHER, "%s", tracker_name);
 
 	xd->inputs[QWERTY_TRIGGER].name = XRT_INPUT_WMR_TRIGGER_VALUE;
 	xd->inputs[QWERTY_MENU].name = XRT_INPUT_WMR_MENU_CLICK;

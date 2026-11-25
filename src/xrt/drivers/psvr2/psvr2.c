@@ -40,6 +40,7 @@
 #include "util/u_sink.h"
 #include "util/u_time.h"
 #include "util/u_trace_marker.h"
+#include "util/u_tracking_origin.h"
 #include "util/u_var.h"
 #include "util/u_debug.h"
 
@@ -1146,9 +1147,7 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 
 	struct psvr2_hmd *hmd = U_DEVICE_ALLOCATE(struct psvr2_hmd, flags, PSVR2_HMD_INPUT_COUNT, 1);
 
-	snprintf(hmd->base.tracking_origin->name, XRT_TRACKING_NAME_LEN, "PS VR2 Tracking");
-	hmd->base.tracking_origin->type = XRT_TRACKING_TYPE_EXTERNAL_SLAM;
-	hmd->base.tracking_origin->initial_offset = (struct xrt_pose)XRT_POSE_IDENTITY;
+	u_tracking_origin_init(hmd->base.tracking_origin, XRT_TRACKING_TYPE_EXTERNAL_SLAM, "PS VR2 Tracking");
 
 	if (os_mutex_init(&hmd->data_lock) != 0) {
 		PSVR2_ERROR(hmd, "Failed to init data mutex!");

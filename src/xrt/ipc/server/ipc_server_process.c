@@ -234,10 +234,10 @@ init_system_shm_state(struct ipc_server *s, volatile struct ipc_client_state *ic
 		}
 
 		// Populate the tracking origin.
-		uint32_t tracking_origin_id = 0;
-		xret = ipc_server_objects_get_xtrack_id_or_add(ics, xdev->tracking_origin, &tracking_origin_id);
+		uint32_t tracking_origin_ipc_id = 0;
+		xret = ipc_server_objects_get_xtrack_ipc_id_or_add(ics, xdev->tracking_origin, &tracking_origin_ipc_id);
 		if (xret != XRT_SUCCESS) {
-			IPC_ERROR(s, "Failed to get/add tracking origin ID for: '%s'", xdev->tracking_origin->name);
+			IPC_ERROR(s, "Failed to get/add tracking origin IPC ID for: '%s'", xdev->tracking_origin->name);
 			continue;
 		}
 

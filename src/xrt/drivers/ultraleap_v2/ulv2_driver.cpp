@@ -13,6 +13,7 @@
 #include "util/u_device.h"
 #include "util/u_var.h"
 #include "util/u_debug.h"
+#include "util/u_tracking_origin.h"
 #include "math/m_space.h"
 #include "math/m_api.h"
 #include "util/u_time.h"
@@ -385,9 +386,7 @@ ulv2_create_device(struct xrt_device **out_xdev)
 	os_thread_helper_start(&ulv2d->leap_loop_oth, (&leap_input_loop), (void *)&ulv2d->base);
 
 	ulv2d->base.tracking_origin = &ulv2d->tracking_origin;
-	ulv2d->base.tracking_origin->type = XRT_TRACKING_TYPE_OTHER;
-
-	math_pose_identity(&ulv2d->base.tracking_origin->initial_offset);
+	u_tracking_origin_init(ulv2d->base.tracking_origin, XRT_TRACKING_TYPE_OTHER, "Ultraleap v2 Tracking");
 
 	ulv2d->log_level = debug_get_log_option_ulv2_log();
 

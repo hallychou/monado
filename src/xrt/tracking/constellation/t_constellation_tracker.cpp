@@ -11,6 +11,7 @@
 #include "xrt/xrt_defines.h"
 
 #include "util/u_time.h"
+#include "util/u_tracking_origin.h"
 
 #include "math/m_predict.h"
 #include "math/m_vec3.h"
@@ -1369,6 +1370,9 @@ Device::pushImuSample(const xrt_imu_sample &sample)
 ConstellationTracker::ConstellationTracker(t_constellation_tracker_params *params)
     : log_level(debug_get_log_option_constellation_tracker_log()), params(*params), rig_calibration_lock()
 {
+	u_tracking_origin_init(&this->tracking_origin, XRT_TRACKING_TYPE_CONSTELLATION, "Constellation Tracker");
+	this->tracking_origin.initial_offset.position.y = 1.2f;
+
 	this->ceres_context.reset(ceres::Context::Create());
 
 	// If the deterministic flag is set, we enable single-threaded processing, and mark it as deterministic.

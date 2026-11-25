@@ -90,7 +90,7 @@
 
 	"space_get_tracking_origin_offset": {
 		"in": [
-			{"name": "origin_id", "type": "uint32_t"}
+			{"name": "origin_ipc_id", "type": "uint32_t"}
 		],
 		"out": [
 			{"name": "offset", "type": "struct xrt_pose"}
@@ -99,7 +99,7 @@
 
 	"space_set_tracking_origin_offset": {
 		"in": [
-			{"name": "origin_id", "type": "uint32_t"},
+			{"name": "origin_ipc_id", "type": "uint32_t"},
 			{"name": "offset", "type": "struct xrt_pose"}
 		]
 	},

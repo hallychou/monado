@@ -36,6 +36,7 @@
 #include "util/u_logging.h"
 #include "util/u_linux.h"
 #include "util/u_trace_marker.h"
+#include "util/u_tracking_origin.h"
 #include "util/u_var.h"
 
 #include "hydra_interface.h"
@@ -711,12 +712,10 @@ hydra_found(struct xrt_prober *xp,
 
 	// Create the system
 	struct hydra_system *hs = U_TYPED_CALLOC(struct hydra_system);
-	hs->base.type = XRT_TRACKING_TYPE_MAGNETIC;
-	snprintf(hs->base.name, XRT_TRACKING_NAME_LEN, "%s", "Sixense Magnetic Tracking");
+	u_tracking_origin_init(&hs->base, XRT_TRACKING_TYPE_MAGNETIC, "Sixense Magnetic Tracking");
 	// Arbitrary static transform from local space to base.
 	hs->base.initial_offset.position.y = 1.0f;
 	hs->base.initial_offset.position.z = -0.25f;
-	hs->base.initial_offset.orientation.w = 1.0f;
 
 	ret = os_thread_helper_init(&hs->usb_thread);
 	if (ret < 0) {

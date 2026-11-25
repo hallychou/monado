@@ -29,6 +29,7 @@
 #include "util/u_hand_simulation.h"
 #include "util/u_logging.h"
 #include "util/u_trace_marker.h"
+#include "util/u_tracking_origin.h"
 
 #include "os/os_time.h"
 
@@ -1332,12 +1333,7 @@ survive_get_devices(struct xrt_prober *xp, struct xrt_device **out_xdevs, struct
 	survive_simple_start_thread(actx);
 
 	ss->ctx = actx;
-	ss->base.type = XRT_TRACKING_TYPE_LIGHTHOUSE;
-	snprintf(ss->base.name, XRT_TRACKING_NAME_LEN, "%s", "Libsurvive Tracking");
-	ss->base.initial_offset.position.x = 0.0f;
-	ss->base.initial_offset.position.y = 0.0f;
-	ss->base.initial_offset.position.z = 0.0f;
-	ss->base.initial_offset.orientation.w = 1.0f;
+	u_tracking_origin_init(&ss->base, XRT_TRACKING_TYPE_LIGHTHOUSE, "Libsurvive Tracking");
 	ss->timecode_offset_ms = (struct u_var_draggable_f32){
 	    .val = debug_get_float_option_survive_timecode_offset_ms(),
 	    .min = -20.0,

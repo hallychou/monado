@@ -79,12 +79,48 @@ enum xrt_tracking_type
 };
 
 /*!
+ * A unique identifier for an @ref xrt_tracking_origin instance.
+ *
+ * Each tracking origin is assigned a 64-bit ID in the Monado service process,
+ * or in the application process for in-process setups. For out-of-process
+ * clients the ID is synchronized over the IPC layer, so every client connected
+ * to the same service refers to a given tracking origin by the same value.
+ *
+ * The ID is intended for hash maps, caches, and similar lookups. Unlike a
+ * memory pointer it is never reused after the tracking origin is destroyed.
+ *
+ * A value of zero is invalid and means the tracking origin ID has not been
+ * assigned, matching the zero-initialized state of the struct.
+ */
+struct xrt_tracking_origin_id
+{
+	uint64_t val;
+};
+
+/*!
+ * Value of an @ref xrt_tracking_origin_id that has not been assigned.
+ *
+ * @relates xrt_tracking_origin_id
+ */
+// clang-format off
+#define XRT_TRACKING_ORIGIN_ID_INVALID XRT_C11_COMPOUND(struct xrt_tracking_origin_id){0}
+// clang-format on
+
+/*!
  * A tracking system or device origin.
  *
  * Tracking systems will typically extend this structure.
  */
 struct xrt_tracking_origin
 {
+	/*!
+	 * Instance identifier, see @ref xrt_tracking_origin_id. Assigned by
+	 * whatever allocates the tracking origin, normally the driver. Must be
+	 * set before the tracking origin is handed to the rest of the system
+	 * and not changed afterwards.
+	 */
+	struct xrt_tracking_origin_id id;
+
 	//! For debugging.
 	char name[XRT_TRACKING_NAME_LEN];
 

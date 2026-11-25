@@ -24,6 +24,7 @@
 #include "util/u_time.h"
 #include "util/u_distortion_mesh.h"
 #include "util/u_logging.h"
+#include "util/u_tracking_origin.h"
 
 #include "oh_device.h"
 
@@ -1263,8 +1264,7 @@ oh_device_create(ohmd_context *ctx, bool no_hmds, struct xrt_device **out_xdevs)
 	// Default everything to 3dof (NONE), but 6dof when the HMD supports position tracking.
 	//! @todo: support mix of 3dof and 6dof OpenHMD devices
 	struct oh_system *sys = U_TYPED_CALLOC(struct oh_system);
-	sys->base.type = XRT_TRACKING_TYPE_NONE;
-	sys->base.initial_offset.orientation.w = 1.0f;
+	u_tracking_origin_init(&sys->base, XRT_TRACKING_TYPE_NONE, "OpenHMD Tracking");
 
 	u_var_add_root(sys, "OpenHMD Wrapper", false);
 

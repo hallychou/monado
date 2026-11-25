@@ -12,6 +12,7 @@
 #include "util/u_device.h"
 #include "util/u_var.h"
 #include "util/u_debug.h"
+#include "util/u_tracking_origin.h"
 #include "math/m_space.h"
 #include "math/m_api.h"
 #include "util/u_time.h"
@@ -304,7 +305,7 @@ ulv5_create_device(struct xrt_device **out_xdev)
 	os_thread_helper_start(&ulv5d->oth, (&leap_input_loop), (void *)&ulv5d->base);
 
 	ulv5d->base.tracking_origin = &ulv5d->tracking_origin;
-	ulv5d->base.tracking_origin->type = XRT_TRACKING_TYPE_OTHER;
+	u_tracking_origin_init(ulv5d->base.tracking_origin, XRT_TRACKING_TYPE_OTHER, "Ultraleap v5 Tracking");
 
 	ulv5d->log_level = debug_get_log_option_ulv5_log();
 

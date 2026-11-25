@@ -446,15 +446,7 @@ struct ConstellationTrackerBase
 	    .break_apart = constellation_tracker_node_break_apart,
 	    .destroy = constellation_tracker_node_destroy,
 	};
-	xrt_tracking_origin tracking_origin = {
-	    .name = "Constellation Tracker",
-	    .type = XRT_TRACKING_TYPE_CONSTELLATION,
-	    .initial_offset =
-	        {
-	            .orientation = XRT_QUAT_IDENTITY,
-	            .position = {.x = 0, .y = 1.2, .z = 0},
-	        },
-	};
+	xrt_tracking_origin tracking_origin = {};
 };
 
 struct ConstellationTracker : public ConstellationTrackerBase

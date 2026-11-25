@@ -142,9 +142,9 @@ update_tracking_origin_list_and_infos(mnd_root_t *root)
 	}
 
 	for (uint32_t i = 0; i < root->tracking_origin_list.origin_count; i++) {
-		uint32_t id = root->tracking_origin_list.origins[i].id;
+		uint32_t ipc_id = root->tracking_origin_list.origins[i].ipc_id;
 
-		xret = ipc_call_tracking_origin_get_info(&root->ipc_c, id, &root->origin_infos[i]);
+		xret = ipc_call_tracking_origin_get_info(&root->ipc_c, ipc_id, &root->origin_infos[i]);
 		if (xret != XRT_SUCCESS) {
 			PE("Failed ipc_call_tracking_origin_get_list '%i'", xret);
 			return MND_ERROR_OPERATION_FAILED;
@@ -657,12 +657,13 @@ mnd_root_get_device_info_u32(mnd_root_t *root, uint32_t device_index, mnd_proper
 	switch (prop) {
 	case MND_PROPERTY_TRACKING_ORIGIN_U32:
 		for (uint32_t i = 0; i < root->tracking_origin_list.origin_count; i++) {
-			if (device_info->tracking_origin_id == root->tracking_origin_list.origins[i].id) {
+			if (device_info->tracking_origin_ipc_id == root->tracking_origin_list.origins[i].ipc_id) {
 				*out_u32 = i;
 				return MND_SUCCESS;
 			}
 		}
-		PE("Could not find tracking origin id in origins list '%u'!\n", device_info->tracking_origin_id);
+		PE("Could not find tracking origin IPC ID in origins list '%u'!\n",
+		   device_info->tracking_origin_ipc_id);
 		return MND_ERROR_INVALID_VALUE;
 	default: PE("Is not a valid u32 property (%u)", prop); return MND_ERROR_INVALID_PROPERTY;
 	}
@@ -826,10 +827,10 @@ mnd_root_get_tracking_origin_offset(mnd_root_t *root, uint32_t origin_index, mnd
 	CHECK_NOT_NULL(out_offset);
 	CHECK_ORIGIN_INDEX(origin_index);
 
-	uint32_t origin_id = root->tracking_origin_list.origins[origin_index].id;
+	uint32_t origin_ipc_id = root->tracking_origin_list.origins[origin_index].ipc_id;
 
 	xrt_result_t xret =
-	    ipc_call_space_get_tracking_origin_offset(&root->ipc_c, origin_id, (struct xrt_pose *)out_offset);
+	    ipc_call_space_get_tracking_origin_offset(&root->ipc_c, origin_ipc_id, (struct xrt_pose *)out_offset);
 	switch (xret) {
 	case XRT_SUCCESS: return MND_SUCCESS;
 	case XRT_ERROR_UNSUPPORTED_SPACE_TYPE: return MND_ERROR_INVALID_OPERATION;
@@ -845,10 +846,10 @@ mnd_root_set_tracking_origin_offset(mnd_root_t *root, uint32_t origin_index, con
 	CHECK_NOT_NULL(offset);
 	CHECK_ORIGIN_INDEX(origin_index);
 
-	uint32_t origin_id = root->tracking_origin_list.origins[origin_index].id;
+	uint32_t origin_ipc_id = root->tracking_origin_list.origins[origin_index].ipc_id;
 
 	xrt_result_t xret =
-	    ipc_call_space_set_tracking_origin_offset(&root->ipc_c, origin_id, (struct xrt_pose *)offset);
+	    ipc_call_space_set_tracking_origin_offset(&root->ipc_c, origin_ipc_id, (struct xrt_pose *)offset);
 	switch (xret) {
 	case XRT_SUCCESS: return MND_SUCCESS;
 	case XRT_ERROR_UNSUPPORTED_SPACE_TYPE: return MND_ERROR_INVALID_OPERATION;

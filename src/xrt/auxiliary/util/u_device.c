@@ -17,6 +17,7 @@
 #include "util/u_device_ni.h"
 #include "util/u_logging.h"
 #include "util/u_misc.h"
+#include "util/u_tracking_origin.h"
 #include "util/u_visibility_mask.h"
 
 #include "math/m_mathinclude.h"
@@ -337,9 +338,7 @@ u_device_allocate(enum u_device_alloc_flags flags, size_t size, size_t input_cou
 
 	if (alloc_tracking) {
 		xdev->tracking_origin = (struct xrt_tracking_origin *)(ptr + offset_tracking);
-		xdev->tracking_origin->type = XRT_TRACKING_TYPE_NONE;
-		xdev->tracking_origin->initial_offset.orientation.w = 1.0f;
-		snprintf(xdev->tracking_origin->name, XRT_TRACKING_NAME_LEN, "%s", "No tracking");
+		u_tracking_origin_init(xdev->tracking_origin, XRT_TRACKING_TYPE_NONE, "No tracking");
 	}
 
 	return xdev;

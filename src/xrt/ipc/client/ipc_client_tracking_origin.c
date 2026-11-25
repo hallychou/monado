@@ -72,12 +72,12 @@ ipc_client_tracking_origin_manager_init(struct ipc_client_tracking_origin_manage
 
 xrt_result_t
 ipc_client_tracking_origin_manager_get(struct ipc_client_tracking_origin_manager *manager,
-                                       uint32_t tracking_origin_id,
+                                       uint32_t tracking_origin_ipc_id,
                                        struct xrt_tracking_origin **out_xtrack)
 {
 	// Check if we already have this tracking origin cached
 	void *cached_xtrack = NULL;
-	int ret = u_hashmap_int_find(manager->tracking_origin_map, tracking_origin_id, &cached_xtrack);
+	int ret = u_hashmap_int_find(manager->tracking_origin_map, tracking_origin_ipc_id, &cached_xtrack);
 	if (ret == 0) {
 		// Found in cache
 		*out_xtrack = (struct xrt_tracking_origin *)cached_xtrack;
@@ -86,12 +86,13 @@ ipc_client_tracking_origin_manager_get(struct ipc_client_tracking_origin_manager
 
 	// Not in cache, fetch from server
 	struct ipc_tracking_origin_info info;
-	xrt_result_t xret = ipc_call_tracking_origin_get_info(manager->ipc_c, tracking_origin_id, &info);
+	xrt_result_t xret = ipc_call_tracking_origin_get_info(manager->ipc_c, tracking_origin_ipc_id, &info);
 	IPC_CHK_AND_RET(manager->ipc_c, xret, "ipc_call_tracking_origin_get_info");
 
 	// Create a new tracking origin
 	struct xrt_tracking_origin *xtrack = U_TYPED_CALLOC(struct xrt_tracking_origin);
 
+	xtrack->id.val = info.xrt_tracking_origin_id_val;
 	memcpy(xtrack->name, info.name, sizeof(xtrack->name));
 	xtrack->type = info.type;
 	xtrack->initial_offset = info.offset;
@@ -102,7 +103,7 @@ ipc_client_tracking_origin_manager_get(struct ipc_client_tracking_origin_manager
 	u_var_add_pose(xtrack, &xtrack->initial_offset, "offset");
 
 	// Store in cache
-	u_hashmap_int_insert(manager->tracking_origin_map, tracking_origin_id, xtrack);
+	u_hashmap_int_insert(manager->tracking_origin_map, tracking_origin_ipc_id, xtrack);
 
 	*out_xtrack = xtrack;
 

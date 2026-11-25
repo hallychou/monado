@@ -114,7 +114,7 @@ struct b_space_overseer
 	//! Map from xdev to tracked device, each entry holds a reference.
 	struct u_hashmap_int *xdev_map;
 
-	//! Map from xrt_tracking_origin to space, each entry holds a reference.
+	//! Map from xrt_tracking_origin::id to space, each entry holds a reference.
 	struct u_hashmap_int *xto_map;
 
 	//! Tracks usage of reference spaces.
@@ -242,7 +242,7 @@ static struct u_space *
 find_xto_space_read_locked(struct b_space_overseer *uso, struct xrt_tracking_origin *xto)
 {
 	void *ptr = NULL;
-	uint64_t key = (uint64_t)(intptr_t)xto;
+	uint64_t key = xto->id.val;
 	u_hashmap_int_find(uso->xto_map, key, &ptr);
 
 	if (ptr == NULL) {
@@ -579,8 +579,14 @@ add_device_helper(struct b_space_overseer *uso, struct xrt_device *xdev)
 	struct xrt_tracking_origin *torig = xdev->tracking_origin;
 	assert(torig != NULL);
 
+	// Zero is never assigned and can't be used as a key.
+	if (torig->id.val == 0) {
+		U_LOG_E("Tracking origin '%s' of device '%s' has no ID!", torig->name, xdev->str);
+		return XRT_ERROR_INVALID_ARGUMENT;
+	}
+
 	struct xrt_space *root = uso->base.semantic.root;
-	uint64_t key = (uint64_t)(intptr_t)torig;
+	uint64_t key = torig->id.val;
 	struct xrt_space *xs = NULL;
 
 	// Need to take the write lock.
@@ -1297,7 +1303,7 @@ attach_device(struct xrt_space_overseer *xso, struct xrt_device *xdev, struct xr
 
 
 	void *ptr = NULL;
-	uint64_t key = (uint64_t)(intptr_t)xdev->tracking_origin;
+	uint64_t key = xdev->tracking_origin->id.val;
 	u_hashmap_int_find(uso->xto_map, key, &ptr);
 	if (ptr == NULL) {
 		U_LOG_E("Device doesn't have space associated with it!");

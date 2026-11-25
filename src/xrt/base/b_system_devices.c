@@ -18,6 +18,7 @@
 #include "util/u_misc.h"
 #include "util/u_system_devices.h"
 #include "util/u_system_helpers.h"
+#include "util/u_tracking_origin.h"
 
 #include "xrt/xrt_device.h"
 
@@ -294,6 +295,7 @@ b_system_devices_allocate(void)
 	bsysd->base.create_body_tracker = create_body_tracker;
 	bsysd->base.create_hand_tracker = create_hand_tracker;
 	bsysd->base.create_io_cache = create_io_cache;
+	u_tracking_origin_init(&bsysd->origin, XRT_TRACKING_TYPE_NONE, "System Tracking");
 
 	return bsysd;
 }
@@ -321,6 +323,7 @@ b_system_devices_static_allocate(void)
 	bsysds->base.base.create_io_cache = create_io_cache;
 	bsysds->base.base.feature_inc = feature_inc;
 	bsysds->base.base.feature_dec = feature_dec;
+	u_tracking_origin_init(&bsysds->base.origin, XRT_TRACKING_TYPE_NONE, "System Tracking");
 
 	return bsysds;
 }
@@ -362,6 +365,7 @@ b_system_devices_static_finalize(struct b_system_devices_static *bsysds,
 	bsysds->cached.gamepad = gamepad_index;
 
 	u_system_devices_supported_from_static_roles(xsysd, &xsysd->supported);
+	u_tracking_origin_check_xdevs(xsysd->static_xdevs, xsysd->static_xdev_count);
 
 	return notify_chirality(bsysds);
 }
