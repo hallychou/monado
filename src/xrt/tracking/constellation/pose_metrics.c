@@ -61,12 +61,16 @@ find_best_matching_led(struct pose_metrics_visible_led_info *led_points,
 		double sqerror = dx * dx + dy * dy;
 
 		// If the blob is much larger than the LED in either dimension, don't match.
-		// @note: We're technically comparing distorted size to undistorted size, but that's a fine enough
-		// approximation.
+		//! @note We're technically comparing distorted size to undistorted size, but that's a fine enough
+		//        approximation.
+		//! @todo This check causes issues on realsense due to lens blur at high distance,
+		//        so let's disable it for now until we have a better metric for "blob too big".
+#if 0
 		if (blob->size.x > led_info->led_radius_px_undistorted * 4 ||
 		    blob->size.y > led_info->led_radius_px_undistorted * 4) {
 			continue;
 		}
+#endif
 
 		// Check if the LED falls within the bounding box is closer to the camera (smaller Z),
 		// or is at least ed_radius closer to the blob center
