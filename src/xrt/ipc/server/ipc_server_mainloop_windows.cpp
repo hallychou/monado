@@ -149,13 +149,18 @@ create_pipe_instance(struct ipc_server_mainloop *ml, bool first)
 	}
 
 	if (ml->pipe_handle != INVALID_HANDLE_VALUE) {
+		ml->pipe_busy = false;
 		return true;
 	}
 
 	DWORD err = GetLastError();
-	if (err == ERROR_PIPE_BUSY) {
-		U_LOG_W("CreateNamedPipeA failed: %lu %s An existing client must disconnect first!", err,
-		        ipc_winerror(err));
+	bool was_busy = ml->pipe_busy;
+	ml->pipe_busy = err == ERROR_PIPE_BUSY;
+	if (ml->pipe_busy) {
+		if (!was_busy) {
+			U_LOG_W("CreateNamedPipeA failed: %lu %s An existing client must disconnect first!", err,
+			        ipc_winerror(err));
+		}
 	} else {
 		U_LOG_E("CreateNamedPipeA failed: %lu %s", err, ipc_winerror(err));
 		if (err == ERROR_ACCESS_DENIED && first) {
@@ -181,7 +186,8 @@ create_pipe_instance(struct ipc_server_mainloop *ml, bool first)
 static void
 create_another_pipe_instance(struct ipc_server *vs, struct ipc_server_mainloop *ml)
 {
-	if (!create_pipe_instance(ml, false)) {
+	// While every instance is in use, ipc_server_mainloop_poll tries again.
+	if (!create_pipe_instance(ml, false) && !ml->pipe_busy) {
 		ipc_server_handle_failure(vs);
 	}
 }
@@ -225,10 +231,10 @@ ipc_server_mainloop_poll(struct ipc_server *vs, struct ipc_server_mainloop *ml)
 		return;
 	}
 
-	if (!ml->pipe_handle) {
+	if (ml->pipe_handle == INVALID_HANDLE_VALUE) {
 		create_another_pipe_instance(vs, ml);
 	}
-	if (!ml->pipe_handle) {
+	if (ml->pipe_handle == INVALID_HANDLE_VALUE) {
 		return; // Errors already logged.
 	}
 
@@ -260,6 +266,7 @@ ipc_server_mainloop_init(struct ipc_server_mainloop *ml, const char *socket_file
 	IPC_TRACE_MARKER();
 
 	ml->pipe_handle = INVALID_HANDLE_VALUE;
+	ml->pipe_busy = false;
 	ml->pipe_name = nullptr;
 
 	constexpr char pipe_prefix[] = "\\\\.\\pipe\\";

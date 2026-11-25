@@ -348,6 +348,9 @@ struct ipc_server_mainloop
 	//! Named Pipe that we accept connections on.
 	HANDLE pipe_handle;
 
+	//! Every instance of the pipe is in use: no pipe handle until a client disconnects.
+	bool pipe_busy;
+
 	//! Name of the Pipe that we accept connections on.
 	char *pipe_name;
 
