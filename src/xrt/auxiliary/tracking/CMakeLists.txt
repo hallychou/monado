@@ -63,10 +63,7 @@ if(ANDROID)
 	target_compile_options(aux_tracking PRIVATE -Wno-gnu-offsetof-extensions)
 endif()
 
-# t_euroc_recorder needs a Windows implementation of os_realtime_get_ns.
-if(NOT WIN32)
-	target_sources(aux_tracking PRIVATE t_euroc_recorder.cpp t_euroc_recorder.h)
-endif()
+target_sources(aux_tracking PRIVATE t_euroc_recorder.cpp t_euroc_recorder.h)
 
 if(XRT_FEATURE_SLAM)
 	target_sources(aux_tracking PRIVATE t_vit_loader.c t_tracker_slam.cpp)

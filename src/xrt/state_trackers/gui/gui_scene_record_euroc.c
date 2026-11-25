@@ -70,8 +70,11 @@ gui_scene_record_euroc(struct gui_program *p)
 	}
 
 
-	struct xrt_slam_sinks *slam_sinks = NULL;
-	slam_sinks = euroc_recorder_create(&xfctx, NULL, 2, 1, false);
+	struct euroc_recorder_settings euroc_settings = {
+	    .cam_count = 2,
+	    .imu_count = 1,
+	};
+	struct xrt_slam_sinks *slam_sinks = euroc_recorder_create(&xfctx, &euroc_settings);
 
 	u_var_add_root(bsysd, "DepthAI Euroc recorder", 0);
 	euroc_recorder_add_ui(slam_sinks, bsysd, "");
@@ -85,7 +88,8 @@ gui_scene_record_euroc(struct gui_program *p)
 	    &gen_lock.cams[0],       //
 	    &gen_lock.cams[1]);      //
 
-	gen_lock.imu = slam_sinks->imu;
+	gen_lock.imus[0] = slam_sinks->imus[0];
+	gen_lock.imu_count = 1;
 
 	xrt_fs_slam_stream_start(the_fs, &gen_lock);
 
